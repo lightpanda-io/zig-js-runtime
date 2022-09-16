@@ -26,13 +26,13 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     // test
-    const exe_tests = b.addTest("src/tests.zig");
-    exe_tests.setTarget(target);
-    exe_tests.setBuildMode(mode);
-    linkV8(exe_tests);
+    const test_exe = b.addTest("src/tests.zig");
+    test_exe.setTarget(target);
+    test_exe.setBuildMode(mode);
+    linkV8(test_exe);
 
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&exe_tests.step);
+    test_step.dependOn(&test_exe.step);
 }
 
 fn linkV8(step: *std.build.LibExeObjStep) void {
