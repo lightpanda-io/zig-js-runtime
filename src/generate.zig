@@ -4,14 +4,14 @@ const refl = @import("reflect.zig");
 
 fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {
     switch (T) {
-        i32 => js_res.set(v8.Integer.initI32(isolate, zig_res)),
+        u32 => js_res.set(v8.Integer.initU32(isolate, zig_res)),
         else => return error.NativeTypeUnhandled,
     }
 }
 
 fn jsToNative(comptime T: type, value: v8.Value, ctx: v8.Context) !T {
     switch (T) {
-        i32 => return try value.toI32(ctx),
+        u32 => return try value.toU32(ctx),
         else => return error.JSTypeUnhandled,
     }
 }
