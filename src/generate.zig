@@ -9,10 +9,9 @@ fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8
     }
 }
 
-fn argValue(comptime T: type, comptime index: u32, comptime info_T: type, info: info_T, ctx: v8.Context) !T {
-    const arg = info.getArg(index);
+fn jsToNative(comptime T: type, value: v8.Value, ctx: v8.Context) !T {
     switch (T) {
-        i32 => return try arg.toI32(ctx),
+        i32 => return try value.toI32(ctx),
         else => return error.JSTypeUnhandled,
     }
 }
@@ -22,12 +21,12 @@ fn callWithArgs(comptime function: anytype, comptime params: []type, comptime re
     switch (params.len) {
         0 => return @call(.{}, function, .{}),
         1 => {
-            const arg1 = try argValue(params[0], 0, info_T, info, ctx);
+            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
             return @call(.{}, function, .{arg1});
         },
         2 => {
-            const arg1 = try argValue(params[0], 0, info_T, info, ctx);
-            const arg2 = try argValue(params[1], 1, info_T, info, ctx);
+            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
+            const arg2 = try jsToNative(params[1], info.getArg(1), ctx);
             return @call(.{}, function, .{ arg1, arg2 });
         },
         else => {
@@ -41,12 +40,12 @@ fn callWithArgsSelf(comptime function: anytype, comptime self_T: type, self: sel
     switch (params.len) {
         0 => return @call(.{}, function, .{self}),
         1 => {
-            const arg1 = try argValue(params[0], 0, info_T, info, ctx);
+            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
             return @call(.{}, function, .{ self, arg1 });
         },
         2 => {
-            const arg1 = try argValue(params[0], 0, info_T, info, ctx);
-            const arg2 = try argValue(params[1], 1, info_T, info, ctx);
+            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
+            const arg2 = try jsToNative(params[1], info.getArg(1), ctx);
             return @call(.{}, function, .{ self, arg1, arg2 });
         },
         else => {
@@ -55,8 +54,8 @@ fn callWithArgsSelf(comptime function: anytype, comptime self_T: type, self: sel
     }
 }
 
-fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) type {
-    return struct {
+fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) v8.FunctionCallback {
+    const cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
@@ -85,10 +84,11 @@ fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) type
             js_obj.setInternalField(0, external);
         }
     };
+    return cbk.constructor;
 }
 
-fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) type {
-    return struct {
+fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) v8.AccessorNameGetterCallback {
+    const cbk = struct {
         fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
@@ -97,16 +97,45 @@ fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) type {
             const external = info.getThis().getInternalField(0).castTo(v8.External);
             const zig_obj_ptr = @ptrCast(*T, external.get());
 
-            // return to javascript the corresponding zig object method result
+            // call the corresponding zig object method
             const zig_getter = @field(T, func.name);
             const zig_res = @call(.{}, zig_getter, .{zig_obj_ptr.*});
+
+            // return to javascript the result
             returnValue(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
         }
     };
+    return cbk.getter;
 }
 
-fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) type {
-    return struct {
+fn generateSetter(comptime T: type, comptime func: refl.FuncReflected) v8.AccessorNameSetterCallback {
+    const cbk = struct {
+        // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)
+        fn setter(_: ?*const v8.Name, raw_value: ?*const v8.C_Value, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
+            const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
+            const isolate = info.getIsolate();
+
+            // get the value set in javascript
+            const js_value = v8.Value{ .handle = raw_value.? };
+            const zig_value = jsToNative(func.args[0], js_value, isolate.getCurrentContext()) catch unreachable; // TODO: throw js exception
+
+            // retrieve the zig object from it's javascript counterpart
+            const external = info.getThis().getInternalField(0).castTo(v8.External);
+            const zig_obj_ptr = @ptrCast(*T, external.get());
+
+            // call the corresponding zig object method
+            const zig_setter = @field(T, func.name);
+            _ = @call(.{}, zig_setter, .{ zig_obj_ptr, zig_value }); // return should be void
+
+            // return to javascript the provided value
+            info.getReturnValue().setValueHandle(raw_value.?);
+        }
+    };
+    return cbk.setter;
+}
+
+fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.FunctionCallback {
+    const cbk = struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
@@ -116,12 +145,15 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) type {
             const external = info.getThis().getInternalField(0).castTo(v8.External);
             const zig_obj_ptr = @ptrCast(*T, external.get());
 
-            // return to javascript the corresponding zig object method result
+            // call the corresponding zig object method
             const zig_method = @field(T, func.name);
             const zig_res = callWithArgsSelf(zig_method, T, zig_obj_ptr.*, func.args, func.return_type.?, v8.FunctionCallbackInfo, info, ctx) catch unreachable; // TODO: js exception
+
+            // return to javascript the result
             returnValue(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
         }
     };
+    return cbk.method;
 }
 
 // This function must be called comptime
@@ -132,7 +164,7 @@ pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) 
             // with the corresponding zig callback,
             // and attach it to the global namespace
             const cstr_func = generateConstructor(T, struct_gen.constructor);
-            var cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func.constructor);
+            var cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
             const cstr_key = v8.String.initUtf8(isolate, struct_gen.name);
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
@@ -144,9 +176,15 @@ pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) 
             // set getters for the v8 ObjectTemplate,
             // with the corresponding zig callbacks
             inline for (struct_gen.getters) |getter| {
-                const func = generateGetter(T, getter);
+                const getter_func = generateGetter(T, getter);
                 const key = v8.String.initUtf8(isolate, getter.js_name);
-                object_tpl.setGetter(key, func.getter);
+                if (getter.setter_index == null) {
+                    object_tpl.setGetter(key, getter_func);
+                } else {
+                    const setter = struct_gen.setters[getter.setter_index.?];
+                    const setter_func = generateSetter(T, setter);
+                    object_tpl.setGetterAndSetter(key, getter_func, setter_func);
+                }
             }
 
             // create a v8 FunctinTemplate for each T methods,
@@ -154,7 +192,7 @@ pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) 
             // and attach them to the object template
             inline for (struct_gen.methods) |method| {
                 const func = generateMethod(T, method);
-                var tpl = v8.FunctionTemplate.initCallback(isolate, func.method);
+                var tpl = v8.FunctionTemplate.initCallback(isolate, func);
                 const key = v8.String.initUtf8(isolate, method.js_name);
                 object_tpl.set(key, tpl, v8.PropertyAttribute.None);
             }

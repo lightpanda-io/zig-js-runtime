@@ -28,12 +28,12 @@ fn assertStringsEquals(expected: []const u8, actual: []const u8, case: []const u
     }
 }
 
-fn checkEqualCases(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, comptime n: comptime_int, cases: [n][]const u8) !void {
+fn checkCases(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, comptime n: comptime_int, cases: [n]Expected) !void {
     var isErr = false;
     for (cases) |case| {
-        var res_case = try engine.jsExecScript(alloc, isolate, context, case, "test.js");
+        var res_case = try engine.jsExecScript(alloc, isolate, context, case.script, "test.js");
         defer res_case.deinit();
-        const equal = expectStringsEquals("true", res_case.result.?, case, !isErr);
+        const equal = expectStringsEquals(case.expected, res_case.result.?, case.script, !isErr);
         if (!equal and !isErr) {
             isErr = true;
         }
@@ -43,6 +43,11 @@ fn checkEqualCases(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Co
         return error.NotEqual;
     }
 }
+
+const Expected = struct {
+    script: []const u8,
+    expected: []const u8,
+};
 
 test "proto" {
     const person_refl = comptime refl.reflectStruct(data.Person);
@@ -70,20 +75,30 @@ test "proto" {
     var context = iso.initContext(globals);
     defer iso.deinitContext(context);
 
-    // 1. constructor and getter
-    const script =
-        \\let p = new Person(40);
-    ;
-    var res = try engine.jsExecScript(alloc, isolate, context, script, "test.js");
-    defer res.deinit();
-    try assertStringsEquals("undefined", res.result.?, script);
-
-    // equlaity cases
-    const cases = [_][]const u8{
-        "p.age === 40",
-        "p.__proto__ === Person.prototype",
-        "typeof(p.constructor) === 'function'",
-        "p.otherAge(10) === 40",
+    // 1. constructor
+    const cases1 = [_]Expected{
+        .{ .script = "let p = new Person(40);", .expected = "undefined" },
+        .{ .script = "p.__proto__ === Person.prototype", .expected = "true" },
+        .{ .script = "typeof(p.constructor) === 'function'", .expected = "true" },
     };
-    try checkEqualCases(alloc, isolate, context, cases.len, cases);
+    try checkCases(alloc, isolate, context, cases1.len, cases1);
+
+    // 2. getter
+    const cases2 = [_]Expected{
+        .{ .script = "p.age === 40", .expected = "true" },
+    };
+    try checkCases(alloc, isolate, context, cases2.len, cases2);
+
+    // 3. setter
+    const cases3 = [_]Expected{
+        .{ .script = "p.age = 41;", .expected = "41" },
+        .{ .script = "p.age === 41", .expected = "true" },
+    };
+    try checkCases(alloc, isolate, context, cases3.len, cases3);
+
+    // 4. method
+    const cases4 = [_]Expected{
+        .{ .script = "p.otherAge(10) === 41;", .expected = "true" },
+    };
+    try checkCases(alloc, isolate, context, cases4.len, cases4);
 }

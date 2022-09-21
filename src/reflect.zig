@@ -38,6 +38,8 @@ pub const FuncReflected = struct {
     name: []const u8,
     args: []type,
     return_type: ?type,
+
+    setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 };
 
 pub const StructReflected = struct {
@@ -49,6 +51,8 @@ pub const StructReflected = struct {
     getters: []FuncReflected,
     setters: []FuncReflected,
     methods: []FuncReflected,
+
+    // getters_setters: [][2]u8,
 };
 
 // This function must be called comptime
@@ -153,6 +157,7 @@ pub fn reflectStruct(comptime T: type) StructReflected {
             .name = decl.name,
             .args = args_types[0..],
             .return_type = func.Fn.return_type,
+            .setter_index = null,
         };
         switch (kind) {
             .constructor => {
@@ -171,6 +176,19 @@ pub fn reflectStruct(comptime T: type) StructReflected {
                 methods_done += 1;
             },
             else => unreachable,
+        }
+    }
+
+    for (getters) |*getter| {
+        var setter_index: ?u8 = null;
+        for (setters) |setter, i| {
+            if (std.mem.eql(u8, getter.js_name, setter.js_name)) {
+                setter_index = i;
+                break;
+            }
+        }
+        if (setter_index != null) {
+            getter.setter_index = setter_index;
         }
     }
 

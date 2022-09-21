@@ -38,6 +38,8 @@ pub fn main() !void {
         \\let p = new Person(40);
         \\p.age === 40;
         \\p.otherAge(10) === 40;
+        \\p.age = 41;
+        \\p.age === 41;
     ;
 
     // exec javascript in context
