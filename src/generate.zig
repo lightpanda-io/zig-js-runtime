@@ -55,6 +55,38 @@ fn callWithArgsSelf(comptime function: anytype, comptime self_T: type, self: sel
     }
 }
 
+fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) type {
+    return struct {
+        fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
+            const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
+            const isolate = info.getIsolate();
+            const ctx = isolate.getCurrentContext();
+
+            // check func params length
+            if (info.length() != func.args.len) {
+                std.log.debug("wrong params nb\n", .{});
+                // TODO: js exception
+                return;
+            }
+
+            // allocator, we need to put the zig object on the heap
+            // otherwise on the stack it will be delete when the function returns
+            // TODO: better way to handle that ? If not better allocator ?
+            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+            const alloc = gpa.allocator();
+
+            // create and allocate the zig object
+            var zig_obj_ptr = alloc.create(T) catch unreachable;
+            zig_obj_ptr.* = callWithArgs(T.constructor, func.args, T, v8.FunctionCallbackInfo, info, ctx) catch unreachable; // TODO: js exception
+
+            // bind the zig object to it's javascript counterpart
+            const external = v8.External.init(isolate, zig_obj_ptr);
+            const js_obj = info.getThis();
+            js_obj.setInternalField(0, external);
+        }
+    };
+}
+
 fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) type {
     return struct {
         fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
@@ -94,20 +126,19 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) type {
 
 // This function must be called comptime
 pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) type {
-    var t = struct {
-        const Self = @This();
-
+    return struct {
         pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate) void {
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
             // and attach it to the global namespace
-            var constructor_tpl = v8.FunctionTemplate.initCallback(isolate, Self.constructor);
-            const constructor_key = v8.String.initUtf8(isolate, struct_gen.name);
-            globals.set(constructor_key, constructor_tpl, v8.PropertyAttribute.None);
+            const cstr_func = generateConstructor(T, struct_gen.constructor);
+            var cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func.constructor);
+            const cstr_key = v8.String.initUtf8(isolate, struct_gen.name);
+            globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
             // get the v8 ObjectTemplate attached to the constructor
             // and set 1 internal field to bind the counterpart zig object
-            const object_tpl = constructor_tpl.getInstanceTemplate();
+            const object_tpl = cstr_tpl.getInstanceTemplate();
             object_tpl.setInternalFieldCount(1);
 
             // set getters for the v8 ObjectTemplate,
@@ -128,36 +159,5 @@ pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) 
                 object_tpl.set(key, tpl, v8.PropertyAttribute.None);
             }
         }
-
-        fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
-            const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
-            const isolate = info.getIsolate();
-            const ctx = isolate.getCurrentContext();
-
-            // check func params length
-            const params = struct_gen.constructor.args;
-            if (info.length() != params.len) {
-                std.log.debug("wrong params nb\n", .{});
-                // TODO: js exception
-                return;
-            }
-
-            // allocator, we need to put the zig object on the heap
-            // otherwise on the stack it will be delete when the function returns
-            // TODO: better way to handle that ? If not better allocator ?
-            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-            const alloc = gpa.allocator();
-
-            // create and allocate the zig object
-            var obj_ptr = alloc.create(T) catch unreachable;
-            obj_ptr.* = callWithArgs(T.constructor, params, T, v8.FunctionCallbackInfo, info, ctx) catch unreachable; // TODO: js exception
-
-            // bind the zig object to it's javascript counterpart
-            const external = v8.External.init(isolate, obj_ptr);
-            const js_obj = info.getThis();
-            js_obj.setInternalField(0, external);
-        }
     };
-
-    return t;
 }
