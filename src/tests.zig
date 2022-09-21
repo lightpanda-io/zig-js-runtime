@@ -1,6 +1,8 @@
 const std = @import("std");
 const v8 = @import("v8");
 const engine = @import("engine.zig");
+const refl = @import("reflect.zig");
+const gen = @import("generate.zig");
 const data = @import("data.zig");
 
 fn expectStringsEquals(expected: []const u8, actual: []const u8, case: []const u8, first: bool) bool {
@@ -43,6 +45,9 @@ fn checkEqualCases(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Co
 }
 
 test "proto" {
+    const person_refl = comptime refl.reflectStruct(data.Person);
+    const person_api = comptime gen.generateAPI(data.Person, person_refl);
+
     // allocator
     const alloc = std.testing.allocator;
 
@@ -59,7 +64,7 @@ test "proto" {
     var globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
-    data.loadAPI(isolate, globals);
+    person_api.load(isolate, globals);
 
     // create v8 context
     var context = iso.initContext(globals);
@@ -78,6 +83,7 @@ test "proto" {
         "p.age === 40",
         "p.__proto__ === Person.prototype",
         "typeof(p.constructor) === 'function'",
+        "p.otherAge(10) === 40",
     };
     try checkEqualCases(alloc, isolate, context, cases.len, cases);
 }

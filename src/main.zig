@@ -1,9 +1,14 @@
 const std = @import("std");
 const v8 = @import("v8");
 const engine = @import("engine.zig");
+const refl = @import("reflect.zig");
+const gen = @import("generate.zig");
 const data = @import("data.zig");
 
 pub fn main() !void {
+    const person_refl = comptime refl.reflectStruct(data.Person);
+    const person_api = comptime gen.generateAPI(data.Person, person_refl);
+
     // allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -22,7 +27,7 @@ pub fn main() !void {
     var globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
-    data.loadAPI(isolate, globals);
+    person_api.load(isolate, globals);
 
     // create v8 context
     var context = iso.initContext(globals);
@@ -32,6 +37,7 @@ pub fn main() !void {
     const script =
         \\let p = new Person(40);
         \\p.age === 40;
+        \\p.otherAge(10) === 40;
     ;
 
     // exec javascript in context

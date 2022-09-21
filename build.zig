@@ -39,7 +39,7 @@ fn linkV8(step: *std.build.LibExeObjStep) void {
     step.linkLibC();
     // link the static v8 library built with zig-v8
     // FIXME: we are tied to the native v8 build (aarch64-macos)
-    step.addAssemblyFile("../zig-v8/v8-build/aarch64-macos/release/ninja/obj/zig/libc_v8.a");
+    step.addObjectFile("../zig-v8/v8-build/aarch64-macos/release/ninja/obj/zig/libc_v8.a");
     step.addPackagePath("v8", "deps/zig-v8/v8.zig");
     step.addIncludeDir("deps/zig-v8");
 }
