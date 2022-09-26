@@ -1,8 +1,10 @@
 const std = @import("std");
 const v8 = @import("v8");
 const engine = @import("engine.zig");
-const refl = @import("reflect.zig");
-const gen = @import("generate.zig");
+const utils = @import("utils.zig");
+const Store = @import("store.zig");
+const reflect = @import("reflect.zig");
+const generate = @import("generate.zig");
 const data = @import("data.zig");
 
 fn expectStringsEquals(expected: []const u8, actual: []const u8, case: []const u8, first: bool) bool {
@@ -50,55 +52,61 @@ const Expected = struct {
 };
 
 test "proto" {
-    const person_refl = comptime refl.reflectStruct(data.Person);
-    const person_api = comptime gen.generateAPI(data.Person, person_refl);
+
+    // generate API
+    const person_refl = comptime reflect.Struct(data.Person);
+    const person_api = comptime generate.API(data.Person, person_refl);
 
     // allocator
-    const alloc = std.testing.allocator;
+    utils.allocator = std.testing.allocator;
+
+    // store
+    Store.default = Store.init(utils.allocator);
+    defer Store.default.deinit(utils.allocator);
 
     // create v8 vm
-    var vm = engine.VM.init();
+    const vm = engine.VM.init();
     defer vm.deinit();
 
     // create v8 isolate
-    var iso = engine.Isolate.init(alloc);
-    defer iso.deinit(alloc);
-    var isolate = iso.isolate;
+    const iso = engine.Isolate.init(utils.allocator);
+    defer iso.deinit(utils.allocator);
+    const isolate = iso.isolate;
 
     // create a v8 ObjectTemplate for the global namespace
-    var globals = v8.ObjectTemplate.initDefault(isolate);
+    const globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
     person_api.load(isolate, globals);
 
     // create v8 context
-    var context = iso.initContext(globals);
+    const context = iso.initContext(globals);
     defer iso.deinitContext(context);
 
     // 1. constructor
     const cases1 = [_]Expected{
-        .{ .script = "let p = new Person(40);", .expected = "undefined" },
+        .{ .script = "let p = new Person('Francis', 'Bouvier', 40);", .expected = "undefined" },
         .{ .script = "p.__proto__ === Person.prototype", .expected = "true" },
         .{ .script = "typeof(p.constructor) === 'function'", .expected = "true" },
     };
-    try checkCases(alloc, isolate, context, cases1.len, cases1);
+    try checkCases(utils.allocator, isolate, context, cases1.len, cases1);
 
     // 2. getter
     const cases2 = [_]Expected{
         .{ .script = "p.age === 40", .expected = "true" },
     };
-    try checkCases(alloc, isolate, context, cases2.len, cases2);
+    try checkCases(utils.allocator, isolate, context, cases2.len, cases2);
 
     // 3. setter
     const cases3 = [_]Expected{
         .{ .script = "p.age = 41;", .expected = "41" },
         .{ .script = "p.age === 41", .expected = "true" },
     };
-    try checkCases(alloc, isolate, context, cases3.len, cases3);
+    try checkCases(utils.allocator, isolate, context, cases3.len, cases3);
 
     // 4. method
     const cases4 = [_]Expected{
-        .{ .script = "p.otherAge(10) === 41;", .expected = "true" },
+        .{ .script = "p.fullName() === 'Bouvier';", .expected = "true" },
     };
-    try checkCases(alloc, isolate, context, cases4.len, cases4);
+    try checkCases(utils.allocator, isolate, context, cases4.len, cases4);
 }

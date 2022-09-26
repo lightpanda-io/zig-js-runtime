@@ -1,49 +1,58 @@
 const std = @import("std");
 const v8 = @import("v8");
 const engine = @import("engine.zig");
-const refl = @import("reflect.zig");
-const gen = @import("generate.zig");
+const utils = @import("utils.zig");
+const Store = @import("store.zig");
+const reflect = @import("reflect.zig");
+const generate = @import("generate.zig");
 const data = @import("data.zig");
 
 pub fn main() !void {
-    const person_refl = comptime refl.reflectStruct(data.Person);
-    const person_api = comptime gen.generateAPI(data.Person, person_refl);
+
+    // generate API
+    const person_refl = comptime reflect.Struct(data.Person);
+    const person_api = comptime generate.API(data.Person, person_refl);
 
     // allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const alloc = gpa.allocator();
+    utils.allocator = alloc;
+
+    // store
+    Store.default = Store.init(utils.allocator);
+    defer Store.default.deinit(utils.allocator);
 
     // create v8 vm
-    var vm = engine.VM.init();
+    const vm = engine.VM.init();
     defer vm.deinit();
 
     // create v8 isolate
-    var iso = engine.Isolate.init(alloc);
-    defer iso.deinit(alloc);
-    var isolate = iso.isolate;
+    const iso = engine.Isolate.init(utils.allocator);
+    defer iso.deinit(utils.allocator);
+    const isolate = iso.isolate;
 
     // create a v8 ObjectTemplate for the global namespace
-    var globals = v8.ObjectTemplate.initDefault(isolate);
+    const globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
     person_api.load(isolate, globals);
 
     // create v8 context
-    var context = iso.initContext(globals);
+    const context = iso.initContext(globals);
     defer iso.deinitContext(context);
 
     // javascript script
     const script =
-        \\let p = new Person(40);
+        \\let p = new Person("Francis", "Bouvier", 40);
         \\p.age === 40;
-        \\p.otherAge(10) === 40;
+        \\p.fullName() === "Bouvier";
         \\p.age = 41;
         \\p.age === 41;
     ;
 
     // exec javascript in context
-    var res = try engine.jsExecScript(alloc, isolate, context, script, "main.js");
+    var res = try engine.jsExecScript(utils.allocator, isolate, context, script, "main.js");
     defer res.deinit();
 
     // javascript result

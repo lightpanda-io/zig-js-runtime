@@ -1,6 +1,10 @@
 const std = @import("std");
 const v8 = @import("v8");
 
+// TODO: using global allocator, not sure it's the best way
+// better allocator ?
+pub var allocator: std.mem.Allocator = undefined;
+
 pub const ExecuteResult = struct {
     const Self = @This();
 
@@ -38,7 +42,7 @@ pub fn executeString(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.
     };
     result.* = .{
         .alloc = alloc,
-        .result = valueToUtf8(alloc, isolate, context, script_res),
+        .result = valueToUtf8(alloc, script_res, isolate, context),
         .err = null,
         .success = true,
     };
@@ -53,18 +57,17 @@ fn setResultError(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Con
     };
 }
 
-pub fn logString(isolate: v8.Isolate, ctx: v8.Context, any_value: anytype) void {
+pub fn logString(isolate: v8.Isolate, ctx: v8.Context, value: v8.Value) void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const alloc = gpa.allocator();
     defer _ = gpa.deinit();
-    const s = valueToUtf8(alloc, isolate, ctx, any_value);
+    const s = valueToUtf8(alloc, value, isolate, ctx);
     std.log.debug("{s}", .{s});
     alloc.free(s);
 }
 
-pub fn valueToUtf8(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx: v8.Context, any_value: anytype) []const u8 {
-    const val = v8.getValue(any_value);
-    const str = val.toString(ctx) catch unreachable;
+pub fn valueToUtf8(alloc: std.mem.Allocator, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) []u8 {
+    const str = value.toString(ctx) catch unreachable;
     const len = str.lenUtf8(isolate);
     const buf = alloc.alloc(u8, len) catch unreachable;
     _ = str.writeUtf8(isolate, buf);
@@ -107,7 +110,7 @@ pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx
     } else {
         // V8 didn't provide any extra information about this error, just get exception str.
         const exception = try_catch.getException().?;
-        return valueToUtf8(alloc, isolate, ctx, exception);
+        return valueToUtf8(alloc, exception, isolate, ctx);
     }
 }
 

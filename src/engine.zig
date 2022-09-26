@@ -82,6 +82,7 @@ pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.C
     utils.executeString(alloc, isolate, context, script, origin, &res);
 
     if (!res.success) {
+        // TODO: use case for errdefer?
         defer res.deinit();
         if (builtin.is_test) {
             std.log.warn("\n\nJavascript error:\n", .{});

@@ -52,11 +52,12 @@ pub const StructReflected = struct {
     setters: []FuncReflected,
     methods: []FuncReflected,
 
-    // getters_setters: [][2]u8,
+    alignment: u29,
+    size: usize,
 };
 
 // This function must be called comptime
-pub fn reflectStruct(comptime T: type) StructReflected {
+pub fn Struct(comptime T: type) StructReflected {
 
     // T should be a struct
     const obj = @typeInfo(T);
@@ -192,6 +193,7 @@ pub fn reflectStruct(comptime T: type) StructReflected {
         }
     }
 
+    const ptr_info = @typeInfo(*T).Pointer;
     return StructReflected{
         .name = struct_name,
         .has_constructor = has_constructor,
@@ -199,6 +201,8 @@ pub fn reflectStruct(comptime T: type) StructReflected {
         .getters = getters[0..],
         .setters = setters[0..],
         .methods = methods[0..],
+        .alignment = ptr_info.alignment,
+        .size = @sizeOf(ptr_info.child),
     };
 }
 

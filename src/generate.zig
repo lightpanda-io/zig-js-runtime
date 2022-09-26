@@ -1,33 +1,47 @@
 const std = @import("std");
 const v8 = @import("v8");
+const utils = @import("utils.zig");
+const Store = @import("store.zig");
 const refl = @import("reflect.zig");
 
 fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {
     switch (T) {
+        []u8 => js_res.set(v8.String.initUtf8(isolate, zig_res)),
         u32 => js_res.set(v8.Integer.initU32(isolate, zig_res)),
         else => return error.NativeTypeUnhandled,
     }
 }
 
-fn jsToNative(comptime T: type, value: v8.Value, ctx: v8.Context) !T {
+fn jsToNative(_: std.mem.Allocator, comptime T: type, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) !T {
     switch (T) {
+        []u8 => {
+            const buf = utils.valueToUtf8(utils.allocator, value, isolate, ctx);
+            try Store.default.addString(buf);
+            return buf;
+        },
         u32 => return try value.toU32(ctx),
         else => return error.JSTypeUnhandled,
     }
 }
 
-fn callWithArgs(comptime function: anytype, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, ctx: v8.Context) !res_T {
+fn callWithArgs(alloc: std.mem.Allocator, comptime function: anytype, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
     // TODO: can we do that iterating on params ?
     switch (params.len) {
         0 => return @call(.{}, function, .{}),
         1 => {
-            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
             return @call(.{}, function, .{arg1});
         },
         2 => {
-            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
-            const arg2 = try jsToNative(params[1], info.getArg(1), ctx);
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
+            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
             return @call(.{}, function, .{ arg1, arg2 });
+        },
+        3 => {
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
+            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
+            const arg3 = try jsToNative(alloc, params[2], info.getArg(2), isolate, ctx);
+            return @call(.{}, function, .{ arg1, arg2, arg3 });
         },
         else => {
             @compileError("wrong arg nb to call obj_ptr");
@@ -35,18 +49,24 @@ fn callWithArgs(comptime function: anytype, comptime params: []type, comptime re
     }
 }
 
-fn callWithArgsSelf(comptime function: anytype, comptime self_T: type, self: self_T, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, ctx: v8.Context) !res_T {
+fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, comptime self_T: type, self: self_T, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
     // TODO: can we do that iterating on params ?
     switch (params.len) {
         0 => return @call(.{}, function, .{self}),
         1 => {
-            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
             return @call(.{}, function, .{ self, arg1 });
         },
         2 => {
-            const arg1 = try jsToNative(params[0], info.getArg(0), ctx);
-            const arg2 = try jsToNative(params[1], info.getArg(1), ctx);
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
+            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
             return @call(.{}, function, .{ self, arg1, arg2 });
+        },
+        3 => {
+            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
+            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
+            const arg3 = try jsToNative(alloc, params[2], info.getArg(2), isolate, ctx);
+            return @call(.{}, function, .{ self, arg1, arg2, arg3 });
         },
         else => {
             @compileError("wrong arg nb to call obj_ptr");
@@ -54,7 +74,7 @@ fn callWithArgsSelf(comptime function: anytype, comptime self_T: type, self: sel
     }
 }
 
-fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) v8.FunctionCallback {
+fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, comptime func: refl.FuncReflected) v8.FunctionCallback {
     const cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
@@ -64,19 +84,16 @@ fn generateConstructor(comptime T: type, comptime func: refl.FuncReflected) v8.F
             // check func params length
             if (info.length() != func.args.len) {
                 std.log.debug("wrong params nb\n", .{});
-                // TODO: js exception
+                // TODO: js exception TypeError
                 return;
             }
 
-            // allocator, we need to put the zig object on the heap
-            // otherwise on the stack it will be delete when the function returns
-            // TODO: better way to handle that ? If not better allocator ?
-            var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-            const alloc = gpa.allocator();
-
             // create and allocate the zig object
-            var zig_obj_ptr = alloc.create(T) catch unreachable;
-            zig_obj_ptr.* = callWithArgs(T.constructor, func.args, T, v8.FunctionCallbackInfo, info, ctx) catch unreachable; // TODO: js exception
+            // NOTE: we need to put the zig object on the heap
+            // otherwise on the stack it will be delete when the function returns
+            var zig_obj_ptr = utils.allocator.create(T) catch unreachable;
+            zig_obj_ptr.* = callWithArgs(utils.allocator, T.constructor, func.args, T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
+            Store.default.addObject(zig_obj_ptr, obj.size, obj.alignment) catch unreachable; // TODO: internal exception
 
             // bind the zig object to it's javascript counterpart
             const external = v8.External.init(isolate, zig_obj_ptr);
@@ -92,6 +109,8 @@ fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) v8.Access
         fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
+
+            // TODO: check func params length
 
             // retrieve the zig object from it's javascript counterpart
             const external = info.getThis().getInternalField(0).castTo(v8.External);
@@ -110,14 +129,16 @@ fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) v8.Access
 
 fn generateSetter(comptime T: type, comptime func: refl.FuncReflected) v8.AccessorNameSetterCallback {
     const cbk = struct {
-        // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)
+        // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
         fn setter(_: ?*const v8.Name, raw_value: ?*const v8.C_Value, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
 
+            // TODO: check func params length
+
             // get the value set in javascript
             const js_value = v8.Value{ .handle = raw_value.? };
-            const zig_value = jsToNative(func.args[0], js_value, isolate.getCurrentContext()) catch unreachable; // TODO: throw js exception
+            const zig_value = jsToNative(utils.allocator, func.args[0], js_value, isolate, isolate.getCurrentContext()) catch unreachable; // TODO: throw js exception
 
             // retrieve the zig object from it's javascript counterpart
             const external = info.getThis().getInternalField(0).castTo(v8.External);
@@ -141,13 +162,20 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.Functi
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
 
+            // check func params length
+            if (info.length() != func.args.len) {
+                std.log.debug("wrong params nb\n", .{});
+                // TODO: js exception TypeError
+                return;
+            }
+
             // retrieve the zig object from it's javascript counterpart
             const external = info.getThis().getInternalField(0).castTo(v8.External);
             const zig_obj_ptr = @ptrCast(*T, external.get());
 
             // call the corresponding zig object method
             const zig_method = @field(T, func.name);
-            const zig_res = callWithArgsSelf(zig_method, T, zig_obj_ptr.*, func.args, func.return_type.?, v8.FunctionCallbackInfo, info, ctx) catch unreachable; // TODO: js exception
+            const zig_res = callWithArgsSelf(utils.allocator, zig_method, T, zig_obj_ptr.*, func.args, func.return_type.?, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
 
             // return to javascript the result
             returnValue(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
@@ -156,15 +184,15 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.Functi
     return cbk.method;
 }
 
-// This function must be called comptime
-pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) type {
+pub fn API(comptime T: type, comptime struct_gen: refl.StructReflected) type {
     return struct {
         pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate) void {
+
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
             // and attach it to the global namespace
-            const cstr_func = generateConstructor(T, struct_gen.constructor);
-            var cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
+            const cstr_func = generateConstructor(T, struct_gen, struct_gen.constructor);
+            const cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
             const cstr_key = v8.String.initUtf8(isolate, struct_gen.name);
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
@@ -192,7 +220,7 @@ pub fn generateAPI(comptime T: type, comptime struct_gen: refl.StructReflected) 
             // and attach them to the object template
             inline for (struct_gen.methods) |method| {
                 const func = generateMethod(T, method);
-                var tpl = v8.FunctionTemplate.initCallback(isolate, func);
+                const tpl = v8.FunctionTemplate.initCallback(isolate, func);
                 const key = v8.String.initUtf8(isolate, method.js_name);
                 object_tpl.set(key, tpl, v8.PropertyAttribute.None);
             }
