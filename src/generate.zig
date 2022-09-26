@@ -12,6 +12,12 @@ fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8
     }
 }
 
+fn throwException(msg: []u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
+    const err = v8.String.initUtf8(isolate, msg);
+    const exception = v8.Exception.initError(err);
+    js_res.set(isolate.throwException(exception));
+}
+
 fn jsToNative(_: std.mem.Allocator, comptime T: type, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) !T {
     switch (T) {
         []u8 => {
@@ -82,9 +88,11 @@ fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, com
             const ctx = isolate.getCurrentContext();
 
             // check func params length
-            if (info.length() != func.args.len) {
-                std.log.debug("wrong params nb\n", .{});
-                // TODO: js exception TypeError
+            const js_params_len = info.length();
+            if (js_params_len != func.args.len) {
+                const msg = std.fmt.allocPrint(utils.allocator, "TypeError: {s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+                Store.default.addString(msg) catch unreachable;
+                throwException(msg, info.getReturnValue(), isolate);
                 return;
             }
 
@@ -155,7 +163,7 @@ fn generateSetter(comptime T: type, comptime func: refl.FuncReflected) v8.Access
     return cbk.setter;
 }
 
-fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.FunctionCallback {
+fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime func: refl.FuncReflected) v8.FunctionCallback {
     const cbk = struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
@@ -163,9 +171,10 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.Functi
             const ctx = isolate.getCurrentContext();
 
             // check func params length
-            if (info.length() != func.args.len) {
-                std.log.debug("wrong params nb\n", .{});
-                // TODO: js exception TypeError
+            const js_params_len = info.length();
+            if (js_params_len != func.args.len) {
+                const msg = std.fmt.allocPrint(utils.allocator, "TypeError: {s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+                throwException(msg, info.getReturnValue(), isolate);
                 return;
             }
 
@@ -184,16 +193,16 @@ fn generateMethod(comptime T: type, comptime func: refl.FuncReflected) v8.Functi
     return cbk.method;
 }
 
-pub fn API(comptime T: type, comptime struct_gen: refl.StructReflected) type {
+pub fn API(comptime T: type, comptime obj: refl.StructReflected) type {
     return struct {
         pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate) void {
 
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
             // and attach it to the global namespace
-            const cstr_func = generateConstructor(T, struct_gen, struct_gen.constructor);
+            const cstr_func = generateConstructor(T, obj, obj.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
-            const cstr_key = v8.String.initUtf8(isolate, struct_gen.name);
+            const cstr_key = v8.String.initUtf8(isolate, obj.name);
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
             // get the v8 ObjectTemplate attached to the constructor
@@ -203,13 +212,13 @@ pub fn API(comptime T: type, comptime struct_gen: refl.StructReflected) type {
 
             // set getters for the v8 ObjectTemplate,
             // with the corresponding zig callbacks
-            inline for (struct_gen.getters) |getter| {
+            inline for (obj.getters) |getter| {
                 const getter_func = generateGetter(T, getter);
                 const key = v8.String.initUtf8(isolate, getter.js_name);
                 if (getter.setter_index == null) {
                     object_tpl.setGetter(key, getter_func);
                 } else {
-                    const setter = struct_gen.setters[getter.setter_index.?];
+                    const setter = obj.setters[getter.setter_index.?];
                     const setter_func = generateSetter(T, setter);
                     object_tpl.setGetterAndSetter(key, getter_func, setter_func);
                 }
@@ -218,8 +227,8 @@ pub fn API(comptime T: type, comptime struct_gen: refl.StructReflected) type {
             // create a v8 FunctinTemplate for each T methods,
             // with the corresponding zig callbacks,
             // and attach them to the object template
-            inline for (struct_gen.methods) |method| {
-                const func = generateMethod(T, method);
+            inline for (obj.methods) |method| {
+                const func = generateMethod(T, obj, method);
                 const tpl = v8.FunctionTemplate.initCallback(isolate, func);
                 const key = v8.String.initUtf8(isolate, method.js_name);
                 object_tpl.set(key, tpl, v8.PropertyAttribute.None);

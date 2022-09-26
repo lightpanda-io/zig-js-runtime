@@ -52,11 +52,13 @@ pub fn main() !void {
     ;
 
     // exec javascript in context
-    var res = try engine.jsExecScript(utils.allocator, isolate, context, script, "main.js");
+    var res = engine.jsExecScript(utils.allocator, isolate, context, script, "main.js");
     defer res.deinit();
 
     // javascript result
-    if (res.success) {
-        std.log.info("{s}", .{res.result.?});
+    if (!res.success) {
+        std.debug.print("{s}\n", .{res.stack.?});
+        return error.JavascriptError;
     }
+    std.log.info("{s}", .{res.result});
 }

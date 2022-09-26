@@ -9,16 +9,14 @@ pub const ExecuteResult = struct {
     const Self = @This();
 
     alloc: std.mem.Allocator,
-    result: ?[]const u8,
-    err: ?[]const u8,
+    result: []const u8,
+    stack: ?[]const u8 = null,
     success: bool,
 
     pub fn deinit(self: Self) void {
-        if (self.result) |result| {
-            self.alloc.free(result);
-        }
-        if (self.err) |err| {
-            self.alloc.free(err);
+        self.alloc.free(self.result);
+        if (self.stack) |stack| {
+            self.alloc.free(stack);
         }
     }
 };
@@ -43,16 +41,16 @@ pub fn executeString(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.
     result.* = .{
         .alloc = alloc,
         .result = valueToUtf8(alloc, script_res, isolate, context),
-        .err = null,
         .success = true,
     };
 }
 
 fn setResultError(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, try_catch: v8.TryCatch, result: *ExecuteResult) void {
+    const err_details = getTryCatchErrorString(alloc, isolate, context, try_catch);
     result.* = .{
         .alloc = alloc,
-        .result = null,
-        .err = getTryCatchErrorString(alloc, isolate, context, try_catch),
+        .result = err_details.msg,
+        .stack = err_details.stack,
         .success = false,
     };
 }
@@ -74,21 +72,31 @@ pub fn valueToUtf8(alloc: std.mem.Allocator, value: v8.Value, isolate: v8.Isolat
     return buf;
 }
 
-pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx: v8.Context, try_catch: v8.TryCatch) []const u8 {
+const ErrorDetails = struct {
+    msg: []u8,
+    stack: ?[]u8 = null,
+};
+
+pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx: v8.Context, try_catch: v8.TryCatch) ErrorDetails {
     var hscope: v8.HandleScope = undefined;
     hscope.init(isolate);
     defer hscope.deinit();
 
     if (try_catch.getMessage()) |message| {
+
+        // Message
+        const msg = valueToUtf8(alloc, message.getMessage().toValue(), isolate, ctx);
+
+        // Stack trace
         var buf = std.ArrayList(u8).init(alloc);
         const writer = buf.writer();
 
-        // Append source line.
+        // append source line.
         const source_line = message.getSourceLine(ctx).?;
         _ = appendValueAsUtf8(&buf, isolate, ctx, source_line);
         writer.writeAll("\n") catch unreachable;
 
-        // Print wavy underline.
+        // print wavy underline.
         const col_start = message.getStartColumn().?;
         const col_end = message.getEndColumn().?;
 
@@ -105,12 +113,13 @@ pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx
             _ = appendValueAsUtf8(&buf, isolate, ctx, trace);
             writer.writeByte('\n') catch unreachable;
         }
+        const stack = buf.toOwnedSlice();
 
-        return buf.toOwnedSlice();
+        return .{ .msg = msg, .stack = stack };
     } else {
         // V8 didn't provide any extra information about this error, just get exception str.
         const exception = try_catch.getException().?;
-        return valueToUtf8(alloc, exception, isolate, ctx);
+        return .{ .msg = valueToUtf8(alloc, exception, isolate, ctx) };
     }
 }
 

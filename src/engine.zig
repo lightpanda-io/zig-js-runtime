@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const std = @import("std");
 const v8 = @import("v8");
 const utils = @import("utils.zig");
@@ -75,23 +74,9 @@ pub const Isolate = struct {
 
 // Execute Javascript script
 // if no error you need to call deinit on the returned result
-pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, script: []const u8, name: []const u8) !utils.ExecuteResult {
+pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, script: []const u8, name: []const u8) utils.ExecuteResult {
     var res: utils.ExecuteResult = undefined;
-
     const origin = v8.String.initUtf8(isolate, name);
     utils.executeString(alloc, isolate, context, script, origin, &res);
-
-    if (!res.success) {
-        // TODO: use case for errdefer?
-        defer res.deinit();
-        if (builtin.is_test) {
-            std.log.warn("\n\nJavascript error:\n", .{});
-            std.log.warn("{s}\n", .{res.err.?});
-        } else {
-            std.log.debug("\n\nJavascript error:\n", .{});
-            std.log.debug("{s}\n", .{res.err.?});
-        }
-        return error.v8Error;
-    }
     return res;
 }
