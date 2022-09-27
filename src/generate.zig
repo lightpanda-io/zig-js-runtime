@@ -18,6 +18,8 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
     js_res.set(isolate.throwException(exception));
 }
 
+const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
+
 fn jsToNative(_: std.mem.Allocator, comptime T: type, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) !T {
     switch (T) {
         []u8 => {
@@ -94,8 +96,9 @@ fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, com
 
             // check func params length
             const js_params_len = info.length();
-            if (js_params_len != func.?.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, "{s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.?.js_name, func.?.args.len, js_params_len }) catch unreachable;
+            // if js provide more arguments than defined natively, just ignore them
+            if (js_params_len < func.?.args.len) {
+                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ obj.name, func.?.js_name, func.?.args.len, js_params_len }) catch unreachable;
                 Store.default.addString(msg) catch unreachable;
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
@@ -176,10 +179,10 @@ fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime
 
             // check func params length
             const js_params_len = info.length();
-            if (js_params_len != func.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, "{s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
-                throwTypeError(msg, info.getReturnValue(), isolate);
-                return;
+            // if js provide more arguments than defined natively, just ignore them
+            if (js_params_len < func.args.len) {
+                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+                return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
             // retrieve the zig object from it's javascript counterpart

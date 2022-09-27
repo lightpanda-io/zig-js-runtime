@@ -118,6 +118,7 @@ test "proto" {
     // 4. method
     const cases4 = [_]Case{
         .{ .src = "p.fullName() === 'Bouvier';", .ex = "true" },
+        .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
     };
     try checkCases(utils.allocator, isolate, context, cases4.len, cases4);
 }
