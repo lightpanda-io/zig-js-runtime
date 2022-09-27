@@ -12,9 +12,9 @@ fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8
     }
 }
 
-fn throwException(msg: []u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
+fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
-    const exception = v8.Exception.initError(err);
+    const exception = v8.Exception.initTypeError(err);
     js_res.set(isolate.throwException(exception));
 }
 
@@ -80,27 +80,31 @@ fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, compti
     }
 }
 
-fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, comptime func: refl.FuncReflected) v8.FunctionCallback {
+fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, comptime func: ?refl.FuncReflected) v8.FunctionCallback {
     const cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
 
+            // check illegal constructor
+            if (func == null) {
+                return throwTypeError("Illegal constructor", info.getReturnValue(), isolate);
+            }
+
             // check func params length
             const js_params_len = info.length();
-            if (js_params_len != func.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, "TypeError: {s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+            if (js_params_len != func.?.args.len) {
+                const msg = std.fmt.allocPrint(utils.allocator, "{s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.?.js_name, func.?.args.len, js_params_len }) catch unreachable;
                 Store.default.addString(msg) catch unreachable;
-                throwException(msg, info.getReturnValue(), isolate);
-                return;
+                return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
             // create and allocate the zig object
             // NOTE: we need to put the zig object on the heap
             // otherwise on the stack it will be delete when the function returns
             var zig_obj_ptr = utils.allocator.create(T) catch unreachable;
-            zig_obj_ptr.* = callWithArgs(utils.allocator, T.constructor, func.args, T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
+            zig_obj_ptr.* = callWithArgs(utils.allocator, T.constructor, func.?.args, T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
             Store.default.addObject(zig_obj_ptr, obj.size, obj.alignment) catch unreachable; // TODO: internal exception
 
             // bind the zig object to it's javascript counterpart
@@ -173,8 +177,8 @@ fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime
             // check func params length
             const js_params_len = info.length();
             if (js_params_len != func.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, "TypeError: {s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
-                throwException(msg, info.getReturnValue(), isolate);
+                const msg = std.fmt.allocPrint(utils.allocator, "{s}.{s}: At least {d} argument required, but only {d} passed", .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+                throwTypeError(msg, info.getReturnValue(), isolate);
                 return;
             }
 

@@ -11,7 +11,7 @@ fn isTypeError(expected: []const u8, msg: []const u8) bool {
     if (!std.mem.eql(u8, expected, "TypeError")) {
         return false;
     }
-    return std.mem.startsWith(u8, msg, "Uncaught Error: TypeError: ");
+    return std.mem.startsWith(u8, msg, "Uncaught TypeError: ");
 }
 
 fn checkCases(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, comptime n: comptime_int, cases: [n]Case) !void {
@@ -62,6 +62,9 @@ test "proto" {
     const person_refl = comptime reflect.Struct(data.Person);
     const person_api = comptime generate.API(data.Person, person_refl);
 
+    const entity_refl = comptime reflect.Struct(data.Entity);
+    const entity_api = comptime generate.API(data.Entity, entity_refl);
+
     // allocator
     utils.allocator = std.testing.allocator;
 
@@ -83,6 +86,7 @@ test "proto" {
 
     // load API, before creating context
     person_api.load(isolate, globals);
+    entity_api.load(isolate, globals);
 
     // create v8 context
     const context = iso.initContext(globals);
@@ -93,7 +97,8 @@ test "proto" {
         .{ .src = "let p = new Person('Francis', 'Bouvier', 40);", .ex = "undefined" },
         .{ .src = "p.__proto__ === Person.prototype", .ex = "true" },
         .{ .src = "typeof(p.constructor) === 'function'", .ex = "true" },
-        .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // lastName is missing
+        .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
+        .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
     try checkCases(utils.allocator, isolate, context, cases1.len, cases1);
 

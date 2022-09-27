@@ -45,8 +45,7 @@ pub const FuncReflected = struct {
 pub const StructReflected = struct {
     name: []const u8,
 
-    has_constructor: bool,
-    constructor: FuncReflected,
+    constructor: ?FuncReflected,
 
     getters: []FuncReflected,
     setters: []FuncReflected,
@@ -69,8 +68,6 @@ pub fn Struct(comptime T: type) StructReflected {
     var it = std.mem.splitBackwards(u8, @typeName(T), ".");
     const struct_name = it.first();
 
-    var has_constructor = false;
-
     // retrieve the number of each function kind
     var getters_nb: i8 = 0;
     var setters_nb: i8 = 0;
@@ -83,14 +80,14 @@ pub fn Struct(comptime T: type) StructReflected {
         const kind = comptime checkFuncKind(T, decl);
         switch (kind) {
             .ignore => continue,
-            .constructor => has_constructor = true,
+            .constructor => {},
             .getter => getters_nb += 1,
             .setter => setters_nb += 1,
             .method => methods_nb += 1,
         }
     }
 
-    var constructor: FuncReflected = undefined;
+    var constructor: ?FuncReflected = null;
     var getters: [getters_nb]FuncReflected = undefined;
     var setters: [setters_nb]FuncReflected = undefined;
     var methods: [methods_nb]FuncReflected = undefined;
@@ -196,7 +193,6 @@ pub fn Struct(comptime T: type) StructReflected {
     const ptr_info = @typeInfo(*T).Pointer;
     return StructReflected{
         .name = struct_name,
-        .has_constructor = has_constructor,
         .constructor = constructor,
         .getters = getters[0..],
         .setters = setters[0..],
