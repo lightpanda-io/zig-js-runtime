@@ -40,7 +40,7 @@ pub fn executeString(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.
     };
     result.* = .{
         .alloc = alloc,
-        .result = valueToUtf8(alloc, script_res, isolate, context),
+        .result = valueToUtf8(alloc, script_res, isolate, context) catch unreachable,
         .success = true,
     };
 }
@@ -64,10 +64,10 @@ pub fn logString(isolate: v8.Isolate, ctx: v8.Context, value: v8.Value) void {
     alloc.free(s);
 }
 
-pub fn valueToUtf8(alloc: std.mem.Allocator, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) []u8 {
-    const str = value.toString(ctx) catch unreachable;
+pub fn valueToUtf8(alloc: std.mem.Allocator, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) ![]u8 {
+    const str = try value.toString(ctx);
     const len = str.lenUtf8(isolate);
-    const buf = alloc.alloc(u8, len) catch unreachable;
+    const buf = try alloc.alloc(u8, len);
     _ = str.writeUtf8(isolate, buf);
     return buf;
 }
@@ -85,7 +85,7 @@ pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx
     if (try_catch.getMessage()) |message| {
 
         // Message
-        const msg = valueToUtf8(alloc, message.getMessage().toValue(), isolate, ctx);
+        const msg = valueToUtf8(alloc, message.getMessage().toValue(), isolate, ctx) catch unreachable;
 
         // Stack trace
         var buf = std.ArrayList(u8).init(alloc);
@@ -119,7 +119,8 @@ pub fn getTryCatchErrorString(alloc: std.mem.Allocator, isolate: v8.Isolate, ctx
     } else {
         // V8 didn't provide any extra information about this error, just get exception str.
         const exception = try_catch.getException().?;
-        return .{ .msg = valueToUtf8(alloc, exception, isolate, ctx) };
+        const msg = valueToUtf8(alloc, exception, isolate, ctx) catch unreachable;
+        return .{ .msg = msg };
     }
 }
 

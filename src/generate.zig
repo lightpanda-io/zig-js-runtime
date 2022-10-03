@@ -1,16 +1,11 @@
 const std = @import("std");
 const v8 = @import("v8");
+
 const utils = @import("utils.zig");
 const Store = @import("store.zig");
 const refl = @import("reflect.zig");
-
-fn returnValue(comptime T: type, zig_res: T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {
-    switch (T) {
-        []u8 => js_res.set(v8.String.initUtf8(isolate, zig_res)),
-        u32 => js_res.set(v8.Integer.initU32(isolate, zig_res)),
-        else => return error.NativeTypeUnhandled,
-    }
-}
+const nativeToJS = @import("types_primitives.zig").nativeToJS;
+const jsToNative = @import("types_primitives.zig").jsToNative;
 
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
@@ -20,19 +15,7 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
 
-fn jsToNative(_: std.mem.Allocator, comptime T: type, value: v8.Value, isolate: v8.Isolate, ctx: v8.Context) !T {
-    switch (T) {
-        []u8 => {
-            const buf = utils.valueToUtf8(utils.allocator, value, isolate, ctx);
-            try Store.default.addString(buf);
-            return buf;
-        },
-        u32 => return try value.toU32(ctx),
-        else => return error.JSTypeUnhandled,
-    }
-}
-
-fn callWithArgs(alloc: std.mem.Allocator, comptime function: anytype, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
+fn callWithArgs(alloc: std.mem.Allocator, comptime function: anytype, comptime params: []refl.Type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
     // TODO: can we do that iterating on params ?
     switch (params.len) {
         0 => return @call(.{}, function, .{}),
@@ -57,7 +40,7 @@ fn callWithArgs(alloc: std.mem.Allocator, comptime function: anytype, comptime p
     }
 }
 
-fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, comptime self_T: type, self: self_T, comptime params: []type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
+fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, comptime self_T: type, self: self_T, comptime params: []refl.Type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
     // TODO: can we do that iterating on params ?
     switch (params.len) {
         0 => return @call(.{}, function, .{self}),
@@ -82,7 +65,7 @@ fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, compti
     }
 }
 
-fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, comptime func: ?refl.FuncReflected) v8.FunctionCallback {
+fn generateConstructor(comptime T: type, comptime obj: refl.Struct, comptime func: ?refl.Func) v8.FunctionCallback {
     const cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
@@ -95,8 +78,10 @@ fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, com
             }
 
             // check func params length
+            // if JS provide more arguments than defined natively, just ignore them
+            // but if JS provide less argument, throw a TypeError
+            // TODO: optional argument shoudl allow a missing value
             const js_params_len = info.length();
-            // if js provide more arguments than defined natively, just ignore them
             if (js_params_len < func.?.args.len) {
                 const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ obj.name, func.?.js_name, func.?.args.len, js_params_len }) catch unreachable;
                 Store.default.addString(msg) catch unreachable;
@@ -119,7 +104,7 @@ fn generateConstructor(comptime T: type, comptime obj: refl.StructReflected, com
     return cbk.constructor;
 }
 
-fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) v8.AccessorNameGetterCallback {
+fn generateGetter(comptime T: type, comptime func: refl.Func) v8.AccessorNameGetterCallback {
     const cbk = struct {
         fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
@@ -136,13 +121,13 @@ fn generateGetter(comptime T: type, comptime func: refl.FuncReflected) v8.Access
             const zig_res = @call(.{}, zig_getter, .{zig_obj_ptr.*});
 
             // return to javascript the result
-            returnValue(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+            nativeToJS(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
         }
     };
     return cbk.getter;
 }
 
-fn generateSetter(comptime T: type, comptime func: refl.FuncReflected) v8.AccessorNameSetterCallback {
+fn generateSetter(comptime T: type, comptime func: refl.Func) v8.AccessorNameSetterCallback {
     const cbk = struct {
         // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
         fn setter(_: ?*const v8.Name, raw_value: ?*const v8.C_Value, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
@@ -170,7 +155,7 @@ fn generateSetter(comptime T: type, comptime func: refl.FuncReflected) v8.Access
     return cbk.setter;
 }
 
-fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime func: refl.FuncReflected) v8.FunctionCallback {
+fn generateMethod(comptime T: type, comptime obj: refl.Struct, comptime func: refl.Func) v8.FunctionCallback {
     const cbk = struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
@@ -178,8 +163,10 @@ fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime
             const ctx = isolate.getCurrentContext();
 
             // check func params length
+            // if JS provide more arguments than defined natively, just ignore them
+            // but if JS provide less argument, throw a TypeError
+            // TODO: optional argument shoudl allow a missing value
             const js_params_len = info.length();
-            // if js provide more arguments than defined natively, just ignore them
             if (js_params_len < func.args.len) {
                 const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ obj.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
                 return throwTypeError(msg, info.getReturnValue(), isolate);
@@ -191,16 +178,16 @@ fn generateMethod(comptime T: type, comptime obj: refl.StructReflected, comptime
 
             // call the corresponding zig object method
             const zig_method = @field(T, func.name);
-            const zig_res = callWithArgsSelf(utils.allocator, zig_method, T, zig_obj_ptr.*, func.args, func.return_type.?, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
+            const zig_res = callWithArgsSelf(utils.allocator, zig_method, T, zig_obj_ptr.*, func.args, func.return_type.?.T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
 
             // return to javascript the result
-            returnValue(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+            nativeToJS(func.return_type.?, zig_res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
         }
     };
     return cbk.method;
 }
 
-pub fn API(comptime T: type, comptime obj: refl.StructReflected) type {
+pub fn API(comptime T: type, comptime obj: refl.Struct) type {
     return struct {
         pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate) void {
 

@@ -26,7 +26,7 @@ pub fn build(b: *std.build.Builder) void {
     run_step.dependOn(&run_cmd.step);
 
     // test
-    const test_exe = b.addTest("src/tests.zig");
+    const test_exe = b.addTest("src/main.zig");
     test_exe.setTarget(target);
     test_exe.setBuildMode(mode);
     linkV8(test_exe);

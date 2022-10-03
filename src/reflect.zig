@@ -1,6 +1,15 @@
 const std = @import("std");
 const v8 = @import("v8");
 
+pub const Type = struct {
+    T: type,
+    is_optional: bool,
+};
+
+fn isOptional(comptime T: type) bool {
+    return (@typeInfo(T) == .Optional);
+}
+
 const FuncKind = enum {
     ignore,
     constructor,
@@ -33,30 +42,30 @@ fn checkFuncKind(comptime T: type, decl: std.builtin.Type.Declaration) FuncKind 
     return FuncKind.method;
 }
 
-pub const FuncReflected = struct {
+pub const Func = struct {
     js_name: []const u8,
     name: []const u8,
-    args: []type,
-    return_type: ?type,
+    args: []Type,
+    return_type: ?Type,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 };
 
-pub const StructReflected = struct {
+pub const Struct = struct {
     name: []const u8,
 
-    constructor: ?FuncReflected,
+    constructor: ?Func,
 
-    getters: []FuncReflected,
-    setters: []FuncReflected,
-    methods: []FuncReflected,
+    getters: []Func,
+    setters: []Func,
+    methods: []Func,
 
     alignment: u29,
     size: usize,
 };
 
 // This function must be called comptime
-pub fn Struct(comptime T: type) StructReflected {
+pub fn AsStruct(comptime T: type) Struct {
 
     // T should be a struct
     const obj = @typeInfo(T);
@@ -87,10 +96,10 @@ pub fn Struct(comptime T: type) StructReflected {
         }
     }
 
-    var constructor: ?FuncReflected = null;
-    var getters: [getters_nb]FuncReflected = undefined;
-    var setters: [setters_nb]FuncReflected = undefined;
-    var methods: [methods_nb]FuncReflected = undefined;
+    var constructor: ?Func = null;
+    var getters: [getters_nb]Func = undefined;
+    var setters: [setters_nb]Func = undefined;
+    var methods: [methods_nb]Func = undefined;
 
     var getters_done: i8 = 0;
     var setters_done: i8 = 0;
@@ -133,9 +142,15 @@ pub fn Struct(comptime T: type) StructReflected {
 
         // check args type
         args = args[args_start..];
-        var args_types: [args.len]type = undefined;
+        var args_types: [args.len]Type = undefined;
         for (args) |arg, i| {
-            args_types[i] = arg.arg_type.?;
+            args_types[i] = Type{ .T = arg.arg_type.?, .is_optional = isOptional(arg.arg_type.?) };
+        }
+
+        // return type
+        var return_type: ?Type = null;
+        if (func.Fn.return_type != null) {
+            return_type = Type{ .T = func.Fn.return_type.?, .is_optional = isOptional(func.Fn.return_type.?) };
         }
 
         // generate javascript name for field/method
@@ -150,11 +165,11 @@ pub fn Struct(comptime T: type) StructReflected {
         const js_name = jsName(field_name);
 
         // reflect func
-        const func_reflected = FuncReflected{
+        const func_reflected = Func{
             .js_name = js_name,
             .name = decl.name,
             .args = args_types[0..],
-            .return_type = func.Fn.return_type,
+            .return_type = return_type,
             .setter_index = null,
         };
         switch (kind) {
@@ -191,7 +206,7 @@ pub fn Struct(comptime T: type) StructReflected {
     }
 
     const ptr_info = @typeInfo(*T).Pointer;
-    return StructReflected{
+    return Struct{
         .name = struct_name,
         .constructor = constructor,
         .getters = getters[0..],
