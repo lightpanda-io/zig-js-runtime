@@ -37,6 +37,8 @@ pub fn init(alloc: std.mem.Allocator) Store {
     };
 }
 
+// TODO: if the struct is empty we have the compile error
+// panic: cast causes pointer to be null
 pub fn addObject(self: *Store, ptr: anytype, size: usize, alignment: u29) !void {
     const item = Object{
         .addr = @ptrToInt(ptr),
