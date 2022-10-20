@@ -1,10 +1,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const engine = @import("engine.zig");
 const utils = @import("utils.zig");
-const Store = @import("store.zig");
-const refl = @import("reflect.zig");
 const gen = @import("generate.zig");
 
 // TODO: handle memory allocation in the data struct itself.
@@ -14,14 +11,12 @@ const gen = @import("generate.zig");
 // Is it worth it with an Arena like allocator?
 // see the balance between memory size and cost of free
 
-pub const Entity = struct {};
+const Entity = struct {};
 
-pub const Person = struct {
+const Person = struct {
     first_name: []u8,
     last_name: []u8,
     age: u32,
-
-    pub const prototype = Entity;
 
     pub fn constructor(first_name: []u8, last_name: []u8, age: u32) Person {
         return .{
@@ -44,22 +39,33 @@ pub const Person = struct {
     }
 };
 
+const User = struct {
+    proto: Person,
+    role: u8,
+
+    pub const prototype = *Person;
+
+    pub fn constructor(first_name: []u8, last_name: []u8, age: u32) User {
+        const proto = Person.constructor(first_name, last_name, age);
+        return .{ .proto = proto, .role = 1 };
+    }
+
+    pub fn getRole(self: User) u8 {
+        return self.role;
+    }
+};
+
 pub fn doTest(isolate: v8.Isolate) !void {
     const tests = @import("test_utils.zig");
 
     // generate API
-    const person_refl = comptime refl.AsStruct(Person);
-    const person_api = comptime gen.API(Person, person_refl);
-
-    const entity_refl = comptime refl.AsStruct(Entity);
-    const entity_api = comptime gen.API(Entity, entity_refl);
+    const apis = gen.compile(.{ User, Entity, Person });
 
     // create a v8 ObjectTemplate for the global namespace
     const globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
-    person_api.load(isolate, globals);
-    entity_api.load(isolate, globals);
+    try gen.load(isolate, globals, apis);
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
@@ -85,7 +91,7 @@ pub fn doTest(isolate: v8.Isolate) !void {
     // 3. setter
     const cases3 = [_]tests.Case{
         .{ .src = "p.age = 41;", .ex = "41" },
-        .{ .src = "p.age === 41", .ex = "true" },
+        .{ .src = "p.age", .ex = "41" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases3.len, cases3);
 
@@ -95,4 +101,17 @@ pub fn doTest(isolate: v8.Isolate) !void {
         .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases4.len, cases4);
+
+    // prototype chain
+    const cases_proto = [_]tests.Case{
+        .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
+        .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
+        .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },
+        .{ .src = "u.fullName();", .ex = "Englund" },
+        .{ .src = "u.age;", .ex = "42" },
+        .{ .src = "u.age = 43;", .ex = "43" },
+        .{ .src = "u.role = 2;", .ex = "2" },
+        .{ .src = "u.age;", .ex = "43" },
+    };
+    try tests.checkCases(utils.allocator, isolate, context, cases_proto.len, cases_proto);
 }

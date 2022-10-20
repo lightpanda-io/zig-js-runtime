@@ -3,6 +3,7 @@ const v8 = @import("v8");
 
 const engine = @import("engine.zig");
 const utils = @import("utils.zig");
+const refs = @import("refs.zig");
 const Store = @import("store.zig");
 
 pub fn main() !void {
@@ -53,6 +54,10 @@ pub fn main() !void {
 test {
     // allocator
     utils.allocator = std.testing.allocator;
+
+    // refs map
+    refs.map = refs.Map{};
+    defer refs.map.deinit(utils.allocator);
 
     // store
     Store.default = Store.init(utils.allocator);
