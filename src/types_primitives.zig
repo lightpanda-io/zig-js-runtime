@@ -8,41 +8,6 @@ const Store = @import("store.zig");
 const i64Num = @import("types.zig").i64Num;
 const u64Num = @import("types.zig").u64Num;
 
-// JS String
-// ---------
-// JS String will transalte to Native []u8.
-// JS String are a set of "elements" of 16-bit unsigned integer values,
-// however as with use v8 String, especially the NewFromUtf8 (Native -> JS)
-// and WriteUtf8 (JS -> Native) functions, we manipulate chars, ie. []u8 in Native.
-//
-// => If you want to have []u8 for an other thing than a string
-// you must use a custom u8Array.
-
-// JS Number, JS BigInt, and Native int64
-// --------------------------------------
-// for safe representation we choose to always use a JS BigInt for native int64
-// even if it's value could fit into a JS Number
-// ie. between JS Number.MIN_SAFE_INTEGER and JS Number.MAX_SAFE_INTEGER
-// => if you want to have a JS Number with a value > native int32
-// you must use the custom native types u64Num or i64Num
-// see: https://v8.dev/blog/bigint
-
-// Native integers less than int32
-// -------------------------------
-// v8 handle int32 (signed or unsigned)
-// for convenience we handle also int8 and int16 Native types
-// which are just cast to/from v8 int32
-
-// JS Null
-// -------
-// JS Null is not handled has a Native type
-// but instead is used to represent Native optional value.
-
-// JS Undefined
-// ------------
-// When JS Undefined is provided has an argument (JS -> Native)
-// it is handled as JS Null, ie. Native optional value.
-
 /// Convert a Native value to a JS value
 /// and set it to the JS result provided.
 pub fn nativeToJS(comptime zig_T: refl.Type, zig_val: zig_T.T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {

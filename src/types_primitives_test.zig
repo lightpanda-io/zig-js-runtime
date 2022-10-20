@@ -84,14 +84,13 @@ pub fn doTest(isolate: v8.Isolate) !void {
     const tests = @import("test_utils.zig");
 
     // generate API
-    const prim_refl = comptime refl.AsStruct(Primitives);
-    const prim_api = comptime gen.API(Primitives, prim_refl);
+    const apis = gen.compile(.{Primitives});
 
     // create a v8 ObjectTemplate for the global namespace
     const globals = v8.ObjectTemplate.initDefault(isolate);
 
     // load API, before creating context
-    prim_api.load(isolate, globals);
+    try gen.load(isolate, globals, apis);
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
