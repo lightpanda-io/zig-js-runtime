@@ -5,11 +5,55 @@ const v8 = @import("v8");
 
 pub const Type = struct {
     T: type,
+    name: ?[]u8 = null, // only for function parameters
     is_optional: bool,
 };
 
 fn isOptional(comptime T: type) bool {
     return (@typeInfo(T) == .Optional);
+}
+
+fn argsT(comptime self_T: ?type, comptime args: []Type) !type {
+    comptime {
+        var len = args.len;
+        if (self_T != null) {
+            len += 1;
+        }
+        var fields: [len]std.builtin.Type.StructField = undefined;
+        if (self_T != null) {
+            const name = try itoa(0);
+            fields[0] = std.builtin.Type.StructField{
+                .name = name,
+                .field_type = self_T.?,
+                .default_value = null,
+                .is_comptime = false,
+                .alignment = @alignOf(self_T.?),
+            };
+        }
+        inline for (args) |arg, i| {
+            var x = i;
+            if (self_T != null) {
+                x += 1;
+            }
+            fields[x] = std.builtin.Type.StructField{
+                .name = arg.name.?,
+                .field_type = arg.T,
+                .default_value = null,
+                .is_comptime = false,
+                .alignment = @alignOf(arg.T),
+            };
+        }
+        const decls: [0]std.builtin.Type.Declaration = undefined;
+        const s = std.builtin.Type.Struct{
+            .layout = std.builtin.Type.ContainerLayout.Auto,
+            .fields = &fields,
+            .decls = &decls,
+            .is_tuple = true,
+        };
+        const t = std.builtin.Type{ .Struct = s };
+        const T = @Type(t);
+        return T;
+    }
 }
 
 const FuncKind = enum {
@@ -48,6 +92,7 @@ pub const Func = struct {
     js_name: []const u8,
     name: []const u8,
     args: []Type,
+    args_T: type,
     return_type: ?Type,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
@@ -279,13 +324,29 @@ fn doOne(comptime T: type, comptime index: usize) *Struct {
         args = args[args_start..];
         var args_types: [args.len]Type = undefined;
         for (args) |arg, i| {
-            args_types[i] = Type{ .T = arg.arg_type.?, .is_optional = isOptional(arg.arg_type.?) };
+            if (arg.arg_type.? == void) {
+                // TODO: there is a bug with void paramater => avoid for now
+                @compileError("reflect error: void parameters are not allowed for now");
+            }
+            var x = i;
+            if (kind != .constructor) {
+                x += 1;
+            }
+            const name = try itoa(x);
+            args_types[i] = Type{
+                .T = arg.arg_type.?,
+                .name = name,
+                .is_optional = isOptional(arg.arg_type.?),
+            };
         }
 
         // return type
         var return_type: ?Type = null;
         if (func.Fn.return_type != null) {
-            return_type = Type{ .T = func.Fn.return_type.?, .is_optional = isOptional(func.Fn.return_type.?) };
+            return_type = Type{
+                .T = func.Fn.return_type.?,
+                .is_optional = isOptional(func.Fn.return_type.?),
+            };
         }
 
         // generate javascript name for field/method
@@ -300,10 +361,17 @@ fn doOne(comptime T: type, comptime index: usize) *Struct {
         const js_name = jsName(field_name);
 
         // reflect func
+        const args_slice = args_types[0..];
+        var self_T: ?type = null;
+        if (kind != .constructor) {
+            self_T = T;
+        }
+        const args_T = try argsT(self_T, args_slice);
         const func_reflected = Func{
             .js_name = js_name,
             .name = decl.name,
-            .args = args_types[0..],
+            .args = args_slice,
+            .args_T = args_T,
             .return_type = return_type,
             .setter_index = null,
         };
@@ -366,9 +434,21 @@ fn doOne(comptime T: type, comptime index: usize) *Struct {
     return &s;
 }
 
+// Utils funcs
+// -----------
+
 fn jsName(comptime name: []const u8) []u8 {
-    const first = std.ascii.toLower(name[0]);
-    var js_name = name[0..].*;
-    js_name[0] = first;
-    return &js_name;
+    comptime {
+        const first = std.ascii.toLower(name[0]);
+        var js_name = name[0..].*;
+        js_name[0] = first;
+        return &js_name;
+    }
+}
+
+fn itoa(comptime i: u8) ![]u8 {
+    comptime {
+        var buf: [1]u8 = undefined;
+        return try std.fmt.bufPrint(buf[0..], "{d}", .{i});
+    }
 }

@@ -16,54 +16,16 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
 
-fn callWithArgs(alloc: std.mem.Allocator, comptime function: anytype, comptime params: []refl.Type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
-    // TODO: can we do that iterating on params ?
-    switch (params.len) {
-        0 => return @call(.{}, function, .{}),
-        1 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            return @call(.{}, function, .{arg1});
-        },
-        2 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
-            return @call(.{}, function, .{ arg1, arg2 });
-        },
-        3 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
-            const arg3 = try jsToNative(alloc, params[2], info.getArg(2), isolate, ctx);
-            return @call(.{}, function, .{ arg1, arg2, arg3 });
-        },
-        else => {
-            @compileError("wrong arg nb to call obj_ptr");
-        },
+fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, comptime params: []refl.Type, comptime args_T: type, info: v8.FunctionCallbackInfo, isolate: v8.Isolate, ctx: v8.Context) !args_T {
+    var args: args_T = undefined;
+    if (!self_null) {
+        @field(args, "0") = self;
     }
-}
-
-fn callWithArgsSelf(alloc: std.mem.Allocator, comptime function: anytype, comptime self_T: type, self: self_T, comptime params: []refl.Type, comptime res_T: type, comptime info_T: type, info: info_T, isolate: v8.Isolate, ctx: v8.Context) !res_T {
-    // TODO: can we do that iterating on params ?
-    switch (params.len) {
-        0 => return @call(.{}, function, .{self}),
-        1 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            return @call(.{}, function, .{ self, arg1 });
-        },
-        2 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
-            return @call(.{}, function, .{ self, arg1, arg2 });
-        },
-        3 => {
-            const arg1 = try jsToNative(alloc, params[0], info.getArg(0), isolate, ctx);
-            const arg2 = try jsToNative(alloc, params[1], info.getArg(1), isolate, ctx);
-            const arg3 = try jsToNative(alloc, params[2], info.getArg(2), isolate, ctx);
-            return @call(.{}, function, .{ self, arg1, arg2, arg3 });
-        },
-        else => {
-            @compileError("wrong arg nb to call obj_ptr");
-        },
+    inline for (params) |param, i| {
+        const value = try jsToNative(alloc, param, info.getArg(i), isolate, ctx);
+        @field(args, param.name.?) = value;
     }
+    return args;
 }
 
 fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) v8.FunctionCallback {
@@ -94,7 +56,8 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             // otherwise on the stack it will be delete when the function returns
             const T = T_refl.T;
             var obj_ptr = utils.allocator.create(T) catch unreachable;
-            obj_ptr.* = callWithArgs(utils.allocator, T.constructor, func.?.args, T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
+            const args = getArgs(utils.allocator, true, {}, func.?.args, func.?.args_T, info, isolate, ctx) catch unreachable;
+            obj_ptr.* = @call(.{}, T.constructor, args);
             Store.default.addObject(obj_ptr, T_refl.size, T_refl.alignment) catch unreachable; // TODO: internal exception
 
             // bind the zig object to it's javascript counterpart
@@ -207,7 +170,8 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
 
             // call the corresponding zig object method
             const method_func = @field(T, func.name);
-            const res = callWithArgsSelf(utils.allocator, method_func, T, obj_ptr.*, func.args, func.return_type.?.T, v8.FunctionCallbackInfo, info, isolate, ctx) catch unreachable; // TODO: js exception
+            const args = getArgs(utils.allocator, false, obj_ptr.*, func.args, func.args_T, info, isolate, ctx) catch unreachable;
+            const res = @call(.{}, method_func, args);
 
             // return to javascript the result
             nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
