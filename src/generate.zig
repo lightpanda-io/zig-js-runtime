@@ -271,7 +271,7 @@ pub fn compile(comptime types: anytype) []API {
     comptime {
 
         // call types reflection
-        const all_T = refl.doAll(types);
+        const all_T = refl.do(types);
 
         var apis: [all_T.len]API = undefined;
         inline for (all_T) |T_refl, i| {
