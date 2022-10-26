@@ -262,7 +262,7 @@ fn do(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
     return s.load;
 }
 
-const API = struct {
+pub const API = struct {
     proto_tpl_index: ?usize = null,
     load: LoadFunc,
 };

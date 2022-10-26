@@ -3,6 +3,7 @@ const v8 = @import("v8");
 const refl = @import("reflect.zig");
 const gen = @import("generate.zig");
 const utils = @import("utils.zig");
+const tests = @import("test_utils.zig");
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
 const Primitives = struct {
@@ -82,17 +83,13 @@ const Primitives = struct {
     }
 };
 
-pub fn doTest(isolate: v8.Isolate) !void {
-    const tests = @import("test_utils.zig");
+// generate API, comptime
+pub fn generate() []gen.API {
+    return gen.compile(.{Primitives});
+}
 
-    // generate API
-    const apis = gen.compile(.{Primitives});
-
-    // create a v8 ObjectTemplate for the global namespace
-    const globals = v8.ObjectTemplate.initDefault(isolate);
-
-    // load API, before creating context
-    try gen.load(isolate, globals, apis);
+// exec tests
+pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
