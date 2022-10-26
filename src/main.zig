@@ -5,6 +5,7 @@ const engine = @import("engine.zig");
 const utils = @import("utils.zig");
 const refs = @import("refs.zig");
 const Store = @import("store.zig");
+const bench = @import("bench.zig");
 
 const proto = @import("proto_test.zig");
 const primitive_types = @import("types_primitives_test.zig");
@@ -31,8 +32,10 @@ pub fn main() !void {
     // generate APIs
     const apis = proto.generate();
 
-    // exec
-    try engine.Load(proto.exec, apis);
+    // benchmark
+    const iter = 1000;
+    try bench.withIsolate(iter, proto.exec, apis);
+    try bench.withoutIsolate(iter, proto.exec, apis);
 }
 
 test {
