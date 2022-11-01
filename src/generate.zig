@@ -5,6 +5,7 @@ const utils = @import("utils.zig");
 const Store = @import("store.zig");
 const refs = @import("refs.zig");
 const refl = @import("reflect.zig");
+
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
 
@@ -262,7 +263,7 @@ fn do(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
     return s.load;
 }
 
-const API = struct {
+pub const API = struct {
     proto_tpl_index: ?usize = null,
     load: LoadFunc,
 };

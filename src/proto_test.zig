@@ -3,6 +3,8 @@ const v8 = @import("v8");
 
 const utils = @import("utils.zig");
 const gen = @import("generate.zig");
+const eng = @import("engine.zig");
+const tests = @import("test_utils.zig");
 
 // TODO: handle memory allocation in the data struct itself.
 // Each struct should have a deinit method to free internal memory and destroy object itself.
@@ -55,17 +57,13 @@ const User = struct {
     }
 };
 
-pub fn doTest(isolate: v8.Isolate) !void {
-    const tests = @import("test_utils.zig");
+// generate API, comptime
+pub fn generate() []gen.API {
+    return gen.compile(.{ User, Person, Entity });
+}
 
-    // generate API
-    const apis = gen.compile(.{ User, Entity, Person });
-
-    // create a v8 ObjectTemplate for the global namespace
-    const globals = v8.ObjectTemplate.initDefault(isolate);
-
-    // load API, before creating context
-    try gen.load(isolate, globals, apis);
+// exec tests
+pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
@@ -114,4 +112,5 @@ pub fn doTest(isolate: v8.Isolate) !void {
         .{ .src = "u.age;", .ex = "43" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases_proto.len, cases_proto);
+    return eng.ExecOK;
 }
