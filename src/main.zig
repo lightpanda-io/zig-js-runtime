@@ -1,64 +1,161 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const engine = @import("engine.zig");
-const utils = @import("utils.zig");
-const refs = @import("refs.zig");
-const Store = @import("store.zig");
+const eng = @import("engine.zig");
+const gen = @import("generate.zig");
+
 const bench = @import("bench.zig");
+const pretty = @import("pretty.zig");
 
 const proto = @import("proto_test.zig");
 const primitive_types = @import("types_primitives_test.zig");
 
+const kb = 1024;
+const us = std.time.ns_per_us;
+
+fn benchWithIsolate(
+    alloc: std.mem.Allocator,
+    comptime execFn: eng.ExecFunc,
+    comptime apis: []gen.API,
+    comptime iter: comptime_int,
+    comptime warmup: ?comptime_int,
+) !bench.Result {
+    var ba = bench.allocator(alloc);
+    const duration = try bench.call(eng.Load, .{ ba.allocator(), execFn, apis }, iter, warmup);
+    const alloc_stats = ba.stats();
+    return bench.Result{
+        .duration = duration,
+        .alloc_nb = alloc_stats.alloc_nb,
+        .realloc_nb = alloc_stats.realloc_nb,
+        .alloc_size = alloc_stats.alloc_size,
+    };
+}
+
+fn benchWithoutIsolate(
+    alloc: std.mem.Allocator,
+    comptime execFn: eng.ExecFunc,
+    comptime apis: []gen.API,
+    comptime iter: comptime_int,
+    comptime warmup: ?comptime_int,
+) !bench.Result {
+    var ba = bench.allocator(alloc);
+    const s = struct {
+        fn do(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
+            const t = try bench.call(execFn, .{ isolate, globals }, iter, warmup);
+            return eng.ExecRes{ .Time = t };
+        }
+    };
+    const res = try eng.Load(ba.allocator(), s.do, apis);
+    const alloc_stats = ba.stats();
+    return bench.Result{
+        .duration = res.Time,
+        .alloc_nb = alloc_stats.alloc_nb,
+        .realloc_nb = alloc_stats.realloc_nb,
+        .alloc_size = alloc_stats.alloc_size,
+    };
+}
+
+fn setTitle(comptime title: []const u8, comptime iter: comptime_int) ![]u8 {
+    var buf: [100]u8 = undefined;
+    return try std.fmt.bufPrint(buf[0..], title, .{iter});
+}
+
 pub fn main() !void {
 
-    // allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    utils.allocator = gpa.allocator();
-
-    // refs map
-    refs.map = refs.Map{};
-    defer refs.map.deinit(utils.allocator);
-
-    // store
-    Store.default = Store.init(utils.allocator);
-    defer Store.default.deinit(utils.allocator);
+    // benchmark conf
+    const iter = 100;
+    const warmup = iter / 20;
+    const title_fmt = "Benchmark jsengine 🚀 (~= {d} iters)";
+    var buf: [100]u8 = undefined;
+    const title = try std.fmt.bufPrint(buf[0..], title_fmt, .{iter});
 
     // create v8 vm
-    const vm = engine.VM.init();
+    const vm = eng.VM.init();
     defer vm.deinit();
 
     // generate APIs
     const apis = proto.generate();
 
-    // benchmark
-    const iter = 1000;
-    try bench.withIsolate(iter, proto.exec, apis);
-    try bench.withoutIsolate(iter, proto.exec, apis);
+    // allocators
+    var gpa1 = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa1.deinit();
+    var gpa2 = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa2.deinit();
+
+    // benchmark funcs
+    const res1 = try benchWithIsolate(gpa1.allocator(), proto.exec, apis, iter, warmup);
+    const res2 = try benchWithoutIsolate(gpa2.allocator(), proto.exec, apis, iter, warmup);
+
+    // benchmark measures
+    const dur1 = pretty.Measure{ .unit = "us", .value = res1.duration / us };
+    const dur2 = pretty.Measure{ .unit = "us", .value = res2.duration / us };
+    const size1 = pretty.Measure{ .unit = "kb", .value = res1.alloc_size / kb };
+    const size2 = pretty.Measure{ .unit = "kb", .value = res2.alloc_size / kb };
+
+    // benchmark table
+    const row_shape = .{
+        []const u8,
+        pretty.Measure,
+        u64,
+        pretty.Measure,
+    };
+    const table = try pretty.GenerateTable(2, row_shape, pretty.TableConf{ .margin_left = "  " });
+    const header = .{
+        "FUNCTION",
+        "DURATION (per iter)",
+        "ALLOCATIONS (nb)",
+        "HEAP SIZE",
+    };
+    var t = table.init(title, header);
+    try t.addRow(.{ "With Isolate", dur1, res1.alloc_nb, size1 });
+    try t.addRow(.{ "Without Isolate", dur2, res2.alloc_nb, size2 });
+    const out = std.io.getStdOut().writer();
+    try t.render(out);
 }
 
 test {
-    // allocator
-    utils.allocator = std.testing.allocator;
-
-    // refs map
-    refs.map = refs.Map{};
-    defer refs.map.deinit(utils.allocator);
-
-    // store
-    Store.default = Store.init(utils.allocator);
-    defer Store.default.deinit(utils.allocator);
 
     // create v8 vm
-    const vm = engine.VM.init();
+    const vm = eng.VM.init();
     defer vm.deinit();
 
     // end to end test
     const proto_apis = proto.generate();
-    try engine.Load(proto.exec, proto_apis);
+    var proto_alloc = bench.allocator(std.testing.allocator);
+    _ = try eng.Load(proto_alloc.allocator(), proto.exec, proto_apis);
+    const proto_alloc_stats = proto_alloc.stats();
+    const proto_alloc_size = pretty.Measure{
+        .unit = "b",
+        .value = proto_alloc_stats.alloc_size,
+    };
 
     // unit test
-    const primitives_apis = primitive_types.generate();
-    try engine.Load(primitive_types.exec, primitives_apis);
+    const prim_apis = primitive_types.generate();
+    var prim_alloc = bench.allocator(std.testing.allocator);
+    _ = try eng.Load(prim_alloc.allocator(), primitive_types.exec, prim_apis);
+    const prim_alloc_stats = prim_alloc.stats();
+    const prim_alloc_size = pretty.Measure{
+        .unit = "b",
+        .value = prim_alloc_stats.alloc_size,
+    };
+
+    // benchmark table
+    const row_shape = .{
+        []const u8,
+        u64,
+        pretty.Measure,
+    };
+    const header = .{
+        "FUNCTION",
+        "ALLOCATIONS",
+        "HEAP SIZE",
+    };
+    const table = try pretty.GenerateTable(2, row_shape, pretty.TableConf{ .margin_left = "  " });
+    const title = "Test jsengine ✅";
+    var t = table.init(title, header);
+    try t.addRow(.{ "Prototype", proto_alloc.alloc_nb, proto_alloc_size });
+    try t.addRow(.{ "Primitives", prim_alloc.alloc_nb, prim_alloc_size });
+
+    const out = std.io.getStdErr().writer();
+    try t.render(out);
 }

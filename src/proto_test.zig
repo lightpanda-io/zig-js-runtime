@@ -3,6 +3,7 @@ const v8 = @import("v8");
 
 const utils = @import("utils.zig");
 const gen = @import("generate.zig");
+const eng = @import("engine.zig");
 const tests = @import("test_utils.zig");
 
 // TODO: handle memory allocation in the data struct itself.
@@ -58,11 +59,11 @@ const User = struct {
 
 // generate API, comptime
 pub fn generate() []gen.API {
-    return gen.compile(.{ User, Entity, Person });
+    return gen.compile(.{ User, Person, Entity });
 }
 
 // exec tests
-pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
+pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
@@ -111,4 +112,5 @@ pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
         .{ .src = "u.age;", .ex = "43" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases_proto.len, cases_proto);
+    return eng.ExecOK;
 }

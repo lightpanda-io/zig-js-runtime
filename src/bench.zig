@@ -1,41 +1,126 @@
 const std = @import("std");
-const v8 = @import("v8");
 
-const eng = @import("engine.zig");
-const gen = @import("generate.zig");
+pub const Result = struct {
+    duration: u64,
 
-fn bench(comptime iter: comptime_int, comptime func_name: []const u8, func: anytype, args: anytype) !void {
+    alloc_nb: usize,
+    realloc_nb: usize,
+    alloc_size: usize,
+};
+
+pub fn call(
+    func: anytype,
+    args: anytype,
+    comptime iter: comptime_int,
+    comptime warmup: ?comptime_int,
+) !u64 {
     var total: u64 = 0;
     var i: usize = 0;
-    const warmup = @as(u32, iter * 0.95); // 5% of warmup
+    var is_error_union = false;
 
     while (i < iter) {
-        const start = try std.time.Instant.now();
+        var start: std.time.Instant = undefined;
+        if (warmup != null and i > warmup.?) {
+            start = try std.time.Instant.now();
+        }
 
-        // do funcs
-        try @call(.{}, func, args);
+        const res = @call(.{}, func, args);
+        if (i == 0) {
+            // TODO: handle more return cases
+            const info = @typeInfo(@TypeOf(res));
+            if (info == .ErrorUnion) {
+                is_error_union = true;
+            }
+        }
+        if (is_error_union) {
+            _ = try res;
+        }
 
-        const end = try std.time.Instant.now();
-        if (i < warmup) {
+        if (warmup != null and i > warmup.?) {
+            const end = try std.time.Instant.now();
             const elapsed = std.time.Instant.since(end, start);
             total += elapsed;
         }
         i += 1;
     }
-
-    const mean = total / iter / std.time.ns_per_us;
-    std.debug.print("{s}\t(~= of {d} iters)\t{d}us\n", .{ func_name, iter, mean });
+    var res: u64 = undefined;
+    if (warmup != null) {
+        res = total / (iter - warmup.?);
+    } else {
+        res = total / iter;
+    }
+    return total / iter;
 }
 
-pub fn withIsolate(comptime iter: comptime_int, comptime execFn: eng.ExecFunc, comptime apis: []gen.API) !void {
-    return bench(iter, "with Isolate", eng.Load, .{ execFn, apis });
-}
+pub const Allocator = struct {
+    parent_allocator: std.mem.Allocator,
 
-pub fn withoutIsolate(comptime iter: comptime_int, comptime execFn: eng.ExecFunc, comptime apis: []gen.API) !void {
-    const s = struct {
-        fn do(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
-            return bench(iter, "without Isolate", execFn, .{ isolate, globals });
-        }
+    alloc_nb: usize = 0,
+    realloc_nb: usize = 0,
+    free_nb: usize = 0,
+    size: usize = 0,
+
+    const Stats = struct {
+        alloc_nb: usize,
+        realloc_nb: usize,
+        alloc_size: usize,
     };
-    return eng.Load(s.do, apis);
+
+    fn init(parent_allocator: std.mem.Allocator) Allocator {
+        return .{
+            .parent_allocator = parent_allocator,
+        };
+    }
+
+    pub fn stats(self: *Allocator) Stats {
+        return .{
+            .alloc_nb = self.alloc_nb,
+            .realloc_nb = self.realloc_nb,
+            .alloc_size = self.size,
+        };
+    }
+
+    pub fn allocator(self: *Allocator) std.mem.Allocator {
+        return std.mem.Allocator.init(self, alloc, resize, free);
+    }
+
+    fn alloc(
+        self: *Allocator,
+        len: usize,
+        ptr_align: u29,
+        len_align: u29,
+        ra: usize,
+    ) error{OutOfMemory}![]u8 {
+        const result = try self.parent_allocator.rawAlloc(len, ptr_align, len_align, ra);
+        self.alloc_nb += 1;
+        self.size += len;
+        return result;
+    }
+
+    fn resize(
+        self: *Allocator,
+        buf: []u8,
+        buf_align: u29,
+        new_len: usize,
+        len_align: u29,
+        ra: usize,
+    ) ?usize {
+        const result = self.parent_allocator.rawResize(buf, buf_align, new_len, len_align, ra);
+        self.realloc_nb += 1; // TODO: only if result is not null?
+        return result;
+    }
+
+    fn free(
+        self: *Allocator,
+        buf: []u8,
+        buf_align: u29,
+        ra: usize,
+    ) void {
+        self.parent_allocator.rawFree(buf, buf_align, ra);
+        self.free_nb += 1;
+    }
+};
+
+pub fn allocator(parent_allocator: std.mem.Allocator) Allocator {
+    return Allocator.init(parent_allocator);
 }

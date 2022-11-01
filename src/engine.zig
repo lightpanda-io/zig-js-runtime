@@ -3,33 +3,60 @@ const builtin = @import("builtin");
 const v8 = @import("v8");
 
 const utils = @import("utils.zig");
+const refs = @import("refs.zig");
+const Store = @import("store.zig");
 const gen = @import("generate.zig");
 
-pub const ExecFunc = (fn (v8.Isolate, v8.ObjectTemplate) anyerror!void);
+pub const ExecRes = union(enum) {
+    OK: void,
+    Time: u64,
+};
 
-pub fn Load(comptime execFn: ExecFunc, comptime apis: []gen.API) !void {
+pub const ExecOK = ExecRes{ .OK = {} };
+
+pub const ExecFunc = (fn (v8.Isolate, v8.ObjectTemplate) anyerror!ExecRes);
+
+pub fn Load(alloc: std.mem.Allocator, comptime execFn: ExecFunc, comptime apis: []gen.API) !ExecRes {
+
+    // Set globals values
+    // ------------------
+
+    // allocator
+    utils.allocator = alloc;
+
+    // refs map
+    refs.map = refs.Map{};
+    defer refs.map.deinit(utils.allocator);
+
+    // store
+    Store.default = Store.init(utils.allocator);
+    defer Store.default.deinit(utils.allocator);
+
     var start: std.time.Instant = undefined;
     if (builtin.is_test) {
         start = try std.time.Instant.now();
     }
 
-    // v8 params
+    // v8 values
+    // ---------
+
+    // params
     var params = v8.initCreateParams();
     params.array_buffer_allocator = v8.createDefaultArrayBufferAllocator();
     defer v8.destroyArrayBufferAllocator(params.array_buffer_allocator.?);
 
-    // v8 Isolate
+    // isolate
     var isolate = v8.Isolate.init(&params);
     defer isolate.deinit();
     isolate.enter();
     defer isolate.exit();
 
-    // v8 handle scope
+    // handle scope
     var hscope: v8.HandleScope = undefined;
     hscope.init(isolate);
     defer hscope.deinit();
 
-    // v8 ObjectTemplate for the global namespace
+    // ObjectTemplate for the global namespace
     const globals = v8.ObjectTemplate.initDefault(isolate);
 
     var iso_start: std.time.Instant = undefined;
@@ -37,7 +64,8 @@ pub fn Load(comptime execFn: ExecFunc, comptime apis: []gen.API) !void {
         iso_start = try std.time.Instant.now();
     }
 
-    // load APIs
+    // APIs
+    // ----
     try gen.load(isolate, globals, apis);
 
     var load_start: std.time.Instant = undefined;
@@ -45,8 +73,9 @@ pub fn Load(comptime execFn: ExecFunc, comptime apis: []gen.API) !void {
         load_start = try std.time.Instant.now();
     }
 
-    // exec
-    try execFn(isolate, globals);
+    // JS exec
+    // -------
+    const res = try execFn(isolate, globals);
 
     var exec_end: std.time.Instant = undefined;
     if (builtin.is_test) {
@@ -70,6 +99,8 @@ pub fn Load(comptime execFn: ExecFunc, comptime apis: []gen.API) !void {
         std.debug.print("exec:\t\t\t{d}us\t{d}%\n", .{ exec_time / us, exec_per });
         std.debug.print("Total:\t\t\t{d}us\n", .{total_time / us});
     }
+
+    return res;
 }
 
 pub const VM = struct {

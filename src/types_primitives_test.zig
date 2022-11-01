@@ -1,8 +1,9 @@
+const std = @import("std");
 const v8 = @import("v8");
 
-const refl = @import("reflect.zig");
-const gen = @import("generate.zig");
 const utils = @import("utils.zig");
+const gen = @import("generate.zig");
+const eng = @import("engine.zig");
 const tests = @import("test_utils.zig");
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
@@ -89,7 +90,7 @@ pub fn generate() []gen.API {
 }
 
 // exec tests
-pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
+pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
@@ -163,4 +164,5 @@ pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !void {
         .{ .src = "p.checkNullNotEmpty(1);", .ex = "true" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases.len, cases);
+    return eng.ExecOK;
 }
