@@ -6,7 +6,7 @@ const std = @import("std");
 // one by one, thew will be all freed at deinit of the allocator.
 pub const Store = @This();
 
-pub var default: Store = undefined;
+pub var default: ?Store = null;
 
 // TODO: do not store size and alignement in each object
 // as we know those values at comptime.

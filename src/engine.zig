@@ -16,7 +16,12 @@ pub const ExecOK = ExecRes{ .OK = {} };
 
 pub const ExecFunc = (fn (v8.Isolate, v8.ObjectTemplate) anyerror!ExecRes);
 
-pub fn Load(alloc: std.mem.Allocator, comptime execFn: ExecFunc, comptime apis: []gen.API) !ExecRes {
+pub fn Load(
+    alloc: std.mem.Allocator,
+    comptime alloc_auto_free: bool,
+    comptime execFn: ExecFunc,
+    comptime apis: []gen.API,
+) !ExecRes {
 
     // Set globals values
     // ------------------
@@ -29,8 +34,15 @@ pub fn Load(alloc: std.mem.Allocator, comptime execFn: ExecFunc, comptime apis: 
     defer refs.map.deinit(utils.allocator);
 
     // store
-    Store.default = Store.init(utils.allocator);
-    defer Store.default.deinit(utils.allocator);
+    if (!alloc_auto_free) {
+        Store.default = Store.init(utils.allocator);
+    }
+    defer {
+        // keep defer on the function scope
+        if (!alloc_auto_free) {
+            Store.default.?.deinit(utils.allocator);
+        }
+    }
 
     var start: std.time.Instant = undefined;
     if (builtin.is_test) {

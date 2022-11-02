@@ -47,8 +47,16 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             // TODO: optional argument shoudl allow a missing value
             const js_params_len = info.length();
             if (js_params_len < func.?.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ T_refl.name, func.?.js_name, func.?.args.len, js_params_len }) catch unreachable;
-                Store.default.addString(msg) catch unreachable;
+                const args = .{
+                    T_refl.name,
+                    func.?.js_name,
+                    func.?.args.len,
+                    js_params_len,
+                };
+                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, args) catch unreachable;
+                if (Store.default != null) {
+                    Store.default.?.addString(msg) catch unreachable;
+                }
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
@@ -59,7 +67,9 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             var obj_ptr = utils.allocator.create(T) catch unreachable;
             const args = getArgs(utils.allocator, true, {}, func.?.args, func.?.args_T, info, isolate, ctx) catch unreachable;
             obj_ptr.* = @call(.{}, T.constructor, args);
-            Store.default.addObject(obj_ptr, T_refl.size, T_refl.alignment) catch unreachable; // TODO: internal exception
+            if (Store.default != null) {
+                Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment) catch unreachable; // TODO: internal exception
+            }
 
             // bind the zig object to it's javascript counterpart
             var ext: v8.External = undefined;
@@ -68,7 +78,9 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             } else {
                 var int_ptr = utils.allocator.create(usize) catch unreachable;
                 int_ptr.* = @ptrToInt(obj_ptr);
-                Store.default.addObject(int_ptr, @sizeOf(usize), @alignOf(usize)) catch unreachable;
+                if (Store.default != null) {
+                    Store.default.?.addObject(int_ptr, @sizeOf(usize), @alignOf(usize)) catch unreachable;
+                }
                 ext = v8.External.init(isolate, int_ptr);
                 refs.addObject(utils.allocator, int_ptr.*, T_refl.index) catch unreachable;
             }
