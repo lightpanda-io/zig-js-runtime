@@ -4,7 +4,7 @@ pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    // run
+    // compile and install
     const exe = b.addExecutable("jsengine", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
@@ -16,6 +16,7 @@ pub fn build(b: *std.build.Builder) void {
     }
     exe.install();
 
+    // run
     const run_cmd = exe.run();
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
@@ -36,10 +37,10 @@ pub fn build(b: *std.build.Builder) void {
 }
 
 fn linkV8(step: *std.build.LibExeObjStep) void {
-    step.linkLibC();
+    // step.linkLibC(); // TODO: do we need to link libc?
     // link the static v8 library built with zig-v8
     // FIXME: we are tied to the native v8 build (aarch64-macos)
     step.addObjectFile("../zig-v8/v8-build/aarch64-macos/release/ninja/obj/zig/libc_v8.a");
     step.addPackagePath("v8", "deps/zig-v8/v8.zig");
-    step.addIncludeDir("deps/zig-v8");
+    step.addIncludePath("deps/zig-v8");
 }
