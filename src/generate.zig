@@ -53,10 +53,8 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
                     func.?.args.len,
                     js_params_len,
                 };
-                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, args) catch unreachable;
-                if (Store.default != null) {
-                    Store.default.?.addString(msg) catch unreachable;
-                }
+                var buf: [100]u8 = undefined;
+                const msg = std.fmt.bufPrint(buf[0..], not_enough_args, args) catch unreachable;
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
