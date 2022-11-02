@@ -21,7 +21,7 @@ fn benchWithIsolate(
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     var ba = bench.allocator(alloc);
-    const duration = try bench.call(eng.Load, .{ ba.allocator(), execFn, apis }, iter, warmup);
+    const duration = try bench.call(eng.Load, .{ ba.allocator(), true, execFn, apis }, iter, warmup);
     const alloc_stats = ba.stats();
     return bench.Result{
         .duration = duration,
@@ -45,7 +45,7 @@ fn benchWithoutIsolate(
             return eng.ExecRes{ .Time = t };
         }
     };
-    const res = try eng.Load(ba.allocator(), s.do, apis);
+    const res = try eng.Load(ba.allocator(), true, s.do, apis);
     const alloc_stats = ba.stats();
     return bench.Result{
         .duration = res.Time,
@@ -79,12 +79,16 @@ pub fn main() !void {
     // allocators
     var gpa1 = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa1.deinit();
+    var alloc1 = std.heap.ArenaAllocator.init(gpa1.allocator());
+    defer alloc1.deinit();
     var gpa2 = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa2.deinit();
+    var alloc2 = std.heap.ArenaAllocator.init(gpa2.allocator());
+    defer alloc2.deinit();
 
     // benchmark funcs
-    const res1 = try benchWithIsolate(gpa1.allocator(), proto.exec, apis, iter, warmup);
-    const res2 = try benchWithoutIsolate(gpa2.allocator(), proto.exec, apis, iter, warmup);
+    const res1 = try benchWithIsolate(alloc1.allocator(), proto.exec, apis, iter, warmup);
+    const res2 = try benchWithoutIsolate(alloc2.allocator(), proto.exec, apis, iter, warmup);
 
     // benchmark measures
     const dur1 = pretty.Measure{ .unit = "us", .value = res1.duration / us };
@@ -122,7 +126,7 @@ test {
     // end to end test
     const proto_apis = proto.generate();
     var proto_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(proto_alloc.allocator(), proto.exec, proto_apis);
+    _ = try eng.Load(proto_alloc.allocator(), false, proto.exec, proto_apis);
     const proto_alloc_stats = proto_alloc.stats();
     const proto_alloc_size = pretty.Measure{
         .unit = "b",
@@ -132,7 +136,7 @@ test {
     // unit test
     const prim_apis = primitive_types.generate();
     var prim_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(prim_alloc.allocator(), primitive_types.exec, prim_apis);
+    _ = try eng.Load(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
     const prim_alloc_stats = prim_alloc.stats();
     const prim_alloc_size = pretty.Measure{
         .unit = "b",

@@ -97,7 +97,9 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         // list of bytes (including strings)
         []u8, ?[]u8 => {
             const buf = try utils.valueToUtf8(alloc, js_val, isolate, ctx);
-            try Store.default.addString(buf);
+            if (Store.default != null) {
+                try Store.default.?.addString(buf);
+            }
             return buf;
         },
 
