@@ -10,7 +10,7 @@ pub fn addObject(alloc: std.mem.Allocator, key: usize, value: usize) !void {
 }
 
 pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
-    const key = @ptrCast(*usize, ptr);
+    const key = @ptrCast(*usize, @alignCast(8, ptr));
     const T_index = map.get(key.*);
     if (T_index == null) {
         return error.NullReference;

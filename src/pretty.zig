@@ -111,12 +111,12 @@ pub fn GenerateTable(
             while (column_pos < columns_nb) {
                 const head_col = self.head[column_pos];
                 max_sizes[column_pos] = try utf8Size(head_col);
-                // max_sizes[column_pos] = head_col.len;
                 for (self.rows) |row| {
                     inline for (row) |arg, pos| {
                         if (pos == column_pos) {
-                            const str = try argStr(arg, conf.max_row_length);
-                            const size = str.len;
+                            var buf: [conf.max_row_length]u8 = undefined;
+                            const str = try argStr(buf[0..], arg);
+                            const size = try utf8Size(str);
                             if (size > max_sizes[column_pos]) {
                                 max_sizes[column_pos] = size;
                             }
@@ -199,7 +199,8 @@ pub fn GenerateTable(
                 }
                 inline for (row) |value, i| {
                     if (column_pos == i) {
-                        const str = try argStr(value, conf.max_row_length);
+                        var buf_str: [conf.max_row_length]u8 = undefined;
+                        const str = try argStr(buf_str[0..], value);
 
                         // as we are on a inline for loop
                         // we need to copy the str to a new buffer
@@ -251,16 +252,7 @@ pub fn GenerateTable(
 // Utils
 // -----
 
-fn bufArgStr(
-    comptime fmt: []const u8,
-    arg: anytype,
-    comptime length: usize,
-) ![]const u8 {
-    var buf: [length]u8 = undefined;
-    return try std.fmt.bufPrint(buf[0..], fmt, arg);
-}
-
-fn argStr(arg: anytype, comptime length: usize) ![]const u8 {
+fn argStr(buf: []u8, arg: anytype) ![]const u8 {
     const T = @TypeOf(arg);
     return switch (T) {
 
@@ -268,52 +260,66 @@ fn argStr(arg: anytype, comptime length: usize) ![]const u8 {
         []u8, [:0]u8, []const u8, [:0]const u8 => arg,
 
         // int unsigned
-        u8, u16, u32, u64, usize => try bufArgStr("{d}", .{arg}, length),
+        u8, u16, u32, u64, usize => try std.fmt.bufPrint(buf[0..], "{d}", .{arg}),
 
         // int signed
-        i8, i16, i32, i64, isize, comptime_int => try bufArgStr("{d}", .{arg}, length),
+        i8, i16, i32, i64, isize, comptime_int => try std.fmt.bufPrint(buf[0..], "{d}", .{arg}),
 
         // float
-        f16, f32, f64, comptime_float => try bufArgStr("{d:.2}", .{arg}, length),
+        f16, f32, f64, comptime_float => try std.fmt.bufPrint(buf[0..], "{d:.2}", .{arg}),
 
         // bool
         bool => if (arg) "true" else "false",
 
         // measure
-        Measure => try bufArgStr("{d}{s}", .{ arg.value, arg.unit }, length),
+        Measure => try std.fmt.bufPrint(buf[0..], "{d}{s}", .{ arg.value, arg.unit }),
 
-        else => try bufArgStr("{any}", .{arg}, length),
+        else => try std.fmt.bufPrint(buf[0..], "{any}", .{arg}),
     };
 }
 
 test "arg str" {
     const max = 50;
 
+    // string
     const str: []const u8 = "ok";
-    try std.testing.expectEqualStrings(try argStr(str, max), "ok");
+    var buf1: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf1, str), "ok");
 
     // comptime int
-    try std.testing.expectEqualStrings(try argStr(8, max), "8");
-    try std.testing.expectEqualStrings(try argStr(-8, max), "-8");
+    var buf2: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf2, 8), "8");
+    var buf3: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf3, -8), "-8");
 
     // int unsigned
     const int_unsigned: u8 = 8;
-    try std.testing.expectEqualStrings(try argStr(int_unsigned, max), "8");
+    var buf4: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf4, int_unsigned), "8");
 
     // int signed
     const int_signed: i32 = -8;
-    try std.testing.expectEqualStrings(try argStr(int_signed, max), "-8");
+    var buf5: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf5, int_signed), "-8");
 
     // float
     const f: f16 = 3.22;
-    try std.testing.expectEqualStrings(try argStr(f, max), "3.22");
+    var buf6: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf6, f), "3.22");
 
     // bool
     const b = true;
-    try std.testing.expectEqualStrings(try argStr(b, max), "true");
+    var buf7: [max]u8 = undefined;
+    try std.testing.expectEqualStrings(try argStr(&buf7, b), "true");
+
+    // measure
+    const m = Measure{ .value = 972, .unit = "us" };
+    var buf_m: [max]u8 = undefined;
+    try std.testing.expectEqualStrings("972us", try argStr(&buf_m, m));
 
     // error, value too long
-    try std.testing.expectError(error.NoSpaceLeft, argStr(int_signed, 1));
+    var buf_e: [1]u8 = undefined;
+    try std.testing.expectError(error.NoSpaceLeft, argStr(&buf_e, int_signed));
 }
 
 fn utf8Size(s: []const u8) !usize {
