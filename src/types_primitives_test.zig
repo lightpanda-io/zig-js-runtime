@@ -82,6 +82,14 @@ const Primitives = struct {
     pub fn checkNullNotEmpty(_: Self, v: ?u32) bool {
         return (v != null);
     }
+
+    // Optionals
+    pub fn checkOptional(_: Self, _: ?u8, v: u8, _: ?u8, _: ?u8) u8 {
+        return v;
+    }
+    pub fn checkNonOptional(_: Self, v: u8) u8 {
+        return v;
+    }
 };
 
 // generate API, comptime
@@ -162,6 +170,10 @@ pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
         .{ .src = "p.checkNullEmpty(null);", .ex = "true" },
         .{ .src = "p.checkNullEmpty(undefined);", .ex = "true" },
         .{ .src = "p.checkNullNotEmpty(1);", .ex = "true" },
+
+        // Optional
+        .{ .src = "p.checkOptional(null, 3);", .ex = "3" },
+        .{ .src = "p.checkNonOptional();", .ex = "TypeError" },
     };
     try tests.checkCases(utils.allocator, isolate, context, cases.len, cases);
     return eng.ExecOK;

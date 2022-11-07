@@ -5,8 +5,25 @@ const v8 = @import("v8");
 
 pub const Type = struct {
     T: type,
-    name: ?[]u8 = null, // only for function parameters
-    is_optional: bool,
+    name: ?[]u8, // only for function parameters
+
+    optional_T: ?type, // child of a type which is optional
+
+    fn reflect(comptime T: type, comptime name: ?[]u8) Type {
+
+        // optional T
+        var optional_T: ?type = null;
+        const info = @typeInfo(T);
+        if (info == .Optional) {
+            optional_T = info.Optional.child;
+        }
+
+        return Type{
+            .T = T,
+            .name = name,
+            .optional_T = optional_T,
+        };
+    }
 };
 
 const Args = struct {
@@ -86,8 +103,11 @@ const FuncKind = enum {
 pub const Func = struct {
     js_name: []const u8,
     name: []const u8,
+
     args: []Type,
     args_T: type,
+    first_optional_arg: ?usize,
+
     return_type: ?Type,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
@@ -132,25 +152,32 @@ pub const Func = struct {
                 // TODO: there is a bug with void paramater => avoid for now
                 @compileError("reflect error: void parameters are not allowed for now");
             }
+
+            // arg name
             var x = i;
             if (kind != .constructor) {
                 x += 1;
             }
             const arg_name = try itoa(x);
-            args_types[i] = Type{
-                .T = arg.arg_type.?,
-                .name = arg_name,
-                .is_optional = @typeInfo(arg.arg_type.?) == .Optional,
-            };
+
+            args_types[i] = Type.reflect(arg.arg_type.?, arg_name);
+        }
+
+        // first optional arg
+        var first_optional_arg: ?usize = null;
+        var i = args_types.len;
+        while (i > 0) {
+            i -= 1;
+            if (args_types[i].optional_T == null) {
+                break;
+            }
+            first_optional_arg = i;
         }
 
         // return type
         var return_type: ?Type = null;
         if (func.Fn.return_type != null) {
-            return_type = Type{
-                .T = func.Fn.return_type.?,
-                .is_optional = @typeInfo(func.Fn.return_type.?) == .Optional,
-            };
+            return_type = Type.reflect(func.Fn.return_type.?, null);
         }
 
         // generate javascript name
@@ -171,12 +198,17 @@ pub const Func = struct {
             self_T = struct_T;
         }
         const args_T = comptime try Args.reflect(self_T, args_slice);
+
         return Func{
             .js_name = js_name,
             .name = name,
+
             .args = args_slice,
             .args_T = args_T,
+            .first_optional_arg = first_optional_arg,
+
             .return_type = return_type,
+
             .setter_index = null,
         };
     }
