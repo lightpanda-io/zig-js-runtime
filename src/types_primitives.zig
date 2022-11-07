@@ -42,7 +42,7 @@ pub fn nativeToJS(comptime zig_T: refl.Type, zig_val: zig_T.T, js_res: v8.Return
         u64 => v8.BigInt.initU64(isolate, zig_val),
 
         // bool
-        bool => v8.Boolean.init(isolate, @boolToInt(zig_val)),
+        bool => v8.Boolean.init(isolate, zig_val),
 
         else => return error.NativeTypeUnhandled,
     };
@@ -57,7 +57,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
     // JS Undefined value for an Native void
     // not sure if this case make any sense (a void argument)
     // but let's support it for completeness
-    if (js_val.isUndefined() == 1) {
+    if (js_val.isUndefined()) {
         // distinct comptime condition, otherwise compile error
         comptime {
             if (zig_T.T == void) {
@@ -67,7 +67,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
     }
 
     // JS Null or Undefined value
-    if (js_val.isNull() == 1 or js_val.isUndefined() == 1) {
+    if (js_val.isNull() or js_val.isUndefined()) {
         // distinct comptime condition, otherwise compile error
         comptime {
             // if Native optional type return null
@@ -118,7 +118,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
             return i64Num.init(v);
         },
         i64, ?i64 => {
-            if (js_val.isBigInt() == 1) {
+            if (js_val.isBigInt()) {
                 const v = js_val.castTo(v8.BigInt);
                 return v.getInt64();
             }
@@ -136,7 +136,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
             return u64Num.init(v);
         },
         u64, ?u64 => {
-            if (js_val.isBigInt() == 1) {
+            if (js_val.isBigInt()) {
                 const v = js_val.castTo(v8.BigInt);
                 return v.getUint64();
             }
@@ -144,7 +144,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         },
 
         // bool
-        bool, ?bool => return js_val.toBool(isolate) == 1,
+        bool, ?bool => return js_val.toBool(isolate),
 
         else => return error.JSTypeUnhandled,
     }
