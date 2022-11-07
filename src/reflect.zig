@@ -5,8 +5,29 @@ const v8 = @import("v8");
 
 pub const Type = struct {
     T: type,
-    name: ?[]u8 = null, // only for function parameters
-    is_optional: bool,
+    name: ?[]u8, // only for function parameters
+
+    optional_T: ?type, // child of a type which is optional
+
+    fn reflect(comptime T: type, comptime name: ?[]u8) Type {
+        if (T == void) {
+            // TODO: there is a bug with void paramater => avoid for now
+            @compileError("reflect error: void parameters are not allowed for now");
+        }
+
+        // optional T
+        var optional_T: ?type = null;
+        const info = @typeInfo(T);
+        if (info == .Optional) {
+            optional_T = info.Optional.child;
+        }
+
+        return Type{
+            .T = T,
+            .name = name,
+            .optional_T = optional_T,
+        };
+    }
 };
 
 const Args = struct {
@@ -86,6 +107,7 @@ const FuncKind = enum {
 pub const Func = struct {
     js_name: []const u8,
     name: []const u8,
+
     args: []Type,
     args_T: type,
     return_type: ?Type,
@@ -128,29 +150,21 @@ pub const Func = struct {
         args = args[args_start..];
         var args_types: [args.len]Type = undefined;
         for (args) |arg, i| {
-            if (arg.arg_type.? == void) {
-                // TODO: there is a bug with void paramater => avoid for now
-                @compileError("reflect error: void parameters are not allowed for now");
-            }
+
+            // arg name
             var x = i;
             if (kind != .constructor) {
                 x += 1;
             }
             const arg_name = try itoa(x);
-            args_types[i] = Type{
-                .T = arg.arg_type.?,
-                .name = arg_name,
-                .is_optional = @typeInfo(arg.arg_type.?) == .Optional,
-            };
+
+            args_types[i] = Type.reflect(arg.arg_type.?, arg_name);
         }
 
         // return type
         var return_type: ?Type = null;
         if (func.Fn.return_type != null) {
-            return_type = Type{
-                .T = func.Fn.return_type.?,
-                .is_optional = @typeInfo(func.Fn.return_type.?) == .Optional,
-            };
+            return_type = Type.reflect(func.Fn.return_type.?, null);
         }
 
         // generate javascript name

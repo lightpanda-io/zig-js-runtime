@@ -13,7 +13,7 @@ const u64Num = @import("types.zig").u64Num;
 pub fn nativeToJS(comptime zig_T: refl.Type, zig_val: zig_T.T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {
 
     // null
-    if (zig_T.is_optional and zig_val == null) {
+    if (zig_T.optional_T != null and zig_val == null) {
         return js_res.set(v8.initNull(isolate));
     }
 
@@ -71,7 +71,7 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         // distinct comptime condition, otherwise compile error
         comptime {
             // if Native optional type return null
-            if (zig_T.is_optional) {
+            if (zig_T.optional_T != null) {
                 return null;
             }
         }
@@ -110,6 +110,9 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         // integers signed
         i8, ?i8, i16, ?i16 => {
             const v = try js_val.toI32(ctx);
+            if (zig_T.optional_T != null) {
+                return @intCast(zig_T.optional_T.?, v);
+            }
             return @intCast(zig_T.T, v);
         },
         i32, ?i32 => return try js_val.toI32(ctx),
@@ -128,6 +131,9 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         // integers unsigned
         u8, ?u8, u16, ?u16 => {
             const v = try js_val.toU32(ctx);
+            if (zig_T.optional_T != null) {
+                return @intCast(zig_T.optional_T.?, v);
+            }
             return @intCast(zig_T.T, v);
         },
         u32, ?u32 => return try js_val.toU32(ctx),

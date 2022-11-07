@@ -79,7 +79,7 @@ const Primitives = struct {
     pub fn checkNullEmpty(_: Self, v: ?u32) bool {
         return (v == null);
     }
-    pub fn checkNullNotEmpty(_: Self, v: ?u32) bool {
+    pub fn checkNullNotEmpty(_: Self, v: ?u8) bool {
         return (v != null);
     }
 };
