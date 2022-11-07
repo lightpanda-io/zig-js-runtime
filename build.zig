@@ -38,7 +38,6 @@ pub fn build(b: *std.build.Builder) !void {
 
 fn linkV8(step: *std.build.LibExeObjStep) !void {
     // step.linkLibC(); // TODO: do we need to link libc?
-    // link the static v8 library built with zig-v8
 
     // v8 library
     // FIXME: we are tied to native v8 builds, currently:
@@ -52,6 +51,8 @@ fn linkV8(step: *std.build.LibExeObjStep) !void {
                 std.debug.print("only x86_64 are supported on linux builds\n", .{});
                 return error.ArchNotSupported;
             }
+            // TODO: why do we need it? It should be linked already when we built v8
+            step.linkLibCpp();
             break :blk;
         },
         .macos => blk: {
