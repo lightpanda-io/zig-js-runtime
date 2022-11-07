@@ -10,10 +10,6 @@ pub const Type = struct {
     optional_T: ?type, // child of a type which is optional
 
     fn reflect(comptime T: type, comptime name: ?[]u8) Type {
-        if (T == void) {
-            // TODO: there is a bug with void paramater => avoid for now
-            @compileError("reflect error: void parameters are not allowed for now");
-        }
 
         // optional T
         var optional_T: ?type = null;
@@ -110,6 +106,8 @@ pub const Func = struct {
 
     args: []Type,
     args_T: type,
+    first_optional_arg: ?usize,
+
     return_type: ?Type,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
@@ -150,6 +148,10 @@ pub const Func = struct {
         args = args[args_start..];
         var args_types: [args.len]Type = undefined;
         for (args) |arg, i| {
+            if (arg.arg_type.? == void) {
+                // TODO: there is a bug with void paramater => avoid for now
+                @compileError("reflect error: void parameters are not allowed for now");
+            }
 
             // arg name
             var x = i;
@@ -159,6 +161,17 @@ pub const Func = struct {
             const arg_name = try itoa(x);
 
             args_types[i] = Type.reflect(arg.arg_type.?, arg_name);
+        }
+
+        // first optional arg
+        var first_optional_arg: ?usize = null;
+        var i = args_types.len;
+        while (i > 0) {
+            i -= 1;
+            if (args_types[i].optional_T == null) {
+                break;
+            }
+            first_optional_arg = i;
         }
 
         // return type
@@ -185,12 +198,17 @@ pub const Func = struct {
             self_T = struct_T;
         }
         const args_T = comptime try Args.reflect(self_T, args_slice);
+
         return Func{
             .js_name = js_name,
             .name = name,
+
             .args = args_slice,
             .args_T = args_T,
+            .first_optional_arg = first_optional_arg,
+
             .return_type = return_type,
+
             .setter_index = null,
         };
     }

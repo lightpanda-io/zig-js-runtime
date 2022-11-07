@@ -44,13 +44,16 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             // check func params length
             // if JS provide more arguments than defined natively, just ignore them
             // but if JS provide less argument, throw a TypeError
-            // TODO: optional argument shoudl allow a missing value
+            var func_args_required: usize = func.?.args.len;
+            if (func.?.first_optional_arg != null) {
+                func_args_required = func.?.first_optional_arg.?;
+            }
             const js_params_len = info.length();
-            if (js_params_len < func.?.args.len) {
+            if (js_params_len < func_args_required) {
                 const args = .{
                     T_refl.name,
                     func.?.js_name,
-                    func.?.args.len,
+                    func_args_required,
                     js_params_len,
                 };
                 var buf: [100]u8 = undefined;
@@ -162,10 +165,20 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             // check func params length
             // if JS provide more arguments than defined natively, just ignore them
             // but if JS provide less argument, throw a TypeError
-            // TODO: optional argument should allow a missing value
+            var func_args_required: usize = func.args.len;
+            if (func.first_optional_arg != null) {
+                func_args_required = func.first_optional_arg.?;
+            }
             const js_params_len = info.length();
-            if (js_params_len < func.args.len) {
-                const msg = std.fmt.allocPrint(utils.allocator, not_enough_args, .{ T_refl.name, func.js_name, func.args.len, js_params_len }) catch unreachable;
+            if (js_params_len < func_args_required) {
+                const args = .{
+                    T_refl.name,
+                    func.js_name,
+                    func_args_required,
+                    js_params_len,
+                };
+                var buf: [100]u8 = undefined;
+                const msg = std.fmt.bufPrint(buf[0..], not_enough_args, args) catch unreachable;
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
