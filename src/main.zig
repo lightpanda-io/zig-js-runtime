@@ -9,6 +9,7 @@ const pretty = @import("pretty.zig");
 
 const proto = @import("proto_test.zig");
 const primitive_types = @import("types_primitives_test.zig");
+const callback = @import("cbk_test.zig");
 
 const kb = 1024;
 const us = std.time.ns_per_us;
@@ -123,7 +124,7 @@ test {
     const vm = eng.VM.init();
     defer vm.deinit();
 
-    // end to end test
+    // base and prototype tests
     const proto_apis = proto.generate();
     var proto_alloc = bench.allocator(std.testing.allocator);
     _ = try eng.Load(proto_alloc.allocator(), false, proto.exec, proto_apis);
@@ -133,7 +134,7 @@ test {
         .value = proto_alloc_stats.alloc_size,
     };
 
-    // unit test
+    // primitive types tests
     const prim_apis = primitive_types.generate();
     var prim_alloc = bench.allocator(std.testing.allocator);
     _ = try eng.Load(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
@@ -141,6 +142,16 @@ test {
     const prim_alloc_size = pretty.Measure{
         .unit = "b",
         .value = prim_alloc_stats.alloc_size,
+    };
+
+    // callback tests
+    const cbk_apis = callback.generate();
+    var cbk_alloc = bench.allocator(std.testing.allocator);
+    _ = try eng.Load(cbk_alloc.allocator(), false, callback.exec, cbk_apis);
+    const cbk_alloc_stats = cbk_alloc.stats();
+    const cbk_alloc_size = pretty.Measure{
+        .unit = "b",
+        .value = cbk_alloc_stats.alloc_size,
     };
 
     // benchmark table
@@ -154,11 +165,12 @@ test {
         "ALLOCATIONS",
         "HEAP SIZE",
     };
-    const table = try pretty.GenerateTable(2, row_shape, pretty.TableConf{ .margin_left = "  " });
+    const table = try pretty.GenerateTable(3, row_shape, pretty.TableConf{ .margin_left = "  " });
     const title = "Test jsengine ✅";
     var t = table.init(title, header);
     try t.addRow(.{ "Prototype", proto_alloc.alloc_nb, proto_alloc_size });
     try t.addRow(.{ "Primitives", prim_alloc.alloc_nb, prim_alloc_size });
+    try t.addRow(.{ "Callbacks", cbk_alloc.alloc_nb, cbk_alloc_size });
 
     const out = std.io.getStdErr().writer();
     try t.render(out);

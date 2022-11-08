@@ -21,3 +21,5 @@ pub const u64Num = struct {
         return self.value;
     }
 };
+
+pub const Callback = struct {};

@@ -1,6 +1,8 @@
 const std = @import("std");
 const v8 = @import("v8");
 
+const Callback = @import("types.zig").Callback;
+
 // NOTE: all the code in this file should be run comptime.
 
 pub const Type = struct {
@@ -107,6 +109,7 @@ pub const Func = struct {
     args: []Type,
     args_T: type,
     first_optional_arg: ?usize,
+    has_callback: bool,
 
     return_type: ?Type,
 
@@ -147,6 +150,7 @@ pub const Func = struct {
         // args type
         args = args[args_start..];
         var args_types: [args.len]Type = undefined;
+        var has_callback = false;
         for (args) |arg, i| {
             if (arg.arg_type.? == void) {
                 // TODO: there is a bug with void paramater => avoid for now
@@ -161,6 +165,15 @@ pub const Func = struct {
             const arg_name = try itoa(x);
 
             args_types[i] = Type.reflect(arg.arg_type.?, arg_name);
+
+            // ensure function has only 1 callback as argument
+            // TODO: is this necessary?
+            if (args_types[i].T == Callback) {
+                if (has_callback) {
+                    @compileError("reflect error: function has already 1 callback");
+                }
+                has_callback = true;
+            }
         }
 
         // first optional arg
@@ -206,6 +219,7 @@ pub const Func = struct {
             .args = args_slice,
             .args_T = args_T,
             .first_optional_arg = first_optional_arg,
+            .has_callback = has_callback,
 
             .return_type = return_type,
 

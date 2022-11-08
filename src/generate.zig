@@ -9,6 +9,8 @@ const refl = @import("reflect.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
 
+const Callback = @import("types.zig").Callback;
+
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
@@ -16,6 +18,18 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
 }
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
+
+fn callCbk(comptime params: []refl.Type, info: v8.FunctionCallbackInfo, ctx: v8.Context) void {
+    inline for (params) |param, i| {
+        if (param.T == Callback) {
+            const js_val = info.getArg(i);
+            const js_func = js_val.castTo(v8.Function);
+            const args: [0]v8.Value = undefined;
+            _ = js_func.call(ctx, info.getThis(), &args);
+            break;
+        }
+    }
+}
 
 fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, comptime params: []refl.Type, comptime args_T: type, info: v8.FunctionCallbackInfo, isolate: v8.Isolate, ctx: v8.Context) !args_T {
     var args: args_T = undefined;
@@ -215,6 +229,11 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
 
             // return to javascript the result
             nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+
+            // callback
+            if (func.has_callback) {
+                callCbk(func.args, info, ctx);
+            }
         }
     };
     return cbk.method;
