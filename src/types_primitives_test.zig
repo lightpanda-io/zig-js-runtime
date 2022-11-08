@@ -13,11 +13,8 @@ const Primitives = struct {
 
     const Self = @This();
 
-    // TODO: remove when the empty struct Store bug is fixed
-    content: []const u8,
-
     pub fn constructor() Self {
-        return .{ .content = "ok" };
+        return .{};
     }
 
     // List of bytes (string)
