@@ -29,6 +29,65 @@ fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, co
     return args;
 }
 
+fn setNativeObject(
+    alloc: std.mem.Allocator,
+    comptime T_refl: refl.Struct,
+    js_obj: v8.Object,
+    isolate: v8.Isolate,
+) !*T_refl.T {
+    const T = T_refl.T;
+
+    // create and allocate the zig object
+    // we need to put it on the heap
+    // otherwise on the stack it will be delete when the function returns
+    var obj_ptr = try alloc.create(T);
+
+    // if the object is an empty struct (ie. a kind of container)
+    // no need to keep it's reference
+    if (T_refl.size == 0) {
+        return obj_ptr;
+    }
+
+    if (Store.default != null) {
+        try Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment);
+    }
+
+    // bind the zig object to it's javascript counterpart
+    var ext: v8.External = undefined;
+    if (comptime T_refl.is_mem_guarantied()) {
+        ext = v8.External.init(isolate, obj_ptr);
+    } else {
+        var int_ptr = try alloc.create(usize);
+        int_ptr.* = @ptrToInt(obj_ptr);
+        if (Store.default != null) {
+            try Store.default.?.addObject(int_ptr, @sizeOf(usize), @alignOf(usize));
+        }
+        ext = v8.External.init(isolate, int_ptr);
+        try refs.addObject(alloc, int_ptr.*, T_refl.index);
+    }
+    js_obj.setInternalField(0, ext);
+    return obj_ptr;
+}
+
+fn getNativeObject(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct, js_obj: v8.Object) !*T_refl.T {
+    const T = T_refl.T;
+    var obj_ptr: *T = undefined;
+    if (T_refl.size == 0) {
+        // if the object is an empty struct (ie. kind of a container)
+        // there is no reference from it's constructor, we can just re-create it
+        obj_ptr.* = T{};
+    } else {
+        // retrieve the zig object from it's javascript counterpart
+        const ext = js_obj.getInternalField(0).castTo(v8.External);
+        if (comptime T_refl.is_mem_guarantied()) {
+            obj_ptr = @ptrCast(*T, ext.get().?);
+        } else {
+            obj_ptr = try refs.getObject(T, all_T, ext.get().?);
+        }
+    }
+    return obj_ptr;
+}
+
 fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) v8.FunctionCallback {
     const cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
@@ -61,32 +120,10 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
-            // create and allocate the zig object
-            // NOTE: we need to put the zig object on the heap
-            // otherwise on the stack it will be delete when the function returns
-            const T = T_refl.T;
-            var obj_ptr = utils.allocator.create(T) catch unreachable;
+            // set the zig object and call it's constructor
+            const obj_ptr = setNativeObject(utils.allocator, T_refl, info.getThis(), isolate) catch unreachable;
             const args = getArgs(utils.allocator, true, {}, func.?.args, func.?.args_T, info, isolate, ctx) catch unreachable;
-            obj_ptr.* = @call(.{}, T.constructor, args);
-            if (Store.default != null) {
-                Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment) catch unreachable; // TODO: internal exception
-            }
-
-            // bind the zig object to it's javascript counterpart
-            var ext: v8.External = undefined;
-            if (comptime T_refl.is_mem_guarantied()) {
-                ext = v8.External.init(isolate, obj_ptr);
-            } else {
-                var int_ptr = utils.allocator.create(usize) catch unreachable;
-                int_ptr.* = @ptrToInt(obj_ptr);
-                if (Store.default != null) {
-                    Store.default.?.addObject(int_ptr, @sizeOf(usize), @alignOf(usize)) catch unreachable;
-                }
-                ext = v8.External.init(isolate, int_ptr);
-                refs.addObject(utils.allocator, int_ptr.*, T_refl.index) catch unreachable;
-            }
-            const js_obj = info.getThis();
-            js_obj.setInternalField(0, ext);
+            obj_ptr.* = @call(.{}, T_refl.T.constructor, args);
         }
     };
     return cbk.constructor;
@@ -100,18 +137,11 @@ fn generateGetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
 
             // TODO: check func params length
 
-            // retrieve the zig object from it's javascript counterpart
-            const T = T_refl.T;
-            const ext = info.getThis().getInternalField(0).castTo(v8.External);
-            var obj_ptr: *T = undefined;
-            if (comptime T_refl.is_mem_guarantied()) {
-                obj_ptr = @ptrCast(*T, ext.get().?);
-            } else {
-                obj_ptr = refs.getObject(T, all_T, ext.get().?) catch unreachable;
-            }
+            // retrieve the zig object
+            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
 
             // call the corresponding zig object method
-            const getter_func = @field(T, func.name);
+            const getter_func = @field(T_refl.T, func.name);
             const res = @call(.{}, getter_func, .{obj_ptr.*});
 
             // return to javascript the result
@@ -134,18 +164,11 @@ fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             const js_value = v8.Value{ .handle = raw_value.? };
             const zig_value = jsToNative(utils.allocator, func.args[0], js_value, isolate, isolate.getCurrentContext()) catch unreachable; // TODO: throw js exception
 
-            // retrieve the zig object from it's javascript counterpart
-            const T = T_refl.T;
-            const ext = info.getThis().getInternalField(0).castTo(v8.External);
-            var obj_ptr: *T = undefined;
-            if (comptime T_refl.is_mem_guarantied()) {
-                obj_ptr = @ptrCast(*T, ext.get().?);
-            } else {
-                obj_ptr = refs.getObject(T, all_T, ext.get().?) catch unreachable;
-            }
+            // retrieve the zig object
+            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
 
             // call the corresponding zig object method
-            const setter_func = @field(T, func.name);
+            const setter_func = @field(T_refl.T, func.name);
             _ = @call(.{}, setter_func, .{ obj_ptr, zig_value }); // return should be void
 
             // return to javascript the provided value
@@ -182,18 +205,11 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
-            // retrieve the zig object from it's javascript counterpart
-            const T = T_refl.T;
-            const ext = info.getThis().getInternalField(0).castTo(v8.External);
-            var obj_ptr: *T = undefined;
-            if (comptime T_refl.is_mem_guarantied()) {
-                obj_ptr = @ptrCast(*T, ext.get().?);
-            } else {
-                obj_ptr = refs.getObject(T, all_T, ext.get().?) catch unreachable;
-            }
+            // retrieve the zig object
+            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
 
             // call the corresponding zig object method
-            const method_func = @field(T, func.name);
+            const method_func = @field(T_refl.T, func.name);
             const args = getArgs(utils.allocator, false, obj_ptr.*, func.args, func.args_T, info, isolate, ctx) catch unreachable;
             const res = @call(.{}, method_func, args);
 
@@ -249,7 +265,11 @@ fn do(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
             // get the v8 InstanceTemplate attached to the constructor
             // and set 1 internal field to bind the counterpart zig object
             const obj_tpl = cstr_tpl.getInstanceTemplate();
-            obj_tpl.setInternalFieldCount(1);
+            if (T_refl.size != 0) {
+                // if the object is an empty struct (ie. a kind of container)
+                // no need to keep it's reference
+                obj_tpl.setInternalFieldCount(1);
+            }
 
             // get the v8 Prototypetemplate attached to the constructor
             // to set getter/setter/methods
