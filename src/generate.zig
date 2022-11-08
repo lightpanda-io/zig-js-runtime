@@ -9,6 +9,9 @@ const refl = @import("reflect.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
 
+const Callback = @import("types.zig").Callback;
+const CallbackArg = @import("types.zig").CallbackArg;
+
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
@@ -16,6 +19,36 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
 }
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
+
+fn callCbk(
+    comptime func: refl.Func,
+    info: v8.FunctionCallbackInfo,
+    ctx: v8.Context,
+) !void {
+
+    // retrieve callback arguments
+    var args: [func.args_callback_nb]v8.Value = undefined;
+    var x: usize = 0;
+    inline for (func.args) |arg, i| {
+        if (arg.T == CallbackArg) {
+            args[x] = info.getArg(i);
+            x += 1;
+        }
+    }
+
+    // retrieve callback function and call it with arguments
+    inline for (func.args) |arg, i| {
+        if (arg.T == Callback) {
+            const js_val = info.getArg(i);
+            if (!js_val.isFunction()) {
+                return error.JSWrongType;
+            }
+            const js_func = js_val.castTo(v8.Function);
+            _ = js_func.call(ctx, info.getThis(), &args);
+            break;
+        }
+    }
+}
 
 fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, comptime params: []refl.Type, comptime args_T: type, info: v8.FunctionCallbackInfo, isolate: v8.Isolate, ctx: v8.Context) !args_T {
     var args: args_T = undefined;
@@ -215,6 +248,11 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
 
             // return to javascript the result
             nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+
+            // callback
+            if (func.has_callback) {
+                callCbk(func, info, ctx) catch unreachable;
+            }
         }
     };
     return cbk.method;

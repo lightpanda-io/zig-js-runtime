@@ -5,8 +5,11 @@ const refl = @import("reflect.zig");
 const utils = @import("utils.zig");
 const engine = @import("engine.zig");
 const Store = @import("store.zig");
+
 const i64Num = @import("types.zig").i64Num;
 const u64Num = @import("types.zig").u64Num;
+const Callback = @import("types.zig").Callback;
+const CallbackArg = @import("types.zig").CallbackArg;
 
 /// Convert a Native value to a JS value
 /// and set it to the JS result provided.
@@ -151,6 +154,13 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
 
         // bool
         bool, ?bool => return js_val.toBool(isolate),
+
+        // Callback
+        // These values are not supposed to be used by native function,
+        // instead callback is handled specifically after function returns.
+        // So here we just return void values.
+        Callback => return .{},
+        CallbackArg => return .{},
 
         else => return error.JSTypeUnhandled,
     }
