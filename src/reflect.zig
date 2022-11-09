@@ -501,9 +501,14 @@ pub fn do(comptime types: anytype) []Struct {
 
 fn jsName(comptime name: []const u8) []u8 {
     comptime {
-        const first = std.ascii.toLower(name[0]);
-        var js_name = name[0..].*;
-        js_name[0] = first;
+        var js_name: [name.len]u8 = undefined;
+        js_name[0] = std.ascii.toLower(name[0]);
+        for (name) |char, i| {
+            if (i == 0) {
+                continue;
+            }
+            js_name[i] = char;
+        }
         return &js_name;
     }
 }

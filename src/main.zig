@@ -75,7 +75,7 @@ pub fn main() !void {
     defer vm.deinit();
 
     // generate APIs
-    const apis = proto.generate();
+    const apis = comptime proto.generate(); // stage1: we need comptime
 
     // allocators
     var gpa1 = std.heap.GeneralPurposeAllocator(.{}){};
@@ -125,7 +125,7 @@ test {
     defer vm.deinit();
 
     // base and prototype tests
-    const proto_apis = proto.generate();
+    const proto_apis = comptime proto.generate(); // stage1: we need comptime
     var proto_alloc = bench.allocator(std.testing.allocator);
     _ = try eng.Load(proto_alloc.allocator(), false, proto.exec, proto_apis);
     const proto_alloc_stats = proto_alloc.stats();
@@ -135,7 +135,7 @@ test {
     };
 
     // primitive types tests
-    const prim_apis = primitive_types.generate();
+    const prim_apis = comptime primitive_types.generate(); // stage1: we need to comptime
     var prim_alloc = bench.allocator(std.testing.allocator);
     _ = try eng.Load(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
     const prim_alloc_stats = prim_alloc.stats();
@@ -145,7 +145,7 @@ test {
     };
 
     // callback tests
-    const cbk_apis = callback.generate();
+    const cbk_apis = comptime callback.generate(); // stage1: we need comptime
     var cbk_alloc = bench.allocator(std.testing.allocator);
     _ = try eng.Load(cbk_alloc.allocator(), false, callback.exec, cbk_apis);
     const cbk_alloc_stats = cbk_alloc.stats();

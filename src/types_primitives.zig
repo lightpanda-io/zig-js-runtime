@@ -159,8 +159,8 @@ pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v
         // These values are not supposed to be used by native function,
         // instead callback is handled specifically after function returns.
         // So here we just return void values.
-        Callback => return .{},
-        CallbackArg => return .{},
+        Callback => return Callback{}, // stage1: we need type
+        CallbackArg => return CallbackArg{}, // stage1: we need type
 
         else => return error.JSTypeUnhandled,
     }
