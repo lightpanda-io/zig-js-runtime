@@ -84,7 +84,7 @@ pub fn GenerateTable(
             return self;
         }
 
-        pub fn addRow(self: *Self, row: anytype) !void {
+        pub fn addRow(self: *Self, row: shape) !void {
             checkArgs(row);
             if (row.len != columns_nb) {
                 @compileError("row elements should be equal to table columns_nb");
@@ -104,27 +104,25 @@ pub fn GenerateTable(
 
             // calc max size for each column
             // looking for size value in header and each row
-            // TODO: non-ascii is not supported
-            // ie. 1 byte == 1 char (which is the case only for ascii)
             var max_sizes: [columns_nb]usize = undefined;
-            var column_pos: usize = 0;
-            while (column_pos < columns_nb) {
-                const head_col = self.head[column_pos];
-                max_sizes[column_pos] = try utf8Size(head_col);
-                for (self.rows) |row| {
-                    inline for (row) |arg, pos| {
-                        if (pos == column_pos) {
-                            var buf: [conf.max_row_length]u8 = undefined;
-                            const str = try argStr(buf[0..], arg);
-                            const size = try utf8Size(str);
-                            if (size > max_sizes[column_pos]) {
-                                max_sizes[column_pos] = size;
-                            }
-                            break;
-                        }
+            for (self.head) |header, i| {
+                max_sizes[i] = try utf8Size(header);
+            }
+            for (self.rows) |_, row_i| {
+                comptime var col_i: usize = 0;
+                inline while (col_i < columns_nb) {
+                    const arg = self.rows[row_i][col_i];
+                    var buf: [conf.max_row_length]u8 = undefined;
+                    // stage1: we should catch err (or use try)
+                    // but compiler give us:
+                    // 'control flow attempts to use compile-time variable at runtime'
+                    const str = argStr(buf[0..], arg) catch unreachable;
+                    const size = utf8Size(str) catch unreachable;
+                    if (size > max_sizes[col_i]) {
+                        max_sizes[col_i] = size;
                     }
+                    col_i += 1;
                 }
-                column_pos += 1;
             }
 
             // total size for a row
@@ -189,55 +187,59 @@ pub fn GenerateTable(
             row: anytype,
             total: usize,
         ) !void {
-            var column_pos: usize = 0;
+
+            // start of the row
             if (conf.margin_left != null) {
                 try w.print(conf.margin_left.?, .{});
             }
-            while (column_pos < columns_nb) {
-                if (column_pos == 0) {
+
+            comptime var i: usize = 0;
+            inline while (i < row.len) {
+
+                // left delimiter
+                if (i == 0) {
                     try w.print(conf.row_delimiter, .{});
                 }
-                inline for (row) |value, i| {
-                    if (column_pos == i) {
-                        var buf_str: [conf.max_row_length]u8 = undefined;
-                        const str = try argStr(buf_str[0..], value);
 
-                        // as we are on a inline for loop
-                        // we need to copy the str to a new buffer
-                        if (str.len > conf.max_row_length) {
-                            return error.TableValueMaxRowLength;
-                        }
-                        var buf: [conf.max_row_length]u8 = undefined;
-                        std.mem.copy(u8, &buf, str);
+                // string value
+                const value = row[i];
+                var buf_str: [conf.max_row_length]u8 = undefined;
+                // stage1: we should catch err (or use try)
+                // but compiler give us an infinite loop
+                var str = argStr(buf_str[0..], value) catch unreachable;
 
-                        // alignment
-                        const str_len = try utf8Size(str);
-                        const diff = max_sizes[column_pos] - str_len;
-                        switch (@TypeOf(value)) {
-                            // align left strings
-                            []u8, []const u8 => blk: {
-                                try w.print(" {s}", .{buf});
-                                if (diff > 0) {
-                                    try drawRepeat(w, " ", diff);
-                                }
-                                break :blk;
-                            },
-                            // otherwhise align right
-                            else => blk: {
-                                if (diff > 0) {
-                                    try drawRepeat(w, " ", diff);
-                                }
-                                try w.print("{s} ", .{buf});
-                                break :blk;
-                            },
+                // align string and print
+                const str_len = try utf8Size(str);
+                const diff = max_sizes[i] - str_len;
+                switch (@TypeOf(value)) {
+                    // align left strings
+                    []u8, []const u8 => blk: {
+                        try w.print(" {s}", .{str});
+                        if (diff > 0) {
+                            try drawRepeat(w, " ", diff);
                         }
-                        break;
-                    }
+                        break :blk;
+                    },
+                    // otherwhise align right
+                    else => blk: {
+                        if (diff > 0) {
+                            try drawRepeat(w, " ", diff);
+                        }
+                        try w.print("{s} ", .{str});
+                        break :blk;
+                    },
                 }
+
+                // right delimiter
                 try w.print(" {s}", .{conf.row_delimiter});
-                column_pos += 1;
+
+                i += 1;
             }
+
+            // end of the row
             try w.print("\n", .{});
+
+            // draw line delimiter
             if (conf.margin_left != null) {
                 try w.print(conf.margin_left.?, .{});
             }
@@ -348,11 +350,22 @@ fn utf8Size(s: []const u8) !usize {
 }
 
 test "utf8 size" {
-    try std.testing.expect(try utf8Size("test é") == 6); // latin
-    try std.testing.expect(try utf8Size("test 鿍") == 7); // chinese
-    try std.testing.expect(try utf8Size("test ✅") == 7); // small emoji
-    try std.testing.expect(try utf8Size("test 🚀") == 7); // big emoji
-    try std.testing.expect(try utf8Size("🚀 test ✅") == 10); // mulitple utf-8 points
+    // stage 1: we can't but try inside equality
+
+    const res1 = try utf8Size("test é");
+    try std.testing.expect(res1 == 6); // latin
+
+    const res2 = try utf8Size("test 鿍");
+    try std.testing.expect(res2 == 7); // chinese
+
+    const res3 = try utf8Size("test ✅");
+    try std.testing.expect(res3 == 7); // small emoji
+
+    const res4 = try utf8Size("test 🚀");
+    try std.testing.expect(res4 == 7); // big emoji
+
+    const res5 = try utf8Size("🚀 test ✅");
+    try std.testing.expect(res5 == 10); // mulitple utf-8 points
 }
 
 fn drawRepeat(w: anytype, comptime fmt: []const u8, nb: usize) !void {

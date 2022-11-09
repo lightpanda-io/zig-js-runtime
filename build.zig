@@ -72,6 +72,12 @@ fn linkV8(step: *std.build.LibExeObjStep) !void {
     step.addObjectFile(lib_path);
 
     // v8 bindings
-    step.addPackagePath("v8", "deps/zig-v8/v8.zig");
+    // stage2 is using int (0/1) from C bool
+    // while stage1 uses bool
+    if (step.builder.use_stage1 != null and step.builder.use_stage1.?) {
+        step.addPackagePath("v8", "deps/zig-v8/v8_stage1.zig");
+    } else {
+        step.addPackagePath("v8", "deps/zig-v8/v8.zig");
+    }
     step.addIncludePath("deps/zig-v8");
 }
