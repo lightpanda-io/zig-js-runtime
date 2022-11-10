@@ -141,13 +141,7 @@ pub fn GenerateTable(
             // title
             try w.print("\n", .{});
             if (self.title != null) {
-                if (conf.margin_left != null) {
-                    try w.print(conf.margin_left.?, .{});
-                }
-                try w.print(conf.line_edge_delimiter, .{});
-                try drawRepeat(w, conf.line_delimiter, total - 2);
-                try w.print(conf.line_edge_delimiter, .{});
-                try w.print("\n", .{});
+                try drawLine(w, conf, total);
                 if (conf.margin_left != null) {
                     try w.print(conf.margin_left.?, .{});
                 }
@@ -162,13 +156,7 @@ pub fn GenerateTable(
             }
 
             // head
-            if (conf.margin_left != null) {
-                try w.print(conf.margin_left.?, .{});
-            }
-            try w.print(conf.line_edge_delimiter, .{});
-            try drawRepeat(w, conf.line_delimiter, total - 2);
-            try w.print(conf.line_edge_delimiter, .{});
-            try w.print("\n", .{});
+            try drawLine(w, conf, total);
             try drawRow(w, max_sizes, self.head, total);
 
             // rows
@@ -238,15 +226,7 @@ pub fn GenerateTable(
 
             // end of the row
             try w.print("\n", .{});
-
-            // draw line delimiter
-            if (conf.margin_left != null) {
-                try w.print(conf.margin_left.?, .{});
-            }
-            try w.print(conf.line_edge_delimiter, .{});
-            try drawRepeat(w, conf.line_delimiter, total - 2);
-            try w.print(conf.line_edge_delimiter, .{});
-            try w.print("\n", .{});
+            try drawLine(w, conf, total);
         }
     };
 }
@@ -366,6 +346,16 @@ test "utf8 size" {
 
     const res5 = try utf8Size("🚀 test ✅");
     try std.testing.expect(res5 == 10); // mulitple utf-8 points
+}
+
+fn drawLine(w: anytype, comptime conf: TableConf, total: usize) !void {
+    if (conf.margin_left != null) {
+        try w.print(conf.margin_left.?, .{});
+    }
+    try w.print(conf.line_edge_delimiter, .{});
+    try drawRepeat(w, conf.line_delimiter, total - 2);
+    try w.print(conf.line_edge_delimiter, .{});
+    try w.print("\n", .{});
 }
 
 fn drawRepeat(w: anytype, comptime fmt: []const u8, nb: usize) !void {
