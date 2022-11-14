@@ -33,7 +33,12 @@ pub fn generate() []gen.API {
 }
 
 // exec tests
-pub fn exec(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
+pub fn exec(
+    isolate: v8.Isolate,
+    globals: v8.ObjectTemplate,
+    tpls: []gen.ProtoTpl,
+    comptime apis: []gen.API,
+) !eng.ExecRes {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);

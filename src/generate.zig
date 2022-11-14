@@ -62,7 +62,7 @@ fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, co
     return args;
 }
 
-fn setNativeObject(
+pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     js_obj: v8.Object,
@@ -258,14 +258,14 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
     return cbk.method;
 }
 
-const ProtoTpl = struct {
+pub const ProtoTpl = struct {
     tpl: v8.FunctionTemplate,
     index: usize,
 };
 
 const LoadFunc = (fn (v8.Isolate, v8.ObjectTemplate, ?ProtoTpl) anyerror!ProtoTpl);
 
-fn do(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
+fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
     const s = struct {
 
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
@@ -345,6 +345,7 @@ fn do(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
 }
 
 pub const API = struct {
+    T_refl: refl.Struct,
     proto_tpl_index: ?usize = null,
     load: LoadFunc,
 };
@@ -357,11 +358,14 @@ pub fn compile(comptime types: anytype) []API {
 
         var apis: [all_T.len]API = undefined;
         inline for (all_T) |T_refl, i| {
-            const loader = do(T_refl, all_T);
+            const loader = loadFunc(T_refl, all_T);
 
             if (T_refl.proto_index == null) {
                 // no prototype
-                apis[i] = API{ .load = loader };
+                apis[i] = API{
+                    .T_refl = T_refl,
+                    .load = loader,
+                };
                 continue;
             }
 
@@ -378,15 +382,23 @@ pub fn compile(comptime types: anytype) []API {
             if (proto_tpl_index == null) {
                 @compileError("generate error: could not find the prototype in list");
             }
-            apis[i] = API{ .proto_tpl_index = proto_tpl_index, .load = loader };
+            apis[i] = API{
+                .T_refl = T_refl,
+                .proto_tpl_index = proto_tpl_index,
+                .load = loader,
+            };
         }
 
         return &apis;
     }
 }
 
-pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate, comptime apis: []API) !void {
-    var tpls: [apis.len]ProtoTpl = undefined;
+pub fn load(
+    isolate: v8.Isolate,
+    globals: v8.ObjectTemplate,
+    comptime apis: []API,
+    tpls: []ProtoTpl,
+) !void {
     inline for (apis) |api, i| {
         if (api.proto_tpl_index == null) {
             tpls[i] = try api.load(isolate, globals, null);

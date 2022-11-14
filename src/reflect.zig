@@ -241,6 +241,7 @@ pub const Func = struct {
 pub const Struct = struct {
     // struct info
     name: []const u8,
+    js_name: []const u8,
     T: type,
     mem_layout: std.builtin.Type.ContainerLayout,
 
@@ -411,6 +412,7 @@ pub const Struct = struct {
         var s = Struct{
             // struct info
             .name = struct_name,
+            .js_name = jsName(struct_name),
             .T = T,
             .mem_layout = obj.Struct.layout,
 
