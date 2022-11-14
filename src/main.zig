@@ -41,8 +41,18 @@ fn benchWithoutIsolate(
 ) !bench.Result {
     var ba = bench.allocator(alloc);
     const s = struct {
-        fn do(isolate: v8.Isolate, globals: v8.ObjectTemplate) !eng.ExecRes {
-            const t = try bench.call(execFn, .{ isolate, globals }, iter, warmup);
+        fn do(
+            isolate: v8.Isolate,
+            globals: v8.ObjectTemplate,
+            tpls: []gen.ProtoTpl,
+            comptime apis_scoped: []gen.API,
+        ) !eng.ExecRes {
+            const t = try bench.call(
+                execFn,
+                .{ isolate, globals, tpls, apis_scoped },
+                iter,
+                warmup,
+            );
             return eng.ExecRes{ .Time = t };
         }
     };

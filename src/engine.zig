@@ -6,6 +6,7 @@ const utils = @import("utils.zig");
 const refs = @import("refs.zig");
 const Store = @import("store.zig");
 const gen = @import("generate.zig");
+const refl = @import("reflect.zig");
 
 pub const ExecRes = union(enum) {
     OK: void,
@@ -14,7 +15,12 @@ pub const ExecRes = union(enum) {
 
 pub const ExecOK = ExecRes{ .OK = {} };
 
-pub const ExecFunc = (fn (v8.Isolate, v8.ObjectTemplate) anyerror!ExecRes);
+pub const ExecFunc = (fn (
+    v8.Isolate,
+    v8.ObjectTemplate,
+    []gen.ProtoTpl,
+    comptime []gen.API,
+) anyerror!ExecRes);
 
 pub fn Load(
     alloc: std.mem.Allocator,
@@ -78,7 +84,16 @@ pub fn Load(
 
     // APIs
     // ----
-    try gen.load(isolate, globals, apis);
+
+    // NOTE: apis ([]gen.API) and tpls ([]gen.ProtoTpl)
+    // represent the same structs, one at comptime (apis),
+    // the other at runtime (tpls).
+    // The implementation assumes that they are consistents:
+    // - same size
+    // - same order
+
+    var tpls: [apis.len]gen.ProtoTpl = undefined;
+    try gen.load(isolate, globals, apis, &tpls);
 
     var load_start: std.time.Instant = undefined;
     if (builtin.is_test) {
@@ -87,7 +102,7 @@ pub fn Load(
 
     // JS exec
     // -------
-    const res = try execFn(isolate, globals);
+    const res = try execFn(isolate, globals, &tpls, apis);
 
     var exec_end: std.time.Instant = undefined;
     if (builtin.is_test) {
@@ -141,4 +156,21 @@ pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.C
     const origin = v8.String.initUtf8(isolate, name);
     utils.executeString(alloc, isolate, context, script, origin, &res);
     return res;
+}
+
+pub fn createV8Object(
+    alloc: std.mem.Allocator,
+    isolate: v8.Isolate,
+    context: v8.Context,
+    target: v8.Object,
+    tpl: v8.FunctionTemplate,
+    comptime T_refl: refl.Struct,
+) !*T_refl.T {
+    const obj_tpl = tpl.getInstanceTemplate();
+    const obj = obj_tpl.initInstance(context);
+    const key = v8.String.initUtf8(isolate, T_refl.js_name);
+    if (!target.setValue(context, key, obj)) {
+        return error.CreateV8Object;
+    }
+    return try gen.setNativeObject(alloc, T_refl, obj, isolate);
 }
