@@ -9,6 +9,7 @@ pub fn build(b: *std.build.Builder) !void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
     try linkV8(exe);
+    exe.single_threaded = true;
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
