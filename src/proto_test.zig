@@ -4,6 +4,8 @@ const v8 = @import("v8");
 const utils = @import("utils.zig");
 const gen = @import("generate.zig");
 const eng = @import("engine.zig");
+const Loop = @import("loop.zig").SingleThreaded;
+
 const tests = @import("test_utils.zig");
 
 // TODO: handle memory allocation in the data struct itself.
@@ -64,6 +66,7 @@ pub fn generate() []gen.API {
 
 // exec tests
 pub fn exec(
+    loop: *Loop,
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
     _: []gen.ProtoTpl,
@@ -83,27 +86,27 @@ pub fn exec(
         .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
         .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases1.len, cases1);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases1.len, cases1);
 
     // 2. getter
     const cases2 = [_]tests.Case{
         .{ .src = "p.age === 40", .ex = "true" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases2.len, cases2);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases2.len, cases2);
 
     // 3. setter
     const cases3 = [_]tests.Case{
         .{ .src = "p.age = 41;", .ex = "41" },
         .{ .src = "p.age", .ex = "41" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases3.len, cases3);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases3.len, cases3);
 
     // 4. method
     const cases4 = [_]tests.Case{
         .{ .src = "p.fullName() === 'Bouvier';", .ex = "true" },
         .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases4.len, cases4);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases4.len, cases4);
 
     // prototype chain
     const cases_proto = [_]tests.Case{
@@ -116,6 +119,6 @@ pub fn exec(
         .{ .src = "u.role = 2;", .ex = "2" },
         .{ .src = "u.age;", .ex = "43" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases_proto.len, cases_proto);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases_proto.len, cases_proto);
     return eng.ExecOK;
 }

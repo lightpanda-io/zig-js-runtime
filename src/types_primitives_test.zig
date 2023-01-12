@@ -4,6 +4,8 @@ const v8 = @import("v8");
 const utils = @import("utils.zig");
 const gen = @import("generate.zig");
 const eng = @import("engine.zig");
+const Loop = @import("loop.zig").SingleThreaded;
+
 const tests = @import("test_utils.zig");
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
@@ -96,6 +98,7 @@ pub fn generate() []gen.API {
 
 // exec tests
 pub fn exec(
+    loop: *Loop,
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
     _: []gen.ProtoTpl,
@@ -111,7 +114,7 @@ pub fn exec(
     const case_cstr = [_]tests.Case{
         .{ .src = "let p = new Primitives();", .ex = "undefined" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, case_cstr.len, case_cstr);
+    try tests.checkCases(loop, utils.allocator, isolate, context, case_cstr.len, case_cstr);
 
     // JS <> Native translation of primitive types
     const cases = [_]tests.Case{
@@ -177,6 +180,6 @@ pub fn exec(
         .{ .src = "p.checkOptional(null, 3);", .ex = "3" },
         .{ .src = "p.checkNonOptional();", .ex = "TypeError" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases.len, cases);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases.len, cases);
     return eng.ExecOK;
 }

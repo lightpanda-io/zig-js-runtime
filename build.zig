@@ -8,7 +8,9 @@ pub fn build(b: *std.build.Builder) !void {
     const exe = b.addExecutable("jsengine", "src/main.zig");
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    try linkV8(exe);
+    exe.single_threaded = true;
+    try linkV8(exe, mode);
+    addDeps(exe);
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
@@ -30,13 +32,26 @@ pub fn build(b: *std.build.Builder) !void {
     const test_exe = b.addTest("src/main.zig");
     test_exe.setTarget(target);
     test_exe.setBuildMode(mode);
-    try linkV8(test_exe);
+    test_exe.single_threaded = true;
+    try linkV8(test_exe, mode);
+    addDeps(test_exe);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&test_exe.step);
 }
 
-fn linkV8(step: *std.build.LibExeObjStep) !void {
+fn addDeps(step: *std.build.LibExeObjStep) void {
+    // tigerbeetle IO loop
+    // incompatible stage1 and stage2 versions
+    if (step.builder.use_stage1 != null and step.builder.use_stage1.?) {
+        step.addPackagePath("tigerbeetle-io", "deps/tigerbeetle-io/io_stage1.zig");
+    } else {
+        step.addPackagePath("tigerbeetle-io", "deps/tigerbeetle-io/io.zig");
+    }
+}
+
+fn linkV8(step: *std.build.LibExeObjStep, mode: std.builtin.Mode) !void {
+    const mode_str: []const u8 = if (mode == .Debug) "debug" else "release";
     // step.linkLibC(); // TODO: do we need to link libc?
 
     // v8 library
@@ -66,8 +81,8 @@ fn linkV8(step: *std.build.LibExeObjStep) !void {
     }
     const lib_path = try std.fmt.allocPrint(
         step.builder.allocator,
-        "../zig-v8/v8-build/{s}-{s}/release/ninja/obj/zig/libc_v8.a",
-        .{ @tagName(arch), @tagName(os) },
+        "../zig-v8/v8-build/{s}-{s}/{s}/ninja/obj/zig/libc_v8.a",
+        .{ @tagName(arch), @tagName(os), mode_str },
     );
     step.addObjectFile(lib_path);
 

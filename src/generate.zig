@@ -5,12 +5,12 @@ const utils = @import("utils.zig");
 const Store = @import("store.zig");
 const refs = @import("refs.zig");
 const refl = @import("reflect.zig");
+const Loop = @import("loop.zig").SingleThreaded;
+
+const cbk = @import("callback.zig");
 
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
-
-const Callback = @import("types.zig").Callback;
-const CallbackArg = @import("types.zig").CallbackArg;
 
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
@@ -19,48 +19,6 @@ fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) 
 }
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
-
-fn callCbk(
-    comptime func: refl.Func,
-    info: v8.FunctionCallbackInfo,
-    ctx: v8.Context,
-) !void {
-
-    // retrieve callback arguments
-    var args: [func.args_callback_nb]v8.Value = undefined;
-    var x: usize = 0;
-    inline for (func.args) |arg, i| {
-        if (arg.T == CallbackArg) {
-            args[x] = info.getArg(i);
-            x += 1;
-        }
-    }
-
-    // retrieve callback function and call it with arguments
-    inline for (func.args) |arg, i| {
-        if (arg.T == Callback) {
-            const js_val = info.getArg(i);
-            if (!js_val.isFunction()) {
-                return error.JSWrongType;
-            }
-            const js_func = js_val.castTo(v8.Function);
-            _ = js_func.call(ctx, info.getThis(), &args);
-            break;
-        }
-    }
-}
-
-fn getArgs(alloc: std.mem.Allocator, comptime self_null: bool, self: anytype, comptime params: []refl.Type, comptime args_T: type, info: v8.FunctionCallbackInfo, isolate: v8.Isolate, ctx: v8.Context) !args_T {
-    var args: args_T = undefined;
-    if (!self_null) {
-        @field(args, "0") = self;
-    }
-    inline for (params) |param, i| {
-        const value = try jsToNative(alloc, param, info.getArg(i), isolate, ctx);
-        @field(args, param.name.?) = value;
-    }
-    return args;
-}
 
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
@@ -122,8 +80,10 @@ fn getNativeObject(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct, 
 }
 
 fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) v8.FunctionCallback {
-    const cbk = struct {
+    const zig_cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
+
+            // retrieve isolate and context
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
@@ -155,16 +115,28 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
 
             // set the zig object and call it's constructor
             const obj_ptr = setNativeObject(utils.allocator, T_refl, info.getThis(), isolate) catch unreachable;
-            const args = getArgs(utils.allocator, true, {}, func.?.args, func.?.args_T, info, isolate, ctx) catch unreachable;
+            var args: func.?.args_T = undefined;
+            inline for (func.?.args) |arg, i| {
+                const value = jsToNative(
+                    utils.allocator,
+                    arg,
+                    info.getArg(i - func.?.index_offset),
+                    isolate,
+                    ctx,
+                ) catch unreachable;
+                @field(args, arg.name.?) = value;
+            }
             obj_ptr.* = @call(.{}, T_refl.T.constructor, args);
         }
     };
-    return cbk.constructor;
+    return zig_cbk.constructor;
 }
 
 fn generateGetter(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.AccessorNameGetterCallback {
-    const cbk = struct {
+    const zig_cbk = struct {
         fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
+
+            // retrieve isolate
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
 
@@ -181,13 +153,15 @@ fn generateGetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
         }
     };
-    return cbk.getter;
+    return zig_cbk.getter;
 }
 
 fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.AccessorNameSetterCallback {
-    const cbk = struct {
+    const zig_cbk = struct {
         // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
         fn setter(_: ?*const v8.Name, raw_value: ?*const v8.C_Value, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
+
+            // retrieve isolate
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
 
@@ -208,12 +182,14 @@ fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             info.getReturnValue().setValueHandle(raw_value.?);
         }
     };
-    return cbk.setter;
+    return zig_cbk.setter;
 }
 
 fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.FunctionCallback {
-    const cbk = struct {
+    const zig_cbk = struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
+
+            // retrieve isolate and context
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
@@ -225,6 +201,7 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             if (func.first_optional_arg != null) {
                 func_args_required = func.first_optional_arg.?;
             }
+            func_args_required -= func.index_offset;
             const js_params_len = info.length();
             if (js_params_len < func_args_required) {
                 const args = .{
@@ -241,21 +218,60 @@ fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
 
-            // call the corresponding zig object method
+            // prepare call to the corresponding zig object method
             const method_func = @field(T_refl.T, func.name);
-            const args = getArgs(utils.allocator, false, obj_ptr.*, func.args, func.args_T, info, isolate, ctx) catch unreachable;
+
+            // call the func
+            var args: func.args_T = undefined;
+            @field(args, "0") = obj_ptr.*;
+            inline for (func.args) |arg, i| {
+                const value = switch (arg.T) {
+                    *Loop => utils.loop,
+                    cbk.Func => cbk.Func.init(
+                        utils.allocator,
+                        func,
+                        info,
+                        isolate,
+                    ) catch unreachable,
+                    cbk.FuncSync => cbk.FuncSync.init(
+                        utils.allocator,
+                        func,
+                        info,
+                        isolate,
+                    ) catch unreachable,
+                    cbk.Arg => cbk.Arg{}, // stage1: we need type
+                    else => jsToNative(
+                        utils.allocator,
+                        arg,
+                        info.getArg(i - func.index_offset),
+                        isolate,
+                        ctx,
+                    ) catch unreachable,
+                };
+                @field(args, arg.name.?) = value;
+            }
             const res = @call(.{}, method_func, args);
 
             // return to javascript the result
-            nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+            nativeToJS(
+                func.return_type.?,
+                res,
+                info.getReturnValue(),
+                isolate,
+            ) catch unreachable; // TODO: js native exception
 
-            // callback
-            if (func.has_callback) {
-                callCbk(func, info, ctx) catch unreachable;
+            // sync callback
+            // for test purpose, does not have any sense in real case
+            if (comptime func.callback_index != null) {
+                // -1 because of self
+                const js_func_index = func.callback_index.? - func.index_offset - 1;
+                if (func.args[js_func_index].T == cbk.FuncSync) {
+                    args[func.callback_index.? - func.index_offset].call(utils.allocator);
+                }
             }
         }
     };
-    return cbk.method;
+    return zig_cbk.method;
 }
 
 pub const ProtoTpl = struct {

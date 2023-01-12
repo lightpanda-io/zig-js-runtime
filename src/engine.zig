@@ -1,8 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
+
 const v8 = @import("v8");
 
 const utils = @import("utils.zig");
+const Loop = @import("loop.zig").SingleThreaded;
 const refs = @import("refs.zig");
 const Store = @import("store.zig");
 const gen = @import("generate.zig");
@@ -16,6 +18,7 @@ pub const ExecRes = union(enum) {
 pub const ExecOK = ExecRes{ .OK = {} };
 
 pub const ExecFunc = (fn (
+    *Loop,
     v8.Isolate,
     v8.ObjectTemplate,
     []gen.ProtoTpl,
@@ -38,6 +41,11 @@ pub fn Load(
     // refs map
     refs.map = refs.Map{};
     defer refs.map.deinit(utils.allocator);
+
+    // I/O loop
+    var loop = try Loop.init(utils.allocator);
+    utils.loop = &loop;
+    defer loop.deinit();
 
     // store
     if (!alloc_auto_free) {
@@ -102,7 +110,12 @@ pub fn Load(
 
     // JS exec
     // -------
-    const res = try execFn(isolate, globals, &tpls, apis);
+
+    // execute JS function
+    const res = try execFn(utils.loop, isolate, globals, &tpls, apis);
+
+    // Stats
+    // -----
 
     var exec_end: std.time.Instant = undefined;
     if (builtin.is_test) {
@@ -151,10 +164,10 @@ pub const VM = struct {
 
 // Execute Javascript script
 // if no error you need to call deinit on the returned result
-pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, script: []const u8, name: []const u8) utils.ExecuteResult {
+pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, script: []const u8, name: []const u8, try_catch: v8.TryCatch) utils.ExecuteResult {
     var res: utils.ExecuteResult = undefined;
     const origin = v8.String.initUtf8(isolate, name);
-    utils.executeString(alloc, isolate, context, script, origin, &res);
+    utils.executeString(alloc, isolate, context, script, origin, &res, try_catch);
     return res;
 }
 
