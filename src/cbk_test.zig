@@ -4,36 +4,55 @@ const v8 = @import("v8");
 const utils = @import("utils.zig");
 const gen = @import("generate.zig");
 const eng = @import("engine.zig");
+const Loop = @import("loop.zig").SingleThreaded;
+
+const u64Num = @import("types.zig").u64Num;
+const cbk = @import("callback.zig");
+
 const tests = @import("test_utils.zig");
 
+const Console = @import("console.zig").Console;
+
 const Window = struct {
-    // value: u32,
-
-    const Callback = @import("types.zig").Callback;
-    const CallbackArg = @import("types.zig").CallbackArg;
-
-    pub fn constructor(_: u32) Window {
+    pub fn constructor() Window {
         return Window{};
     }
 
-    pub fn cbkSyncWithoutArg(_: Window, _: Callback) void {
-        // TODO: handle async
-        std.time.sleep(1 * std.time.ns_per_ms);
+    pub fn cbkSyncWithoutArg(_: Window, _: cbk.FuncSync) void {
+        tests.sleep(1 * std.time.ns_per_ms);
     }
 
-    pub fn cbkSyncWithArg(_: Window, _: Callback, _: CallbackArg) void {
-        // TODO: handle async
-        std.time.sleep(1 * std.time.ns_per_ms);
+    pub fn cbkSyncWithArg(_: Window, _: cbk.FuncSync, _: cbk.Arg) void {
+        tests.sleep(1 * std.time.ns_per_ms);
+    }
+
+    pub fn cbkAsync(_: Window, loop: *Loop, callback: cbk.Func, milliseconds: u32) void {
+        const n = @intCast(u63, milliseconds);
+        // TODO: check this value can be holded in u63
+        loop.timeout(n * std.time.ns_per_ms, callback);
+    }
+
+    pub fn cbkAsyncWithArg(
+        _: Window,
+        loop: *Loop,
+        callback: cbk.Func,
+        milliseconds: u32,
+        _: cbk.Arg,
+    ) void {
+        const n = @intCast(u63, milliseconds);
+        // TODO: check this value can be holded in u63
+        loop.timeout(n * std.time.ns_per_ms, callback);
     }
 };
 
 // generate API, comptime
 pub fn generate() []gen.API {
-    return gen.compile(.{Window});
+    return gen.compile(.{ Console, Window });
 }
 
 // exec tests
 pub fn exec(
+    loop: *Loop,
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
     tpls: []gen.ProtoTpl,
@@ -45,11 +64,21 @@ pub fn exec(
     context.enter();
     defer context.exit();
 
+    // console
+    _ = try eng.createV8Object(
+        utils.allocator,
+        isolate,
+        context,
+        context.getGlobal(),
+        tpls[0].tpl,
+        apis[0].T_refl,
+    );
+
     // constructor
     const case_cstr = [_]tests.Case{
-        .{ .src = "let window = new Window(0);", .ex = "undefined" },
+        .{ .src = "let window = new Window();", .ex = "undefined" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, case_cstr.len, case_cstr);
+    try tests.checkCases(loop, utils.allocator, isolate, context, case_cstr.len, case_cstr);
 
     // cbkSyncWithoutArg
     const cases_cbk_sync_without_arg = [_]tests.Case{
@@ -73,9 +102,9 @@ pub fn exec(
         },
         .{ .src = "m;", .ex = "2" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases_cbk_sync_without_arg.len, cases_cbk_sync_without_arg);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_sync_without_arg.len, cases_cbk_sync_without_arg);
 
-    // cbkSyncWithoutArg
+    // cbkSyncWithArg
     const cases_cbk_sync_with_arg = [_]tests.Case{
         // traditional anonymous function
         .{
@@ -97,7 +126,63 @@ pub fn exec(
         },
         .{ .src = "y;", .ex = "3" },
     };
-    try tests.checkCases(utils.allocator, isolate, context, cases_cbk_sync_with_arg.len, cases_cbk_sync_with_arg);
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_sync_with_arg.len, cases_cbk_sync_with_arg);
+
+    // cbkAsync
+    const cases_cbk_async = [_]tests.Case{
+        // traditional anonymous function
+        .{
+            .src = 
+            \\let o = 1;
+            \\function f() {
+            \\o++;
+            \\if (o != 2) {throw Error('cases_cbk_async error: o is not equal to 2');}
+            \\};
+            \\window.cbkAsync(f, 300); // 0.3 second
+            ,
+            .ex = "undefined",
+        },
+        // arrow functional
+        .{
+            .src = 
+            \\let p = 1;
+            \\window.cbkAsync(() => {
+            \\p++;
+            \\if (p != 2) {throw Error('cases_cbk_async error: p is not equal to 2');}
+            \\}, 300); // 0.3 second
+            ,
+            .ex = "undefined",
+        },
+    };
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_async.len, cases_cbk_async);
+
+    // cbkAsyncWithArg
+    const cases_cbk_async_with_arg = [_]tests.Case{
+        // traditional anonymous function
+        .{
+            .src = 
+            \\let i = 1;
+            \\function f(a) {
+            \\i = i + a;
+            \\if (i != 3) {throw Error('i is not equal to 3');}
+            \\};
+            \\window.cbkAsyncWithArg(f, 300, 2); // 0.3 second
+            ,
+            .ex = "undefined",
+        },
+        // arrow functional
+        .{
+            .src = 
+            \\let j = 1;
+            \\window.cbkAsyncWithArg((a) => {
+            \\j = j + a;
+            \\if (j != 3) {throw Error('j is not equal to 3');}
+            \\}, 300, 2); // 0.3 second
+            ,
+            .ex = "undefined",
+        },
+    };
+    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_async_with_arg.len, cases_cbk_async_with_arg);
 
     return eng.ExecOK;
 }

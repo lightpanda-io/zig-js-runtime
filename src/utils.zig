@@ -1,9 +1,14 @@
 const std = @import("std");
+
 const v8 = @import("v8");
+
+const Loop = @import("loop.zig").SingleThreaded;
 
 // TODO: using global allocator, not sure it's the best way
 // better allocator ?
 pub var allocator: std.mem.Allocator = undefined;
+
+pub var loop: *Loop = undefined;
 
 pub const ExecuteResult = struct {
     const Self = @This();
@@ -21,11 +26,7 @@ pub const ExecuteResult = struct {
     }
 };
 
-pub fn executeString(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, src: []const u8, src_origin: v8.String, result: *ExecuteResult) void {
-    var try_catch: v8.TryCatch = undefined;
-    try_catch.init(isolate);
-    defer try_catch.deinit();
-
+pub fn executeString(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, src: []const u8, src_origin: v8.String, result: *ExecuteResult, try_catch: v8.TryCatch) void {
     var origin = v8.ScriptOrigin.initDefault(isolate, src_origin.toValue());
 
     const js_src = v8.String.initUtf8(isolate, src);

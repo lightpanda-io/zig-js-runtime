@@ -1,8 +1,10 @@
 const std = @import("std");
+
 const v8 = @import("v8");
 
 const eng = @import("engine.zig");
 const gen = @import("generate.zig");
+const Loop = @import("loop.zig").SingleThreaded;
 
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
@@ -22,7 +24,12 @@ fn benchWithIsolate(
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     var ba = bench.allocator(alloc);
-    const duration = try bench.call(eng.Load, .{ ba.allocator(), true, execFn, apis }, iter, warmup);
+    const duration = try bench.call(
+        eng.Load,
+        .{ ba.allocator(), true, execFn, apis },
+        iter,
+        warmup,
+    );
     const alloc_stats = ba.stats();
     return bench.Result{
         .duration = duration,
@@ -42,6 +49,7 @@ fn benchWithoutIsolate(
     var ba = bench.allocator(alloc);
     const s = struct {
         fn do(
+            loop: *Loop,
             isolate: v8.Isolate,
             globals: v8.ObjectTemplate,
             tpls: []gen.ProtoTpl,
@@ -49,7 +57,7 @@ fn benchWithoutIsolate(
         ) !eng.ExecRes {
             const t = try bench.call(
                 execFn,
-                .{ isolate, globals, tpls, apis_scoped },
+                .{ loop, isolate, globals, tpls, apis_scoped },
                 iter,
                 warmup,
             );
