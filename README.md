@@ -83,8 +83,7 @@ console.log(p.name()); // 'Doe'
 
 ## Credits
 
-- 
-[zig-v8](https://github.com/fubark/zig-v8/) for v8 bindings and build
+- [zig-v8](https://github.com/fubark/zig-v8/) for v8 bindings and build
 - [Tigerbeetle](https://github.com/tigerbeetledb/tigerbeetle/tree/main/src/io) for the IO loop based on _io\_uring_
 - The v8 team for the [v8 Javascript engine](https://v8.dev/)
 - The Zig team for [Zig](https://ziglang.org/)
