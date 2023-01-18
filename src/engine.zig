@@ -10,6 +10,8 @@ const Store = @import("store.zig");
 const gen = @import("generate.zig");
 const refl = @import("reflect.zig");
 
+pub const compile = gen.compile;
+
 pub const ExecRes = union(enum) {
     OK: void,
     Time: u64,
