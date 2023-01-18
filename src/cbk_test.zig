@@ -18,21 +18,21 @@ const Window = struct {
         return Window{};
     }
 
-    pub fn cbkSyncWithoutArg(_: Window, _: cbk.FuncSync) void {
+    pub fn _cbkSyncWithoutArg(_: Window, _: cbk.FuncSync) void {
         tests.sleep(1 * std.time.ns_per_ms);
     }
 
-    pub fn cbkSyncWithArg(_: Window, _: cbk.FuncSync, _: cbk.Arg) void {
+    pub fn _cbkSyncWithArg(_: Window, _: cbk.FuncSync, _: cbk.Arg) void {
         tests.sleep(1 * std.time.ns_per_ms);
     }
 
-    pub fn cbkAsync(_: Window, loop: *Loop, callback: cbk.Func, milliseconds: u32) void {
+    pub fn _cbkAsync(_: Window, loop: *Loop, callback: cbk.Func, milliseconds: u32) void {
         const n = @intCast(u63, milliseconds);
         // TODO: check this value can be holded in u63
         loop.timeout(n * std.time.ns_per_ms, callback);
     }
 
-    pub fn cbkAsyncWithArg(
+    pub fn _cbkAsyncWithArg(
         _: Window,
         loop: *Loop,
         callback: cbk.Func,

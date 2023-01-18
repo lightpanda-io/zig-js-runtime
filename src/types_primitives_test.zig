@@ -20,73 +20,73 @@ const Primitives = struct {
     }
 
     // List of bytes (string)
-    pub fn checkString(_: Self, v: []u8) []u8 {
+    pub fn _checkString(_: Self, v: []u8) []u8 {
         return v;
     }
 
     // Integers signed
 
-    pub fn checkI32(_: Self, v: i32) i32 {
+    pub fn _checkI32(_: Self, v: i32) i32 {
         return v;
     }
 
-    pub fn checkI64(_: Self, v: i64) i64 {
+    pub fn _checkI64(_: Self, v: i64) i64 {
         return v;
     }
 
-    pub fn checkI64Num(_: Self, v: i64Num) i64Num {
+    pub fn _checkI64Num(_: Self, v: i64Num) i64Num {
         return v;
     }
 
     // Integers unsigned
 
-    pub fn checkU32(_: Self, v: u32) u32 {
+    pub fn _checkU32(_: Self, v: u32) u32 {
         return v;
     }
 
-    pub fn checkU64(_: Self, v: u64) u64 {
+    pub fn _checkU64(_: Self, v: u64) u64 {
         return v;
     }
 
-    pub fn checkU64Num(_: Self, v: u64Num) u64Num {
+    pub fn _checkU64Num(_: Self, v: u64Num) u64Num {
         return v;
     }
 
     // Floats
 
-    pub fn checkF32(_: Self, v: f32) f32 {
+    pub fn _checkF32(_: Self, v: f32) f32 {
         return v;
     }
 
-    pub fn checkF64(_: Self, v: f64) f64 {
+    pub fn _checkF64(_: Self, v: f64) f64 {
         return v;
     }
 
     // Bool
-    pub fn checkBool(_: Self, v: bool) bool {
+    pub fn _checkBool(_: Self, v: bool) bool {
         return v;
     }
 
     // Undefined
     // TODO: there is a bug with this function
     // void paramater does not work => avoid for now
-    // pub fn checkUndefined(_: Self, v: void) void {
+    // pub fn _checkUndefined(_: Self, v: void) void {
     //     return v;
     // }
 
     // Null
-    pub fn checkNullEmpty(_: Self, v: ?u32) bool {
+    pub fn _checkNullEmpty(_: Self, v: ?u32) bool {
         return (v == null);
     }
-    pub fn checkNullNotEmpty(_: Self, v: ?u32) bool {
+    pub fn _checkNullNotEmpty(_: Self, v: ?u32) bool {
         return (v != null);
     }
 
     // Optionals
-    pub fn checkOptional(_: Self, _: ?u8, v: u8, _: ?u8, _: ?u8) u8 {
+    pub fn _checkOptional(_: Self, _: ?u8, v: u8, _: ?u8, _: ?u8) u8 {
         return v;
     }
-    pub fn checkNonOptional(_: Self, v: u8) u8 {
+    pub fn _checkNonOptional(_: Self, v: u8) u8 {
         return v;
     }
 };

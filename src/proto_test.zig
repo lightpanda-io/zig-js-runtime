@@ -30,15 +30,15 @@ const Person = struct {
         };
     }
 
-    pub fn getAge(self: Person) u32 {
+    pub fn get_age(self: Person) u32 {
         return self.age;
     }
 
-    pub fn setAge(self: *Person, age: u32) void {
+    pub fn set_age(self: *Person, age: u32) void {
         self.age = age;
     }
 
-    pub fn fullName(self: Person) []u8 {
+    pub fn _fullName(self: Person) []u8 {
         return self.last_name;
     }
 };
@@ -54,7 +54,7 @@ const User = struct {
         return .{ .proto = proto, .role = 1 };
     }
 
-    pub fn getRole(self: User) u8 {
+    pub fn get_role(self: User) u8 {
         return self.role;
     }
 };

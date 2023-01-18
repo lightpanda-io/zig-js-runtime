@@ -79,6 +79,7 @@ const FuncKind = enum {
     method,
 
     fn reflect(comptime T: type, decl: std.builtin.Type.Declaration) FuncKind {
+
         // exclude private declarations
         if (!decl.is_pub) {
             return FuncKind.ignore;
@@ -93,13 +94,21 @@ const FuncKind = enum {
         if (std.mem.eql(u8, "constructor", decl.name)) {
             return FuncKind.constructor;
         }
-        if (std.mem.eql(u8, "get", decl.name[0..3])) {
+        if (std.mem.eql(u8, "_", decl.name[0..1])) {
+            return FuncKind.method;
+        }
+        // exclude declaration less than 6 char
+        // ie. non-special getter/setter names
+        if (decl.name.len < 4) {
+            return FuncKind.ignore;
+        }
+        if (std.mem.eql(u8, "get_", decl.name[0..4])) {
             return FuncKind.getter;
         }
-        if (std.mem.eql(u8, "set", decl.name[0..3])) {
+        if (std.mem.eql(u8, "set_", decl.name[0..4])) {
             return FuncKind.setter;
         }
-        return FuncKind.method;
+        return FuncKind.ignore;
     }
 };
 
@@ -214,9 +223,11 @@ pub const Func = struct {
         // generate javascript name
         var field_name: []const u8 = undefined;
         if (kind == .getter) {
-            field_name = std.mem.trimLeft(u8, name, "get");
+            field_name = std.mem.trimLeft(u8, name, "get_");
         } else if (kind == .setter) {
-            field_name = std.mem.trimLeft(u8, name, "set");
+            field_name = std.mem.trimLeft(u8, name, "set_");
+        } else if (kind == .method) {
+            field_name = std.mem.trimLeft(u8, name, "_");
         } else {
             field_name = name;
         }

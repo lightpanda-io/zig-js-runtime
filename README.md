@@ -41,6 +41,9 @@ const Person = struct {
     last_name: []u8,
     age: u32,
 
+	// Constructor
+	// if there is no 'constructor' method defined
+	// 'new Person()' will be prohibited from JS
     pub fn constructor(first_name: []u8, last_name: []u8, age: u32) Person {
         return .{
             .first_name = first_name,
@@ -49,15 +52,21 @@ const Person = struct {
         };
     }
 
-    pub fn getAge(self: Person) u32 {
+    // Getter
+	// must be 'get_<field_name>'
+    pub fn get_age(self: Person) u32 {
         return self.age;
     }
 
-    pub fn setAge(self: *Person, age: u32) void {
+	// Setter
+	// must be 'set_<field_name>'
+    pub fn set_age(self: *Person, age: u32) void {
         self.age = age;
     }
 
-    pub fn name(self: Person) []u8 {
+	// Method
+	// must be with '_<method_name>'
+    pub fn _name(self: Person) []u8 {
         return self.last_name;
     }
 };
