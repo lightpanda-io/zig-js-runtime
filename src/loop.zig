@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const v8 = @import("v8");
-const IO = @import("tigerbeetle-io").IO;
+pub const IO = @import("tigerbeetle-io").IO;
 
 const JSCallback = @import("callback.zig").Func;
 
