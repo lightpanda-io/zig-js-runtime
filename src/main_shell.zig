@@ -4,7 +4,7 @@ const eng = @import("engine.zig");
 
 const shell = @import("shell.zig").shell;
 
-const callback = @import("cbk_test.zig");
+const callback = @import("tests/cbk_test.zig");
 
 pub fn main() !void {
 

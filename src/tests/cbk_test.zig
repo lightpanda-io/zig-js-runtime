@@ -1,17 +1,17 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("utils.zig");
-const gen = @import("generate.zig");
-const eng = @import("engine.zig");
-const Loop = @import("loop.zig").SingleThreaded;
+const utils = @import("../utils.zig");
+const gen = @import("../generate.zig");
+const eng = @import("../engine.zig");
+const Loop = @import("../loop.zig").SingleThreaded;
 
-const u64Num = @import("types.zig").u64Num;
-const cbk = @import("callback.zig");
+const u64Num = @import("../types.zig").u64Num;
+const cbk = @import("../callback.zig");
 
 const tests = @import("test_utils.zig");
 
-const Console = @import("console.zig").Console;
+const Console = @import("../console.zig").Console;
 
 const Window = struct {
     pub fn constructor() Window {

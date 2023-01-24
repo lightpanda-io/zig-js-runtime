@@ -1,17 +1,17 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("utils.zig");
-const gen = @import("generate.zig");
-const eng = @import("engine.zig");
-const Loop = @import("loop.zig").SingleThreaded;
+const utils = @import("../utils.zig");
+const gen = @import("../generate.zig");
+const eng = @import("../engine.zig");
+const Loop = @import("../loop.zig").SingleThreaded;
 
 const tests = @import("test_utils.zig");
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
 const Primitives = struct {
-    const i64Num = @import("types.zig").i64Num;
-    const u64Num = @import("types.zig").u64Num;
+    const i64Num = @import("../types.zig").i64Num;
+    const u64Num = @import("../types.zig").u64Num;
 
     const Self = @This();
 

@@ -63,7 +63,7 @@ pub fn build(b: *std.build.Builder) !void {
     // ----
 
     // compile
-    const test_exe = b.addTest("src/tests.zig");
+    const test_exe = b.addTest("src/run_tests.zig");
     try common(test_exe, mode, target);
     test_exe.single_threaded = true;
 

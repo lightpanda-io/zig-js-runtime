@@ -5,9 +5,9 @@ const eng = @import("engine.zig");
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
 
-const proto = @import("proto_test.zig");
-const primitive_types = @import("types_primitives_test.zig");
-const callback = @import("cbk_test.zig");
+const proto = @import("tests/proto_test.zig");
+const primitive_types = @import("tests/types_primitives_test.zig");
+const callback = @import("tests/cbk_test.zig");
 
 test {
 

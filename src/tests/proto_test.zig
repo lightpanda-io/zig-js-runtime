@@ -1,10 +1,10 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("utils.zig");
-const gen = @import("generate.zig");
-const eng = @import("engine.zig");
-const Loop = @import("loop.zig").SingleThreaded;
+const utils = @import("../utils.zig");
+const gen = @import("../generate.zig");
+const eng = @import("../engine.zig");
+const Loop = @import("../loop.zig").SingleThreaded;
 
 const tests = @import("test_utils.zig");
 

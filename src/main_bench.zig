@@ -9,7 +9,7 @@ const Loop = @import("loop.zig").SingleThreaded;
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
 
-const proto = @import("proto_test.zig");
+const proto = @import("tests/proto_test.zig");
 
 const kb = 1024;
 const us = std.time.ns_per_us;

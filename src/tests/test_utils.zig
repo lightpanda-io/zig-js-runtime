@@ -1,9 +1,9 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const engine = @import("engine.zig");
-const utils = @import("utils.zig");
-const Loop = @import("loop.zig").SingleThreaded;
+const engine = @import("../engine.zig");
+const utils = @import("../utils.zig");
+const Loop = @import("../loop.zig").SingleThreaded;
 
 fn isTypeError(expected: []const u8, msg: []const u8) bool {
     if (!std.mem.eql(u8, expected, "TypeError")) {
