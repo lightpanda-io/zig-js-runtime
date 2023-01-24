@@ -167,7 +167,14 @@ pub const VM = struct {
 
 // Execute Javascript script
 // if no error you need to call deinit on the returned result
-pub fn jsExecScript(alloc: std.mem.Allocator, isolate: v8.Isolate, context: v8.Context, script: []const u8, name: []const u8, try_catch: v8.TryCatch) utils.ExecuteResult {
+pub fn jsExecScript(
+    alloc: std.mem.Allocator,
+    isolate: v8.Isolate,
+    context: v8.Context,
+    script: []const u8,
+    name: []const u8,
+    try_catch: v8.TryCatch,
+) utils.ExecuteResult {
     var res: utils.ExecuteResult = undefined;
     const origin = v8.String.initUtf8(isolate, name);
     utils.executeString(alloc, isolate, context, script, origin, &res, try_catch);

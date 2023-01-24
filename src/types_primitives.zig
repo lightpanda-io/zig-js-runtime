@@ -11,7 +11,12 @@ const u64Num = @import("types.zig").u64Num;
 
 /// Convert a Native value to a JS value
 /// and set it to the JS result provided.
-pub fn nativeToJS(comptime zig_T: refl.Type, zig_val: zig_T.T, js_res: v8.ReturnValue, isolate: v8.Isolate) !void {
+pub fn nativeToJS(
+    comptime zig_T: refl.Type,
+    zig_val: zig_T.T,
+    js_res: v8.ReturnValue,
+    isolate: v8.Isolate,
+) !void {
 
     // null
     if (zig_T.optional_T != null and zig_val == null) {
@@ -53,7 +58,13 @@ pub fn nativeToJS(comptime zig_T: refl.Type, zig_val: zig_T.T, js_res: v8.Return
 
 /// Convert a JS value to a Native value
 /// allocator is only used if the JS value is a string.
-pub fn jsToNative(alloc: std.mem.Allocator, comptime zig_T: refl.Type, js_val: v8.Value, isolate: v8.Isolate, ctx: v8.Context) !zig_T.T {
+pub fn jsToNative(
+    alloc: std.mem.Allocator,
+    comptime zig_T: refl.Type,
+    js_val: v8.Value,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) !zig_T.T {
 
     // JS Undefined value for an Native void
     // not sure if this case make any sense (a void argument)

@@ -131,7 +131,12 @@ pub const Func = struct {
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 
-    fn reflect(comptime T: type, comptime kind: FuncKind, comptime name: []const u8, comptime struct_T: ?type) Func {
+    fn reflect(
+        comptime T: type,
+        comptime kind: FuncKind,
+        comptime name: []const u8,
+        comptime struct_T: ?type,
+    ) Func {
 
         // T should be a func
         const func = @typeInfo(T);

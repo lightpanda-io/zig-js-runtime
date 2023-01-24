@@ -60,8 +60,13 @@ pub fn setNativeObject(
     return obj_ptr;
 }
 
-fn getNativeObject(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct, js_obj: v8.Object) !*T_refl.T {
+fn getNativeObject(
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    js_obj: v8.Object,
+) !*T_refl.T {
     const T = T_refl.T;
+
     var obj_ptr: *T = undefined;
     if (T_refl.size == 0) {
         // if the object is an empty struct (ie. kind of a container)
@@ -79,7 +84,10 @@ fn getNativeObject(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct, 
     return obj_ptr;
 }
 
-fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) v8.FunctionCallback {
+fn generateConstructor(
+    comptime T_refl: refl.Struct,
+    comptime func: ?refl.Func,
+) v8.FunctionCallback {
     const zig_cbk = struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
@@ -114,7 +122,12 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
             }
 
             // set the zig object and call it's constructor
-            const obj_ptr = setNativeObject(utils.allocator, T_refl, info.getThis(), isolate) catch unreachable;
+            const obj_ptr = setNativeObject(
+                utils.allocator,
+                T_refl,
+                info.getThis(),
+                isolate,
+            ) catch unreachable;
             var args: func.?.args_T = undefined;
             inline for (func.?.args) |arg, i| {
                 const value = jsToNative(
@@ -132,9 +145,16 @@ fn generateConstructor(comptime T_refl: refl.Struct, comptime func: ?refl.Func) 
     return zig_cbk.constructor;
 }
 
-fn generateGetter(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.AccessorNameGetterCallback {
+fn generateGetter(
+    comptime T_refl: refl.Struct,
+    comptime func: refl.Func,
+    comptime all_T: []refl.Struct,
+) v8.AccessorNameGetterCallback {
     const zig_cbk = struct {
-        fn getter(_: ?*const v8.Name, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
+        fn getter(
+            _: ?*const v8.Name,
+            raw_info: ?*const v8.C_PropertyCallbackInfo,
+        ) callconv(.C) void {
 
             // retrieve isolate
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
@@ -150,16 +170,29 @@ fn generateGetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
             const res = @call(.{}, getter_func, .{obj_ptr.*});
 
             // return to javascript the result
-            nativeToJS(func.return_type.?, res, info.getReturnValue(), isolate) catch unreachable; // TODO: js native exception
+            nativeToJS(
+                func.return_type.?,
+                res,
+                info.getReturnValue(),
+                isolate,
+            ) catch unreachable; // TODO: js native exception
         }
     };
     return zig_cbk.getter;
 }
 
-fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.AccessorNameSetterCallback {
+fn generateSetter(
+    comptime T_refl: refl.Struct,
+    comptime func: refl.Func,
+    comptime all_T: []refl.Struct,
+) v8.AccessorNameSetterCallback {
     const zig_cbk = struct {
         // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
-        fn setter(_: ?*const v8.Name, raw_value: ?*const v8.C_Value, raw_info: ?*const v8.C_PropertyCallbackInfo) callconv(.C) void {
+        fn setter(
+            _: ?*const v8.Name,
+            raw_value: ?*const v8.C_Value,
+            raw_info: ?*const v8.C_PropertyCallbackInfo,
+        ) callconv(.C) void {
 
             // retrieve isolate
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
@@ -169,7 +202,13 @@ fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
 
             // get the value set in javascript
             const js_value = v8.Value{ .handle = raw_value.? };
-            const zig_value = jsToNative(utils.allocator, func.args[0], js_value, isolate, isolate.getCurrentContext()) catch unreachable; // TODO: throw js exception
+            const zig_value = jsToNative(
+                utils.allocator,
+                func.args[0],
+                js_value,
+                isolate,
+                isolate.getCurrentContext(),
+            ) catch unreachable; // TODO: throw js exception
 
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
@@ -185,7 +224,11 @@ fn generateSetter(comptime T_refl: refl.Struct, comptime func: refl.Func, compti
     return zig_cbk.setter;
 }
 
-fn generateMethod(comptime T_refl: refl.Struct, comptime func: refl.Func, comptime all_T: []refl.Struct) v8.FunctionCallback {
+fn generateMethod(
+    comptime T_refl: refl.Struct,
+    comptime func: refl.Func,
+    comptime all_T: []refl.Struct,
+) v8.FunctionCallback {
     const zig_cbk = struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
@@ -287,7 +330,12 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
 
-        pub fn load(isolate: v8.Isolate, globals: v8.ObjectTemplate, proto_tpl: ?ProtoTpl) !ProtoTpl {
+        pub fn load(
+            isolate: v8.Isolate,
+            globals: v8.ObjectTemplate,
+            proto_tpl: ?ProtoTpl,
+        ) !ProtoTpl {
+
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
             // and attach it to the global namespace
@@ -366,6 +414,9 @@ pub const API = struct {
     load: LoadFunc,
 };
 
+// compile native types to native APIs
+// which can be later loaded in JS.
+// This function is called at comptime.
 pub fn compile(comptime types: anytype) []API {
     comptime {
 
@@ -409,6 +460,8 @@ pub fn compile(comptime types: anytype) []API {
     }
 }
 
+// load native APIs into a JS isolate
+// This function is called at runtime.
 pub fn load(
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
