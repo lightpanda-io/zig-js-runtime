@@ -12,6 +12,9 @@ const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
 
+// Utils functions
+// ---------------
+
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
@@ -83,6 +86,9 @@ fn getNativeObject(
     }
     return obj_ptr;
 }
+
+// JS functions callbacks
+// ----------------------
 
 fn generateConstructor(
     comptime T_refl: refl.Struct,
@@ -317,6 +323,29 @@ fn generateMethod(
     return zig_cbk.method;
 }
 
+// Compile and loading mechanism
+// -----------------------------
+
+// NOTE:
+// The mechanism is based on 2 steps
+// 1. The compile step at comptime will produce a list of APIs
+// At this step we:
+// - reflect the native struct to obtain type information (T_refl)
+// - generate a loading function containing corresponding JS callbacks functions
+// (constructor, getters, setters, methods)
+// 2. The loading step at runtime will product a list of ProtoTpls
+// At this step we call the loading function into the runtime v8 (Isolate and globals),
+// generating corresponding V8 functions and objects templates.
+
+// API holds the reflected type of a native struct and
+// a function to load the native struct in JS.
+pub const API = struct {
+    T_refl: refl.Struct,
+    load: LoadFunc,
+};
+
+// ProtoTpl holds the v8.FunctionTemplate to create a new object in JS
+// and for convenience the index of this ProtoTpl in the slice tpls []ProtoTpl
 pub const ProtoTpl = struct {
     tpl: v8.FunctionTemplate,
     index: usize,
@@ -408,13 +437,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
     return s.load;
 }
 
-pub const API = struct {
-    T_refl: refl.Struct,
-    proto_tpl_index: ?usize = null,
-    load: LoadFunc,
-};
-
-// compile native types to native APIs
+// Compile native types to native APIs
 // which can be later loaded in JS.
 // This function is called at comptime.
 pub fn compile(comptime types: anytype) []API {
@@ -423,45 +446,24 @@ pub fn compile(comptime types: anytype) []API {
         // call types reflection
         const all_T = refl.do(types);
 
+        // generate APIs
         var apis: [all_T.len]API = undefined;
         inline for (all_T) |T_refl, i| {
             const loader = loadFunc(T_refl, all_T);
-
-            if (T_refl.proto_index == null) {
-                // no prototype
-                apis[i] = API{
-                    .T_refl = T_refl,
-                    .load = loader,
-                };
-                continue;
-            }
-
-            // set the index of the prototype
-            var proto_tpl_index: ?usize = null;
-            inline for (all_T) |proto_refl, proto_i| {
-                if (proto_refl.index != T_refl.proto_index.?) {
-                    // not the right proto
-                    continue;
-                }
-                proto_tpl_index = proto_i;
-                break;
-            }
-            if (proto_tpl_index == null) {
-                @compileError("generate error: could not find the prototype in list");
-            }
-            apis[i] = API{
-                .T_refl = T_refl,
-                .proto_tpl_index = proto_tpl_index,
-                .load = loader,
-            };
+            apis[i] = API{ .T_refl = T_refl, .load = loader };
         }
 
         return &apis;
     }
 }
 
-// load native APIs into a JS isolate
+// Load native APIs into a JS isolate
 // This function is called at runtime.
+// The list of API (apis) and ProtoTpl (tpls) holds corresponding data,
+// ie. apis[0] will generate tpls[0].
+// This is assumed by the rest of the loading mechanism.
+// Therefore the content of thoses lists (and their order) should not be altered
+// afterwards.
 pub fn load(
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
@@ -469,10 +471,10 @@ pub fn load(
     tpls: []ProtoTpl,
 ) !void {
     inline for (apis) |api, i| {
-        if (api.proto_tpl_index == null) {
+        if (api.T_refl.proto_index == null) {
             tpls[i] = try api.load(isolate, globals, null);
         } else {
-            const proto_tpl = tpls[api.proto_tpl_index.?]; // safe because apis are ordered from parent to child
+            const proto_tpl = tpls[api.T_refl.proto_index.?]; // safe because apis are ordered from parent to child
             tpls[i] = try api.load(isolate, globals, proto_tpl);
         }
     }

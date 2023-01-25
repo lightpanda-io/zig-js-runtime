@@ -299,7 +299,7 @@ pub const Struct = struct {
         }
     }
 
-    fn lessThan(_: void, comptime a: Struct, comptime b: Struct) bool {
+    fn lessThan(_: void, comptime a: *Struct, comptime b: *Struct) bool {
         // priority: first proto_index (asc) and then index (asc)
         if (a.proto_index == null and b.proto_index == null) {
             return a.index < b.index;
@@ -465,6 +465,32 @@ pub const Struct = struct {
     }
 };
 
+fn lookupPrototype(comptime all_ptr: []*Struct) void {
+    inline for (all_ptr) |s, index| {
+        s.index = index;
+        if (s.proto_name == null) {
+            // does not have a prototype
+            continue;
+        }
+        // loop over all structs to find proto
+        inline for (all_ptr) |proto, proto_index| {
+            if (!std.mem.eql(u8, proto.name, s.proto_name.?)) {
+                // name is not equal to prototype name
+                continue;
+            }
+            // is proto
+            if (s.mem_layout != proto.mem_layout) {
+                @compileError("reflect error: struct and proto struct should have the same memory layout");
+            }
+            s.proto_index = proto_index;
+            break;
+        }
+        if (s.proto_index == null) {
+            @compileError("reflect error: could not find the prototype in list");
+        }
+    }
+}
+
 pub fn do(comptime types: anytype) []Struct {
     comptime {
 
@@ -489,28 +515,16 @@ pub fn do(comptime types: anytype) []Struct {
         }
 
         // look for prototype chain
-        inline for (all_ptr) |s| {
-            if (s.proto_name == null) {
-                // does not have a prototype
-                continue;
-            }
-            // loop over all structs to find proto
-            inline for (all_ptr) |proto| {
-                if (!std.mem.eql(u8, proto.name, s.proto_name.?)) {
-                    // name is not equal to prototype name
-                    continue;
-                }
-                // is proto
-                if (s.mem_layout != proto.mem_layout) {
-                    @compileError("reflect error: struct and proto struct should have the same memory layout");
-                }
-                s.proto_index = proto.index;
-                break;
-            }
-            if (s.proto_index == null) {
-                @compileError("reflect error: could not find the prototype in list");
-            }
-        }
+        // first pass to allow sort
+        lookupPrototype(&all_ptr);
+
+        // sort to follow prototype chain order
+        // ie. parents will be listed before children
+        std.sort.sort(*Struct, &all_ptr, {}, Struct.lessThan);
+
+        // look for prototype chain
+        // second pass, as sort as modified the index reference
+        lookupPrototype(&all_ptr);
 
         // we do not return pointers: this function is comptime
         // and we don't want to return comptime pointers to runtime execution
@@ -519,10 +533,6 @@ pub fn do(comptime types: anytype) []Struct {
             all[i] = s.*;
         }
         const all_slice = &all;
-
-        // sort to follow prototype chain order
-        // ie. parents will be listed before children
-        std.sort.sort(Struct, all_slice, {}, Struct.lessThan);
 
         return all_slice;
     }
