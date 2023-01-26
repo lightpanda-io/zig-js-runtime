@@ -123,7 +123,7 @@ pub const Func = struct {
 
     index_offset: usize,
 
-    return_type: ?Type,
+    return_type: Type,
 
     // async
     callback_index: ?usize,
@@ -219,12 +219,6 @@ pub const Func = struct {
             first_optional_arg = i;
         }
 
-        // return type
-        var return_type: ?Type = null;
-        if (func.Fn.return_type != null) {
-            return_type = Type.reflect(func.Fn.return_type.?, null);
-        }
-
         // generate javascript name
         var field_name: []const u8 = undefined;
         if (kind == .getter) {
@@ -257,7 +251,7 @@ pub const Func = struct {
 
             .index_offset = index_offset,
 
-            .return_type = return_type,
+            .return_type = Type.reflect(func.Fn.return_type.?, null),
 
             // func callback
             .callback_index = callback_index,

@@ -177,7 +177,7 @@ fn generateGetter(
 
             // return to javascript the result
             nativeToJS(
-                func.return_type.?,
+                func.return_type,
                 res,
                 info.getReturnValue(),
                 isolate,
@@ -303,7 +303,7 @@ fn generateMethod(
 
             // return to javascript the result
             nativeToJS(
-                func.return_type.?,
+                func.return_type,
                 res,
                 info.getReturnValue(),
                 isolate,
