@@ -4,26 +4,98 @@ const v8 = @import("v8");
 const Loop = @import("loop.zig").SingleThreaded;
 const cbk = @import("callback.zig");
 
+const i64Num = @import("types.zig").i64Num;
+const u64Num = @import("types.zig").u64Num;
+
 // NOTE: all the code in this file should be run comptime.
+
+const builtin_types = [_]type{
+    void,
+    []u8,
+    []const u8,
+    f32,
+    f64,
+    i8,
+    i16,
+    i32,
+    i64,
+    i64Num,
+    u8,
+    u16,
+    u32,
+    u64,
+    u64Num,
+    bool,
+
+    // internal types
+    *Loop,
+    cbk.Func,
+    cbk.FuncSync,
+    cbk.Arg,
+};
 
 pub const Type = struct {
     T: type,
     name: ?[]u8, // only for function parameters
 
+    // is this type a builtin or a custom struct?
+    // those fields are mutually exclusing
+    // ie. if is_bultin => T_refl_index is not null
+    // and if T_refl_index == null => is_builtin is true
+    is_builtin: bool,
+    T_refl_index: ?usize = null,
+
     optional_T: ?type, // child of a type which is optional
 
+    fn lookup(comptime self: *Type, comptime structs: []Struct) void {
+        if (self.is_builtin) {
+            return;
+        }
+        var T = self.T;
+        if (self.optional_T) |optional_T| {
+            T = optional_T;
+        }
+        var it = std.mem.splitBackwards(u8, @typeName(T), ".");
+        const T_name = it.first();
+        inline for (structs) |s| {
+            if (std.mem.eql(u8, s.name, T_name)) {
+                self.T_refl_index = s.index;
+            }
+        }
+        if (!self.is_builtin and self.T_refl_index == null) {
+            @compileError("reflect error: Type should be either builtin or defined");
+        }
+    }
+
     fn reflect(comptime T: type, comptime name: ?[]u8) Type {
+        const info = @typeInfo(T);
 
         // optional T
         var optional_T: ?type = null;
-        const info = @typeInfo(T);
         if (info == .Optional) {
             optional_T = info.Optional.child;
+        }
+
+        // builtin
+        var is_builtin = false;
+        for (builtin_types) |t| {
+            if (info != .Optional) {
+                if (t == T) {
+                    is_builtin = true;
+                    break;
+                }
+            } else {
+                if (t == info.Optional.child) {
+                    is_builtin = true;
+                    break;
+                }
+            }
         }
 
         return Type{
             .T = T,
             .name = name,
+            .is_builtin = is_builtin,
             .optional_T = optional_T,
         };
     }
@@ -130,6 +202,13 @@ pub const Func = struct {
     args_callback_nb: usize,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
+
+    fn lookupTypes(comptime self: *Func, comptime structs: []Struct) void {
+        inline for (self.args) |*arg| {
+            arg.lookup(structs);
+        }
+        self.return_type.lookup(structs);
+    }
 
     fn reflect(
         comptime T: type,
@@ -290,6 +369,19 @@ pub const Struct = struct {
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
             return self.mem_layout != .Auto;
+        }
+    }
+
+    fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) void {
+        // TODO: necessary also for constructor?
+        inline for (self.getters) |*getter| {
+            getter.lookupTypes(structs);
+        }
+        inline for (self.setters) |*setter| {
+            setter.lookupTypes(structs);
+        }
+        inline for (self.methods) |*method| {
+            method.lookupTypes(structs);
         }
     }
 
@@ -517,6 +609,9 @@ pub fn do(comptime types: anytype) []Struct {
         // second pass, as sort as modified the index reference
         lookupPrototype(&all);
 
+        // look Types for corresponding Struct
+        inline for (all) |*s| {
+            s.lookupTypes(&all);
         }
 
         return &all;
