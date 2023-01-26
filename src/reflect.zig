@@ -55,10 +55,8 @@ pub const Type = struct {
         if (self.optional_T) |optional_T| {
             T = optional_T;
         }
-        var it = std.mem.splitBackwards(u8, @typeName(T), ".");
-        const T_name = it.first();
         inline for (structs) |s| {
-            if (std.mem.eql(u8, s.name, T_name)) {
+            if (s.T == T) {
                 self.T_refl_index = s.index;
             }
         }
@@ -353,7 +351,7 @@ pub const Struct = struct {
 
     // proto info
     proto_index: ?usize = null,
-    proto_name: ?[]const u8,
+    proto_T: ?type,
 
     // struct functions
     constructor: ?Func,
@@ -414,17 +412,22 @@ pub const Struct = struct {
         }
 
         // struct name
-        var it = std.mem.splitBackwards(u8, @typeName(T), ".");
-        const struct_name = it.first();
+        const struct_name = shortName(T);
 
         // protoype
-        var proto_name: ?[]const u8 = null;
+        var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
-            const T_proto = @field(T, "prototype");
+            var T_proto = @field(T, "prototype");
             // check struct has a 'proto' field
             if (!@hasField(T, "proto")) {
                 @compileError("reflect error: struct declares a 'prototype' but does not have a 'proto' field");
             }
+            // check the 'protoype' declaration is a pointer
+            const T_proto_info = @typeInfo(T_proto);
+            if (T_proto_info != .Pointer) {
+                @compileError("reflect error: struct 'prototype' declared must be a Pointer");
+            }
+            T_proto = T_proto_info.Pointer.child;
             // check the 'proto' field
             inline for (obj.Struct.fields) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
@@ -434,9 +437,9 @@ pub const Struct = struct {
                 if (@typeInfo(field.field_type) == .Pointer) {
                     @compileError("reflect error: struct 'proto' field should not be a Pointer");
                 }
-                // check the 'proto' field type
-                // is the same than the 'prototype' declaration
-                if (*field.field_type != T_proto) {
+                // check the 'proto' field is the same type
+                // than the concrete type of the 'prototype' declaration
+                if (field.field_type != T_proto) {
                     @compileError("reflect error: struct 'proto' field type is different than 'prototype' declaration");
                 }
                 // for layout where fields memory order is guarantied,
@@ -446,8 +449,7 @@ pub const Struct = struct {
                 }
                 break;
             }
-            it = std.mem.splitBackwards(u8, @typeName(T_proto), ".");
-            proto_name = it.first();
+            proto_T = T_proto;
         }
 
         // retrieve the number of each function kind
@@ -536,7 +538,7 @@ pub const Struct = struct {
             .index = index,
 
             // proto info
-            .proto_name = proto_name,
+            .proto_T = proto_T,
 
             // struct functions
             .constructor = constructor,
@@ -553,14 +555,14 @@ pub const Struct = struct {
 fn lookupPrototype(comptime all: []Struct) void {
     inline for (all) |*s, index| {
         s.index = index;
-        if (s.proto_name == null) {
+        if (s.proto_T == null) {
             // does not have a prototype
             continue;
         }
         // loop over all structs to find proto
         inline for (all) |proto, proto_index| {
-            if (!std.mem.eql(u8, proto.name, s.proto_name.?)) {
-                // name is not equal to prototype name
+            if (proto.T != s.proto_T.?) {
+                // type is not equal to prototype type
                 continue;
             }
             // is proto
@@ -633,6 +635,11 @@ fn jsName(comptime name: []const u8) []u8 {
         }
         return &js_name;
     }
+}
+
+fn shortName(comptime T: type) []const u8 {
+    var it = std.mem.splitBackwards(u8, @typeName(T), ".");
+    return it.first();
 }
 
 fn itoa(comptime i: u8) ![]u8 {
