@@ -47,6 +47,18 @@ pub fn addObject(self: *Store, ptr: anytype, size: usize, alignment: u29) !void 
     try self.objects.append(item);
 }
 
+pub fn containsObject(self: Store, ptr: anytype) bool {
+    // TODO: find a more optimized implementation
+    // maybe using another data structure (map)?
+    const int_ptr = @ptrToInt(ptr);
+    for (self.objects.items) |obj| {
+        if (obj.addr == int_ptr) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn addString(self: *Store, str: []u8) !void {
     try self.strings.append(str);
 }

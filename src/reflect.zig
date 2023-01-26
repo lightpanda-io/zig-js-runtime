@@ -35,7 +35,7 @@ const builtin_types = [_]type{
 };
 
 pub const Type = struct {
-    T: type,
+    T: type, // could be pointer or concrete
     name: ?[]u8, // only for function parameters
 
     // is this type a builtin or a custom struct?
@@ -45,21 +45,28 @@ pub const Type = struct {
     is_builtin: bool,
     T_refl_index: ?usize = null,
 
-    optional_T: ?type, // child of a type which is optional
+    optional_T: ?type, // child of an optional type
 
     fn lookup(comptime self: *Type, comptime structs: []Struct) void {
         if (self.is_builtin) {
             return;
         }
+
+        // underlying T
         var T = self.T;
         if (self.optional_T) |optional_T| {
             T = optional_T;
         }
+        if (@typeInfo(T) == .Pointer) {
+            T = @typeInfo(T).Pointer.child;
+        }
+
         inline for (structs) |s| {
             if (s.T == T) {
                 self.T_refl_index = s.index;
             }
         }
+
         if (!self.is_builtin and self.T_refl_index == null) {
             @compileError("reflect error: Type should be either builtin or defined");
         }
@@ -74,19 +81,18 @@ pub const Type = struct {
             optional_T = info.Optional.child;
         }
 
+        // underlying T
+        var underlying_T = T;
+        if (optional_T) |child| {
+            underlying_T = child;
+        }
+
         // builtin
         var is_builtin = false;
-        for (builtin_types) |t| {
-            if (info != .Optional) {
-                if (t == T) {
-                    is_builtin = true;
-                    break;
-                }
-            } else {
-                if (t == info.Optional.child) {
-                    is_builtin = true;
-                    break;
-                }
+        for (builtin_types) |builtin_T| {
+            if (builtin_T == underlying_T) {
+                is_builtin = true;
+                break;
             }
         }
 
