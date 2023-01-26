@@ -29,7 +29,7 @@ pub fn nativeToJS(
         void => return,
 
         // list of bytes (ie. string)
-        []u8 => v8.String.initUtf8(isolate, zig_val),
+        []u8, []const u8 => v8.String.initUtf8(isolate, zig_val),
 
         // floats
         f32 => v8.Number.init(isolate, @floatCast(f32, zig_val)),
