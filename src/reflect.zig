@@ -293,7 +293,7 @@ pub const Struct = struct {
         }
     }
 
-    fn lessThan(_: void, comptime a: *Struct, comptime b: *Struct) bool {
+    fn lessThan(_: void, comptime a: Struct, comptime b: Struct) bool {
         // priority: first proto_index (asc) and then index (asc)
         if (a.proto_index == null and b.proto_index == null) {
             return a.index < b.index;
@@ -304,7 +304,7 @@ pub const Struct = struct {
         return a.proto_index == null;
     }
 
-    fn reflect(comptime T: type, comptime index: usize) *Struct {
+    fn reflect(comptime T: type, comptime index: usize) Struct {
 
         // T should be a struct
         const obj = @typeInfo(T);
@@ -433,7 +433,7 @@ pub const Struct = struct {
 
         const ptr_info = @typeInfo(*T).Pointer;
 
-        var s = Struct{
+        return Struct{
             // struct info
             .name = struct_name,
             .js_name = jsName(struct_name),
@@ -455,19 +455,18 @@ pub const Struct = struct {
             .alignment = ptr_info.alignment,
             .size = @sizeOf(ptr_info.child),
         };
-        return &s;
     }
 };
 
-fn lookupPrototype(comptime all_ptr: []*Struct) void {
-    inline for (all_ptr) |s, index| {
+fn lookupPrototype(comptime all: []Struct) void {
+    inline for (all) |*s, index| {
         s.index = index;
         if (s.proto_name == null) {
             // does not have a prototype
             continue;
         }
         // loop over all structs to find proto
-        inline for (all_ptr) |proto, proto_index| {
+        inline for (all) |proto, proto_index| {
             if (!std.mem.eql(u8, proto.name, s.proto_name.?)) {
                 // name is not equal to prototype name
                 continue;
@@ -497,38 +496,30 @@ pub fn do(comptime types: anytype) []Struct {
         const types_fields = types_info.Struct.fields;
 
         // reflect each type
-        var all_ptr: [types_fields.len]*Struct = undefined;
-        // at this point we use pointers
-        // to modify later the structs with prototype info
+        var all: [types_fields.len]Struct = undefined;
         inline for (types_fields) |field, i| {
             const T = @field(types, field.name);
             if (@TypeOf(T) != type) {
                 @compileError("reflect error: 'types' should only include types");
             }
-            all_ptr[i] = Struct.reflect(T, i);
+            all[i] = Struct.reflect(T, i);
         }
 
         // look for prototype chain
         // first pass to allow sort
-        lookupPrototype(&all_ptr);
+        lookupPrototype(&all);
 
         // sort to follow prototype chain order
         // ie. parents will be listed before children
-        std.sort.sort(*Struct, &all_ptr, {}, Struct.lessThan);
+        std.sort.sort(Struct, &all, {}, Struct.lessThan);
 
         // look for prototype chain
         // second pass, as sort as modified the index reference
-        lookupPrototype(&all_ptr);
+        lookupPrototype(&all);
 
-        // we do not return pointers: this function is comptime
-        // and we don't want to return comptime pointers to runtime execution
-        var all: [all_ptr.len]Struct = undefined;
-        for (all_ptr) |s, i| {
-            all[i] = s.*;
         }
-        const all_slice = &all;
 
-        return all_slice;
+        return &all;
     }
 }
 
