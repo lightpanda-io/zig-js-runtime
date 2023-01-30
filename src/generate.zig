@@ -26,27 +26,50 @@ const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} p
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
+    obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
-) !*T_refl.T {
+) !void {
     const T = T_refl.T;
 
-    // create and allocate the zig object
-    // we need to put it on the heap
-    // otherwise on the stack it will be delete when the function returns
-    var obj_ptr = try alloc.create(T);
+    // assign and bind native obj to JS obj
+    var obj_ptr: *T = undefined;
+    const obj_T = @TypeOf(obj);
+    var addObject: bool = undefined;
+    if (comptime obj_T == T) {
+
+        // obj is a value of T
+        // create a pointer in heap
+        // (otherwise on the stack it will be delete when the function returns),
+        // and assign pointer's dereference value to native object
+        obj_ptr = try alloc.create(T);
+        obj_ptr.* = obj;
+        addObject = true;
+    } else if (comptime obj_T == *T) {
+
+        // obj is a pointer of T
+        // no need to create it in heap,
+        // we assume it has been done already by the API
+        // just assign pointer to native object
+        obj_ptr = obj;
+        if (Store.default) |store| {
+            addObject = !store.containsObject(obj_ptr);
+        }
+    } else {
+        return error.NativeObjectMismatch;
+    }
 
     // if the object is an empty struct (ie. a kind of container)
     // no need to keep it's reference
     if (T_refl.size == 0) {
-        return obj_ptr;
+        return;
     }
 
-    if (Store.default != null) {
+    if (Store.default != null and addObject) {
         try Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment);
     }
 
-    // bind the zig object to it's javascript counterpart
+    // bind the native object pointer to JS obj
     var ext: v8.External = undefined;
     if (comptime T_refl.is_mem_guarantied()) {
         ext = v8.External.init(isolate, obj_ptr);
@@ -60,7 +83,40 @@ pub fn setNativeObject(
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
     js_obj.setInternalField(0, ext);
-    return obj_ptr;
+}
+
+fn setReturnType(
+    alloc: std.mem.Allocator,
+    comptime all_T: []refl.Struct,
+    comptime ret: refl.Type,
+    res: anytype,
+    js_res: v8.ReturnValue,
+    ctx: v8.Context,
+    isolate: v8.Isolate,
+) !void {
+    if (ret.T_refl_index) |index| {
+
+        // return is a user defined type
+        const js_obj = TPLs[index].tpl.getInstanceTemplate().initInstance(ctx);
+        _ = setNativeObject(
+            alloc,
+            all_T[index],
+            res,
+            js_obj,
+            isolate,
+        ) catch unreachable;
+        js_res.set(js_obj);
+    } else {
+
+        // return is a builtin type
+        nativeToJS(
+            ret,
+            res,
+            js_res,
+            isolate,
+        ) catch unreachable; // NOTE: should not happen
+        // has types have been checked at reflect
+    }
 }
 
 fn getNativeObject(
@@ -127,13 +183,7 @@ fn generateConstructor(
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
-            // set the zig object and call it's constructor
-            const obj_ptr = setNativeObject(
-                utils.allocator,
-                T_refl,
-                info.getThis(),
-                isolate,
-            ) catch unreachable;
+            // call native constructor function
             var args: func.?.args_T = undefined;
             inline for (func.?.args) |arg, i| {
                 const value = jsToNative(
@@ -145,7 +195,16 @@ fn generateConstructor(
                 ) catch unreachable;
                 @field(args, arg.name.?) = value;
             }
-            obj_ptr.* = @call(.{}, T_refl.T.constructor, args);
+            const obj = @call(.{}, T_refl.T.constructor, args);
+
+            // set native object to JS
+            setNativeObject(
+                utils.allocator,
+                T_refl,
+                obj,
+                info.getThis(),
+                isolate,
+            ) catch unreachable;
         }
     };
     return zig_cbk.constructor;
@@ -176,12 +235,15 @@ fn generateGetter(
             const res = @call(.{}, getter_func, .{obj_ptr.*});
 
             // return to javascript the result
-            nativeToJS(
-                func.return_type.?,
+            setReturnType(
+                utils.allocator,
+                all_T,
+                func.return_type,
                 res,
                 info.getReturnValue(),
+                isolate.getCurrentContext(),
                 isolate,
-            ) catch unreachable; // TODO: js native exception
+            ) catch unreachable;
         }
     };
     return zig_cbk.getter;
@@ -302,12 +364,15 @@ fn generateMethod(
             const res = @call(.{}, method_func, args);
 
             // return to javascript the result
-            nativeToJS(
-                func.return_type.?,
+            setReturnType(
+                utils.allocator,
+                all_T,
+                func.return_type,
                 res,
                 info.getReturnValue(),
+                ctx,
                 isolate,
-            ) catch unreachable; // TODO: js native exception
+            ) catch unreachable;
 
             // sync callback
             // for test purpose, does not have any sense in real case
@@ -386,7 +451,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
 
             // NOTE: There is 2 different ObjectTemplate
             // attached to the FunctionTemplate of the constructor:
-            // - The Prototypetemplate which represents the template
+            // - The PrototypeTemplate which represents the template
             // of the protype of the constructor.
             // All getter/setter/methods must be set on it.
             // - The InstanceTemplate wich represents the template
@@ -457,13 +522,15 @@ pub fn compile(comptime types: anytype) []API {
     }
 }
 
-// Load native APIs into a JS isolate
-// This function is called at runtime.
-// The list of API (apis) and ProtoTpl (tpls) holds corresponding data,
-// ie. apis[0] will generate tpls[0].
+// The list of APIs and TPLs holds corresponding data,
+// ie. TPLs[0] is generated by APIs[0].
 // This is assumed by the rest of the loading mechanism.
 // Therefore the content of thoses lists (and their order) should not be altered
 // afterwards.
+var TPLs: []ProtoTpl = undefined;
+
+// Load native APIs into a JS isolate
+// This function is called at runtime.
 pub fn load(
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
@@ -478,4 +545,5 @@ pub fn load(
             tpls[i] = try api.load(isolate, globals, proto_tpl);
         }
     }
+    TPLs = tpls;
 }
