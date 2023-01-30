@@ -13,7 +13,7 @@ const gen = @import("generate.zig");
 const Loop = @import("loop.zig").SingleThreaded;
 const IO = @import("loop.zig").IO;
 
-const Console = @import("console.zig").Console;
+const console = @import("console.zig");
 
 var socket_p: []const u8 = undefined;
 
@@ -127,17 +127,8 @@ fn shellExec(
     js_ctx.enter();
     defer js_ctx.exit();
 
-    // add console
-    const console = Console{};
-    try eng.createV8Object(
-        utils.allocator,
-        apis[0].T_refl,
-        console,
-        tpls[0].tpl,
-        js_ctx.getGlobal(),
-        js_ctx,
-        isolate,
-    );
+    // load console
+    try console.load(loop.alloc, apis, tpls, isolate, js_ctx);
 
     // JS try cache
     var try_catch: v8.TryCatch = undefined;
@@ -261,6 +252,11 @@ fn repl() !void {
 }
 
 pub fn shell(alloc: std.mem.Allocator, comptime apis: []gen.API, socket_path: []const u8) !void {
+
+    // add console API
+    const apis_with_console = console.addAPI(apis);
+
+    // set socket path
     socket_p = socket_path;
 
     // remove socket file of internal server
@@ -274,7 +270,7 @@ pub fn shell(alloc: std.mem.Allocator, comptime apis: []gen.API, socket_path: []
     };
 
     // load v8
-    _ = try eng.Load(alloc, false, shellExec, apis);
+    _ = try eng.Load(alloc, false, shellExec, apis_with_console);
 }
 
 fn printStdout(comptime format: []const u8, args: anytype) void {

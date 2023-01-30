@@ -11,8 +11,6 @@ const cbk = @import("../callback.zig");
 
 const tests = @import("test_utils.zig");
 
-const Console = @import("../console.zig").Console;
-
 const Window = struct {
     pub fn constructor() Window {
         return Window{};
@@ -47,7 +45,7 @@ const Window = struct {
 
 // generate API, comptime
 pub fn generate() []gen.API {
-    return gen.compile(.{ Console, Window });
+    return gen.compile(.{Window});
 }
 
 // exec tests
@@ -55,26 +53,14 @@ pub fn exec(
     loop: *Loop,
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
-    tpls: []gen.ProtoTpl,
-    comptime apis: []gen.API,
+    _: []gen.ProtoTpl,
+    comptime _: []gen.API,
 ) !eng.ExecRes {
 
     // create v8 context
     var context = v8.Context.init(isolate, globals, null);
     context.enter();
     defer context.exit();
-
-    // console
-    const console = Console{};
-    try eng.createV8Object(
-        utils.allocator,
-        apis[0].T_refl,
-        console,
-        tpls[0].tpl,
-        context.getGlobal(),
-        context,
-        isolate,
-    );
 
     // constructor
     const case_cstr = [_]tests.Case{
