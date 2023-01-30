@@ -183,23 +183,17 @@ pub fn jsExecScript(
 
 pub fn createV8Object(
     alloc: std.mem.Allocator,
-    comptime T_refl: refl.Struct,
-    obj: anytype,
-    tpl: v8.FunctionTemplate,
-    target: v8.Object,
-    ctx: v8.Context,
     isolate: v8.Isolate,
-) !void {
-    const js_obj = tpl.getInstanceTemplate().initInstance(ctx);
+    context: v8.Context,
+    target: v8.Object,
+    tpl: v8.FunctionTemplate,
+    comptime T_refl: refl.Struct,
+) !*T_refl.T {
+    const obj_tpl = tpl.getInstanceTemplate();
+    const obj = obj_tpl.initInstance(context);
     const key = v8.String.initUtf8(isolate, T_refl.js_name);
-    if (!target.setValue(ctx, key, js_obj)) {
+    if (!target.setValue(context, key, obj)) {
         return error.CreateV8Object;
     }
-    try gen.setNativeObject(
-        alloc,
-        T_refl,
-        obj,
-        js_obj,
-        isolate,
-    );
+    return try gen.setNativeObject(alloc, T_refl, obj, isolate);
 }

@@ -13,8 +13,6 @@ const gen = @import("generate.zig");
 const Loop = @import("loop.zig").SingleThreaded;
 const IO = @import("loop.zig").IO;
 
-const Console = @import("console.zig").Console;
-
 var socket_p: []const u8 = undefined;
 
 // I/O connection context
@@ -128,15 +126,13 @@ fn shellExec(
     defer js_ctx.exit();
 
     // add console
-    const console = Console{};
-    try eng.createV8Object(
+    _ = try eng.createV8Object(
         utils.allocator,
-        apis[0].T_refl,
-        console,
-        tpls[0].tpl,
-        js_ctx.getGlobal(),
-        js_ctx,
         isolate,
+        js_ctx,
+        js_ctx.getGlobal(),
+        tpls[0].tpl,
+        apis[0].T_refl,
     );
 
     // JS try cache

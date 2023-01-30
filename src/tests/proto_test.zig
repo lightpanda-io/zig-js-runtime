@@ -120,6 +120,5 @@ pub fn exec(
         .{ .src = "u.age;", .ex = "43" },
     };
     try tests.checkCases(loop, utils.allocator, isolate, context, cases_proto.len, cases_proto);
-
     return eng.ExecOK;
 }

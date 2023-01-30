@@ -12,9 +12,6 @@ const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
 
-// Utils functions
-// ---------------
-
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
@@ -26,45 +23,27 @@ const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} p
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
-    obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
-) !void {
+) !*T_refl.T {
     const T = T_refl.T;
 
-    // assign and bind native obj to JS obj
-    var obj_ptr: *T = undefined;
-    const obj_T = @TypeOf(obj);
-    if (comptime obj_T == T) {
-
-        // obj is a value of T
-        // create a pointer in heap
-        // (otherwise on the stack it will be delete when the function returns),
-        // and assign pointer's dereference value to native object
-        obj_ptr = try alloc.create(T);
-        obj_ptr.* = obj;
-    } else if (comptime obj_T == *T) {
-
-        // obj is a pointer of T
-        // no need to create it in heap,
-        // we assume it has been done already by the API
-        // just assign pointer to native object
-        obj_ptr = obj;
-    } else {
-        return error.NativeObjectMismatch;
-    }
+    // create and allocate the zig object
+    // we need to put it on the heap
+    // otherwise on the stack it will be delete when the function returns
+    var obj_ptr = try alloc.create(T);
 
     // if the object is an empty struct (ie. a kind of container)
     // no need to keep it's reference
     if (T_refl.size == 0) {
-        return;
+        return obj_ptr;
     }
 
     if (Store.default != null) {
         try Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment);
     }
 
-    // bind the native object pointer to JS obj
+    // bind the zig object to it's javascript counterpart
     var ext: v8.External = undefined;
     if (comptime T_refl.is_mem_guarantied()) {
         ext = v8.External.init(isolate, obj_ptr);
@@ -78,40 +57,7 @@ pub fn setNativeObject(
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
     js_obj.setInternalField(0, ext);
-}
-
-fn setReturnType(
-    alloc: std.mem.Allocator,
-    comptime all_T: []refl.Struct,
-    comptime ret: refl.Type,
-    res: anytype,
-    js_res: v8.ReturnValue,
-    ctx: v8.Context,
-    isolate: v8.Isolate,
-) !void {
-    if (ret.T_refl_index) |index| {
-
-        // return is a user defined type
-        const js_obj = TPLs[index].tpl.getInstanceTemplate().initInstance(ctx);
-        _ = setNativeObject(
-            alloc,
-            all_T[index],
-            res,
-            js_obj,
-            isolate,
-        ) catch unreachable;
-        js_res.set(js_obj);
-    } else {
-
-        // return is a builtin type
-        nativeToJS(
-            ret,
-            res,
-            js_res,
-            isolate,
-        ) catch unreachable; // NOTE: should not happen
-        // has types have been checked at reflect
-    }
+    return obj_ptr;
 }
 
 fn getNativeObject(
@@ -137,9 +83,6 @@ fn getNativeObject(
     }
     return obj_ptr;
 }
-
-// JS functions callbacks
-// ----------------------
 
 fn generateConstructor(
     comptime T_refl: refl.Struct,
@@ -178,7 +121,13 @@ fn generateConstructor(
                 return throwTypeError(msg, info.getReturnValue(), isolate);
             }
 
-            // call native constructor function
+            // set the zig object and call it's constructor
+            const obj_ptr = setNativeObject(
+                utils.allocator,
+                T_refl,
+                info.getThis(),
+                isolate,
+            ) catch unreachable;
             var args: func.?.args_T = undefined;
             inline for (func.?.args) |arg, i| {
                 const value = jsToNative(
@@ -190,16 +139,7 @@ fn generateConstructor(
                 ) catch unreachable;
                 @field(args, arg.name.?) = value;
             }
-            const obj = @call(.{}, T_refl.T.constructor, args);
-
-            // set native object to JS
-            setNativeObject(
-                utils.allocator,
-                T_refl,
-                obj,
-                info.getThis(),
-                isolate,
-            ) catch unreachable;
+            obj_ptr.* = @call(.{}, T_refl.T.constructor, args);
         }
     };
     return zig_cbk.constructor;
@@ -230,15 +170,12 @@ fn generateGetter(
             const res = @call(.{}, getter_func, .{obj_ptr.*});
 
             // return to javascript the result
-            setReturnType(
-                utils.allocator,
-                all_T,
-                func.return_type,
+            nativeToJS(
+                func.return_type.?,
                 res,
                 info.getReturnValue(),
-                isolate.getCurrentContext(),
                 isolate,
-            ) catch unreachable;
+            ) catch unreachable; // TODO: js native exception
         }
     };
     return zig_cbk.getter;
@@ -359,15 +296,12 @@ fn generateMethod(
             const res = @call(.{}, method_func, args);
 
             // return to javascript the result
-            setReturnType(
-                utils.allocator,
-                all_T,
-                func.return_type,
+            nativeToJS(
+                func.return_type.?,
                 res,
                 info.getReturnValue(),
-                ctx,
                 isolate,
-            ) catch unreachable;
+            ) catch unreachable; // TODO: js native exception
 
             // sync callback
             // for test purpose, does not have any sense in real case
@@ -383,29 +317,6 @@ fn generateMethod(
     return zig_cbk.method;
 }
 
-// Compile and loading mechanism
-// -----------------------------
-
-// NOTE:
-// The mechanism is based on 2 steps
-// 1. The compile step at comptime will produce a list of APIs
-// At this step we:
-// - reflect the native struct to obtain type information (T_refl)
-// - generate a loading function containing corresponding JS callbacks functions
-// (constructor, getters, setters, methods)
-// 2. The loading step at runtime will product a list of ProtoTpls
-// At this step we call the loading function into the runtime v8 (Isolate and globals),
-// generating corresponding V8 functions and objects templates.
-
-// API holds the reflected type of a native struct and
-// a function to load the native struct in JS.
-pub const API = struct {
-    T_refl: refl.Struct,
-    load: LoadFunc,
-};
-
-// ProtoTpl holds the v8.FunctionTemplate to create a new object in JS
-// and for convenience the index of this ProtoTpl in the slice tpls []ProtoTpl
 pub const ProtoTpl = struct {
     tpl: v8.FunctionTemplate,
     index: usize,
@@ -446,7 +357,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
 
             // NOTE: There is 2 different ObjectTemplate
             // attached to the FunctionTemplate of the constructor:
-            // - The PrototypeTemplate which represents the template
+            // - The Prototypetemplate which represents the template
             // of the protype of the constructor.
             // All getter/setter/methods must be set on it.
             // - The InstanceTemplate wich represents the template
@@ -497,7 +408,13 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
     return s.load;
 }
 
-// Compile native types to native APIs
+pub const API = struct {
+    T_refl: refl.Struct,
+    proto_tpl_index: ?usize = null,
+    load: LoadFunc,
+};
+
+// compile native types to native APIs
 // which can be later loaded in JS.
 // This function is called at comptime.
 pub fn compile(comptime types: anytype) []API {
@@ -506,25 +423,44 @@ pub fn compile(comptime types: anytype) []API {
         // call types reflection
         const all_T = refl.do(types);
 
-        // generate APIs
         var apis: [all_T.len]API = undefined;
         inline for (all_T) |T_refl, i| {
             const loader = loadFunc(T_refl, all_T);
-            apis[i] = API{ .T_refl = T_refl, .load = loader };
+
+            if (T_refl.proto_index == null) {
+                // no prototype
+                apis[i] = API{
+                    .T_refl = T_refl,
+                    .load = loader,
+                };
+                continue;
+            }
+
+            // set the index of the prototype
+            var proto_tpl_index: ?usize = null;
+            inline for (all_T) |proto_refl, proto_i| {
+                if (proto_refl.index != T_refl.proto_index.?) {
+                    // not the right proto
+                    continue;
+                }
+                proto_tpl_index = proto_i;
+                break;
+            }
+            if (proto_tpl_index == null) {
+                @compileError("generate error: could not find the prototype in list");
+            }
+            apis[i] = API{
+                .T_refl = T_refl,
+                .proto_tpl_index = proto_tpl_index,
+                .load = loader,
+            };
         }
 
         return &apis;
     }
 }
 
-// The list of APIs and TPLs holds corresponding data,
-// ie. TPLs[0] is generated by APIs[0].
-// This is assumed by the rest of the loading mechanism.
-// Therefore the content of thoses lists (and their order) should not be altered
-// afterwards.
-var TPLs: []ProtoTpl = undefined;
-
-// Load native APIs into a JS isolate
+// load native APIs into a JS isolate
 // This function is called at runtime.
 pub fn load(
     isolate: v8.Isolate,
@@ -533,12 +469,11 @@ pub fn load(
     tpls: []ProtoTpl,
 ) !void {
     inline for (apis) |api, i| {
-        if (api.T_refl.proto_index == null) {
+        if (api.proto_tpl_index == null) {
             tpls[i] = try api.load(isolate, globals, null);
         } else {
-            const proto_tpl = tpls[api.T_refl.proto_index.?]; // safe because apis are ordered from parent to child
+            const proto_tpl = tpls[api.proto_tpl_index.?]; // safe because apis are ordered from parent to child
             tpls[i] = try api.load(isolate, globals, proto_tpl);
         }
     }
-    TPLs = tpls;
 }

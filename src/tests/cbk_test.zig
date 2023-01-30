@@ -65,15 +65,13 @@ pub fn exec(
     defer context.exit();
 
     // console
-    const console = Console{};
-    try eng.createV8Object(
+    _ = try eng.createV8Object(
         utils.allocator,
-        apis[0].T_refl,
-        console,
-        tpls[0].tpl,
-        context.getGlobal(),
-        context,
         isolate,
+        context,
+        context.getGlobal(),
+        tpls[0].tpl,
+        apis[0].T_refl,
     );
 
     // constructor
