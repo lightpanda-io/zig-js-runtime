@@ -27,31 +27,19 @@ pub fn addAPI(comptime apis: []gen.API) []gen.API {
 }
 
 pub fn load(
-    alloc: std.mem.Allocator,
     comptime apis: []gen.API,
     tpls: []gen.ProtoTpl,
     isolate: v8.Isolate,
     context: v8.Context,
 ) !void {
 
-    // retrieve console API
-    comptime var console_index: comptime_int = undefined;
-    comptime {
-        inline for (apis) |api| {
-            if (std.mem.eql(u8, api.T_refl.name, "Console")) {
-                console_index = api.T_refl.index;
-            }
-        }
-    }
-
     // create JS object
     const console = Console{};
     // TODO: use pointer (and allocator) here
-    try eng.createV8Object(
-        alloc,
-        apis[console_index].T_refl,
+    try eng.createJSObject(
+        apis,
         console,
-        tpls[console_index].tpl,
+        tpls,
         context.getGlobal(),
         context,
         isolate,

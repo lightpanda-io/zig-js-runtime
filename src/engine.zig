@@ -181,22 +181,37 @@ pub fn jsExecScript(
     return res;
 }
 
-pub fn createV8Object(
-    alloc: std.mem.Allocator,
-    comptime T_refl: refl.Struct,
+pub fn createJSObject(
+    comptime apis: []gen.API,
     obj: anytype,
-    tpl: v8.FunctionTemplate,
+    tpls: []gen.ProtoTpl,
     target: v8.Object,
     ctx: v8.Context,
     isolate: v8.Isolate,
 ) !void {
+
+    // retrieve obj tpl
+    comptime var obj_api_index: comptime_int = undefined;
+    comptime {
+        inline for (apis) |api| {
+            if (@TypeOf(obj) == api.T_refl.T or @TypeOf(obj) == *api.T_refl.T) {
+                obj_api_index = api.T_refl.index;
+            }
+        }
+    }
+    const T_refl = apis[obj_api_index].T_refl;
+    const tpl = tpls[obj_api_index].tpl;
+
+    // instantiate JS object
     const js_obj = tpl.getInstanceTemplate().initInstance(ctx);
     const key = v8.String.initUtf8(isolate, T_refl.js_name);
     if (!target.setValue(ctx, key, js_obj)) {
         return error.CreateV8Object;
     }
+
+    // bind Native and JS objects together
     try gen.setNativeObject(
-        alloc,
+        utils.allocator,
         T_refl,
         obj,
         js_obj,

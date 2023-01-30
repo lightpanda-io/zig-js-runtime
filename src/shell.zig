@@ -128,7 +128,7 @@ fn shellExec(
     defer js_ctx.exit();
 
     // load console
-    try console.load(loop.alloc, apis, tpls, isolate, js_ctx);
+    try console.load(apis, tpls, isolate, js_ctx);
 
     // JS try cache
     var try_catch: v8.TryCatch = undefined;
