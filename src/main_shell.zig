@@ -1,18 +1,16 @@
 const std = @import("std");
 
-const eng = @import("engine.zig");
+const jsruntime = @import("jsruntime.zig");
 
-const shell = @import("shell.zig").shell;
-
-const callback = @import("tests/cbk_test.zig");
+const Window = @import("tests/cbk_test.zig").Window;
 
 pub fn main() !void {
 
     // generate APIs
-    const apis = comptime callback.generate();
+    const apis = jsruntime.compile(.{ jsruntime.Console, Window });
 
-    // create v8 vm
-    const vm = eng.VM.init();
+    // create JS vm
+    const vm = jsruntime.VM.init();
     defer vm.deinit();
 
     // alloc
@@ -21,5 +19,5 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     // launch shell
-    try shell(alloc, apis, "/tmp/jsruntime-shell.sock");
+    try jsruntime.shell(alloc, false, apis, null, "/tmp/jsruntime-shell.sock");
 }

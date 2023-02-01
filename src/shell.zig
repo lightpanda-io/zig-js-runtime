@@ -7,15 +7,13 @@ const c = @cImport({
 });
 
 const utils = @import("utils.zig");
-const eng = @import("engine.zig");
-const gen = @import("generate.zig");
+const jsruntime = @import("jsruntime.zig");
 
-const Loop = @import("loop.zig").SingleThreaded;
 const IO = @import("loop.zig").IO;
 
-const console = @import("console.zig");
-
+// Global variables
 var socket_p: []const u8 = undefined;
+var socket_fd: std.os.socket_t = undefined;
 
 // I/O connection context
 const ConnContext = struct {
@@ -33,7 +31,7 @@ fn connCallback(
     ctx.cmdContext.socket = result catch |err| @panic(@errorName(err));
 
     // launch receving messages asynchronously
-    ctx.cmdContext.loop.io.recv(
+    ctx.cmdContext.js_env.loop.io.recv(
         *CmdContext,
         ctx.cmdContext,
         cmdCallback,
@@ -45,13 +43,12 @@ fn connCallback(
 
 // I/O input command context
 const CmdContext = struct {
-    loop: *Loop,
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
     socket: std.os.socket_t,
     buf: []u8,
     close: bool = false,
 
-    isolate: v8.Isolate,
-    js_ctx: v8.Context,
     try_catch: *v8.TryCatch,
 };
 
@@ -76,14 +73,16 @@ fn cmdCallback(
     }
 
     // JS execute
-    const res = eng.jsExecScript(
-        utils.allocator,
-        ctx.isolate,
-        ctx.js_ctx,
+    const res = ctx.js_env.exec(
+        ctx.alloc,
         input,
         "shell.js",
         ctx.try_catch.*,
-    );
+    ) catch |err| {
+        ctx.close = true;
+        std.debug.print("JS exec error: {s}\n", .{@errorName(err)});
+        return;
+    };
     defer res.deinit();
 
     // JS print result
@@ -94,7 +93,7 @@ fn cmdCallback(
     _ = std.os.write(ctx.socket, "ok") catch unreachable;
 
     // continue receving messages asynchronously
-    ctx.loop.io.recv(
+    ctx.js_env.loop.io.recv(
         *CmdContext,
         ctx,
         cmdCallback,
@@ -104,61 +103,58 @@ fn cmdCallback(
     );
 }
 
-fn shellExec(
-    loop: *Loop,
-    isolate: v8.Isolate,
-    globals: v8.ObjectTemplate,
-    tpls: []gen.ProtoTpl,
-    comptime apis: []gen.API,
-) !eng.ExecRes {
+fn exec(
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
+    comptime apis: []jsruntime.API,
+) !void {
 
-    // create internal server listening on a unix socket
-    var addr = try std.net.Address.initUnix(socket_p);
-    var server = std.net.StreamServer.init(.{ .reuse_address = true });
-    defer server.deinit();
-    try server.listen(addr);
+    // start JS env
+    js_env.start();
+    defer js_env.stop();
 
-    // launch repl in a separate detached thread
-    var repl_thread = try std.Thread.spawn(.{}, repl, .{});
-    repl_thread.detach();
+    try shellExec(alloc, js_env, apis);
+}
 
-    // create JS context
-    var js_ctx = v8.Context.init(isolate, globals, null);
-    js_ctx.enter();
-    defer js_ctx.exit();
+pub fn shellExec(
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
+    comptime apis: []jsruntime.API,
+) !void {
 
-    // load console
-    try console.load(apis, tpls, isolate, js_ctx);
+    // add console object
+    const console = jsruntime.Console{};
+    try js_env.addObject(apis, console);
 
     // JS try cache
     var try_catch: v8.TryCatch = undefined;
-    try_catch.init(isolate);
+    try_catch.init(js_env.isolate);
     defer try_catch.deinit();
 
     // create I/O contexts and callbacks
     // for accepting connections and receving messages
     var input: [1024]u8 = undefined;
     var cmd_ctx = CmdContext{
-        .loop = loop,
+        .alloc = alloc,
+        .js_env = js_env,
         .socket = undefined,
         .buf = &input,
-        .isolate = isolate,
-        .js_ctx = js_ctx,
         .try_catch = &try_catch,
     };
     var conn_ctx = ConnContext{
-        .socket = server.sockfd.?,
+        .socket = socket_fd,
         .cmdContext = &cmd_ctx,
     };
     var completion: IO.Completion = undefined;
 
     // launch accepting connection asynchronously on internal server
+    const loop = js_env.loop;
     loop.io.accept(
         *ConnContext,
         &conn_ctx,
         connCallback,
         &completion,
-        server.sockfd.?,
+        socket_fd,
     );
 
     // infinite loop on I/O events, either:
@@ -169,13 +165,13 @@ fn shellExec(
         if (loop.cbk_error) {
             if (try_catch.getException()) |msg| {
                 const except = try utils.valueToUtf8(
-                    utils.allocator,
+                    alloc,
                     msg,
-                    isolate,
-                    js_ctx,
+                    js_env.isolate,
+                    js_env.context.?,
                 );
                 printStdout("\n\rUncaught {s}\n\r", .{except});
-                utils.allocator.free(except);
+                alloc.free(except);
             }
             loop.cbk_error = false;
         }
@@ -183,8 +179,47 @@ fn shellExec(
             break;
         }
     }
+}
 
-    return eng.ExecOK;
+pub fn shell(
+    alloc: std.mem.Allocator,
+    comptime alloc_auto_free: bool,
+    comptime apis: []jsruntime.API,
+    comptime ctxExecFn: ?jsruntime.ContextExecFn,
+    socket_path: []const u8,
+) !void {
+
+    // set socket path
+    socket_p = socket_path;
+
+    // remove socket file of internal server
+    // reuse_address (SO_REUSEADDR flag) does not seems to work on unix socket
+    // see: https://gavv.net/articles/unix-socket-reuse/
+    // TODO: use a lock file instead
+    std.os.unlink(socket_p) catch |err| {
+        if (err != error.FileNotFound) {
+            return err;
+        }
+    };
+
+    // create internal server listening on a unix socket
+    var addr = try std.net.Address.initUnix(socket_p);
+    var server = std.net.StreamServer.init(.{ .reuse_address = true });
+    defer server.deinit();
+    try server.listen(addr);
+    socket_fd = server.sockfd.?;
+
+    // launch repl in a separate detached thread
+    var repl_thread = try std.Thread.spawn(.{}, repl, .{});
+    repl_thread.detach();
+
+    // load JS environement
+    comptime var do_fn: jsruntime.ContextExecFn = exec;
+    if (ctxExecFn) |func| {
+        do_fn = func;
+        std.debug.print("ok\n", .{});
+    }
+    try jsruntime.loadEnv(alloc, alloc_auto_free, do_fn, apis);
 }
 
 fn repl() !void {
@@ -249,28 +284,6 @@ fn repl() !void {
     // send the exit command to the internal server
     _ = try socket.write("exit");
     printStdout("Goodbye...\n", .{});
-}
-
-pub fn shell(alloc: std.mem.Allocator, comptime apis: []gen.API, socket_path: []const u8) !void {
-
-    // add console API
-    const apis_with_console = console.addAPI(apis);
-
-    // set socket path
-    socket_p = socket_path;
-
-    // remove socket file of internal server
-    // reuse_address (SO_REUSEADDR flag) does not seems to work on unix socket
-    // see: https://gavv.net/articles/unix-socket-reuse/
-    // TODO: use a lock file instead
-    std.os.unlink(socket_p) catch |err| {
-        if (err != error.FileNotFound) {
-            return err;
-        }
-    };
-
-    // load v8
-    _ = try eng.Load(alloc, false, shellExec, apis_with_console);
 }
 
 fn printStdout(comptime format: []const u8, args: anytype) void {

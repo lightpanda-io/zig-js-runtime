@@ -1,17 +1,14 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("../utils.zig");
-const gen = @import("../generate.zig");
-const eng = @import("../engine.zig");
-const Loop = @import("../loop.zig").SingleThreaded;
+const jsruntime = @import("../jsruntime.zig");
 
 const u64Num = @import("../types.zig").u64Num;
 const cbk = @import("../callback.zig");
 
 const tests = @import("test_utils.zig");
 
-const Window = struct {
+pub const Window = struct {
     pub fn constructor() Window {
         return Window{};
     }
@@ -24,7 +21,12 @@ const Window = struct {
         tests.sleep(1 * std.time.ns_per_ms);
     }
 
-    pub fn _cbkAsync(_: Window, loop: *Loop, callback: cbk.Func, milliseconds: u32) void {
+    pub fn _cbkAsync(
+        _: Window,
+        loop: *jsruntime.Loop,
+        callback: cbk.Func,
+        milliseconds: u32,
+    ) void {
         const n = @intCast(u63, milliseconds);
         // TODO: check this value can be holded in u63
         loop.timeout(n * std.time.ns_per_ms, callback);
@@ -32,7 +34,7 @@ const Window = struct {
 
     pub fn _cbkAsyncWithArg(
         _: Window,
-        loop: *Loop,
+        loop: *jsruntime.Loop,
         callback: cbk.Func,
         milliseconds: u32,
         _: cbk.Arg,
@@ -44,32 +46,29 @@ const Window = struct {
 };
 
 // generate API, comptime
-pub fn generate() []gen.API {
-    return gen.compile(.{Window});
+pub fn generate() []jsruntime.API {
+    return jsruntime.compile(.{Window});
 }
 
 // exec tests
 pub fn exec(
-    loop: *Loop,
-    isolate: v8.Isolate,
-    globals: v8.ObjectTemplate,
-    _: []gen.ProtoTpl,
-    comptime _: []gen.API,
-) !eng.ExecRes {
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
+    comptime _: []jsruntime.API,
+) !void {
 
-    // create v8 context
-    var context = v8.Context.init(isolate, globals, null);
-    context.enter();
-    defer context.exit();
+    // start JS env
+    js_env.start();
+    defer js_env.stop();
 
     // constructor
-    const case_cstr = [_]tests.Case{
+    var case_cstr = [_]tests.Case{
         .{ .src = "let window = new Window();", .ex = "undefined" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, case_cstr.len, case_cstr);
+    try tests.checkCases(alloc, js_env, &case_cstr);
 
     // cbkSyncWithoutArg
-    const cases_cbk_sync_without_arg = [_]tests.Case{
+    var cases_cbk_sync_without_arg = [_]tests.Case{
         // traditional anonymous function
         .{
             .src = 
@@ -90,10 +89,10 @@ pub fn exec(
         },
         .{ .src = "m;", .ex = "2" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_sync_without_arg.len, cases_cbk_sync_without_arg);
+    try tests.checkCases(alloc, js_env, &cases_cbk_sync_without_arg);
 
     // cbkSyncWithArg
-    const cases_cbk_sync_with_arg = [_]tests.Case{
+    var cases_cbk_sync_with_arg = [_]tests.Case{
         // traditional anonymous function
         .{
             .src = 
@@ -114,10 +113,10 @@ pub fn exec(
         },
         .{ .src = "y;", .ex = "3" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_sync_with_arg.len, cases_cbk_sync_with_arg);
+    try tests.checkCases(alloc, js_env, &cases_cbk_sync_with_arg);
 
     // cbkAsync
-    const cases_cbk_async = [_]tests.Case{
+    var cases_cbk_async = [_]tests.Case{
         // traditional anonymous function
         .{
             .src = 
@@ -126,7 +125,7 @@ pub fn exec(
             \\o++;
             \\if (o != 2) {throw Error('cases_cbk_async error: o is not equal to 2');}
             \\};
-            \\window.cbkAsync(f, 300); // 0.3 second
+            \\window.cbkAsync(f, 100); // 0.1 second
             ,
             .ex = "undefined",
         },
@@ -137,15 +136,15 @@ pub fn exec(
             \\window.cbkAsync(() => {
             \\p++;
             \\if (p != 2) {throw Error('cases_cbk_async error: p is not equal to 2');}
-            \\}, 300); // 0.3 second
+            \\}, 100); // 0.1 second
             ,
             .ex = "undefined",
         },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_async.len, cases_cbk_async);
+    try tests.checkCases(alloc, js_env, &cases_cbk_async);
 
     // cbkAsyncWithArg
-    const cases_cbk_async_with_arg = [_]tests.Case{
+    var cases_cbk_async_with_arg = [_]tests.Case{
         // traditional anonymous function
         .{
             .src = 
@@ -154,7 +153,7 @@ pub fn exec(
             \\i = i + a;
             \\if (i != 3) {throw Error('i is not equal to 3');}
             \\};
-            \\window.cbkAsyncWithArg(f, 300, 2); // 0.3 second
+            \\window.cbkAsyncWithArg(f, 100, 2); // 0.1 second
             ,
             .ex = "undefined",
         },
@@ -165,12 +164,10 @@ pub fn exec(
             \\window.cbkAsyncWithArg((a) => {
             \\j = j + a;
             \\if (j != 3) {throw Error('j is not equal to 3');}
-            \\}, 300, 2); // 0.3 second
+            \\}, 100, 2); // 0.1 second
             ,
             .ex = "undefined",
         },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases_cbk_async_with_arg.len, cases_cbk_async_with_arg);
-
-    return eng.ExecOK;
+    try tests.checkCases(alloc, js_env, &cases_cbk_async_with_arg);
 }

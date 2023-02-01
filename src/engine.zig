@@ -10,112 +10,44 @@ const Store = @import("store.zig");
 const gen = @import("generate.zig");
 const refl = @import("reflect.zig");
 
-pub const compile = gen.compile;
-pub const shell = @import("shell.zig").shell;
+// Better use public API as input parameters
+const public = @import("jsruntime.zig");
+const API = public.API;
+const TPL = public.TPL;
 
-pub const ExecRes = union(enum) {
-    OK: void,
-    Time: u64,
-};
+pub const ContextExecFn = (fn (std.mem.Allocator, *Env, comptime []API) anyerror!void);
 
-pub const ExecOK = ExecRes{ .OK = {} };
-
-pub const ExecFunc = (fn (
-    *Loop,
-    v8.Isolate,
-    v8.ObjectTemplate,
-    []gen.ProtoTpl,
-    comptime []gen.API,
-) anyerror!ExecRes);
-
-pub fn Load(
+pub fn loadEnv(
     alloc: std.mem.Allocator,
     comptime alloc_auto_free: bool,
-    comptime execFn: ExecFunc,
-    comptime apis: []gen.API,
-) !ExecRes {
+    comptime ctxExecFn: ContextExecFn,
+    comptime apis: []API,
+) !void {
 
-    // Set globals values
-    // ------------------
-
-    // allocator
-    utils.allocator = alloc;
-
-    // refs map
-    refs.map = refs.Map{};
-    defer refs.map.deinit(utils.allocator);
-
-    // I/O loop
-    var loop = try Loop.init(utils.allocator);
-    utils.loop = &loop;
-    defer loop.deinit();
-
-    // store
-    if (!alloc_auto_free) {
-        Store.default = Store.init(utils.allocator);
-    }
-    defer {
-        // keep defer on the function scope
-        if (!alloc_auto_free) {
-            Store.default.?.deinit(utils.allocator);
-        }
-    }
-
+    // create JS env
     var start: std.time.Instant = undefined;
     if (builtin.is_test) {
         start = try std.time.Instant.now();
     }
+    var loop = try Loop.init(alloc);
+    defer loop.deinit();
+    var js_env = try Env.init(alloc, alloc_auto_free, &loop);
+    defer js_env.deinit(alloc);
 
-    // v8 values
-    // ---------
-
-    // params
-    var params = v8.initCreateParams();
-    params.array_buffer_allocator = v8.createDefaultArrayBufferAllocator();
-    defer v8.destroyArrayBufferAllocator(params.array_buffer_allocator.?);
-
-    // isolate
-    var isolate = v8.Isolate.init(&params);
-    defer isolate.deinit();
-    isolate.enter();
-    defer isolate.exit();
-
-    // handle scope
-    var hscope: v8.HandleScope = undefined;
-    hscope.init(isolate);
-    defer hscope.deinit();
-
-    // ObjectTemplate for the global namespace
-    const globals = v8.ObjectTemplate.initDefault(isolate);
-
-    var iso_start: std.time.Instant = undefined;
-    if (builtin.is_test) {
-        iso_start = try std.time.Instant.now();
-    }
-
-    // APIs
-    // ----
-
-    // NOTE: apis ([]gen.API) and tpls ([]gen.ProtoTpl)
-    // represent the same structs, one at comptime (apis),
-    // the other at runtime (tpls).
-    // The implementation assumes that they are consistents:
-    // - same size
-    // - same order
-
-    var tpls: [apis.len]gen.ProtoTpl = undefined;
-    try gen.load(isolate, globals, apis, &tpls);
-
+    // load APIs in JS env
     var load_start: std.time.Instant = undefined;
     if (builtin.is_test) {
         load_start = try std.time.Instant.now();
     }
-
-    // JS exec
-    // -------
+    var tpls: [apis.len]TPL = undefined;
+    try js_env.load(apis, &tpls);
 
     // execute JS function
-    const res = try execFn(utils.loop, isolate, globals, &tpls, apis);
+    var exec_start: std.time.Instant = undefined;
+    if (builtin.is_test) {
+        exec_start = try std.time.Instant.now();
+    }
+    try ctxExecFn(alloc, &js_env, apis);
 
     // Stats
     // -----
@@ -128,22 +60,20 @@ pub fn Load(
     if (builtin.is_test) {
         const us = std.time.ns_per_us;
 
-        const iso_time = std.time.Instant.since(iso_start, start);
-        const load_time = std.time.Instant.since(load_start, iso_start);
-        const exec_time = std.time.Instant.since(exec_end, load_start);
+        const create_time = std.time.Instant.since(load_start, start);
+        const load_time = std.time.Instant.since(exec_start, load_start);
+        const exec_time = std.time.Instant.since(exec_end, exec_start);
         const total_time = std.time.Instant.since(exec_end, start);
 
-        const iso_per = iso_time * 100 / total_time;
+        const create_per = create_time * 100 / total_time;
         const load_per = load_time * 100 / total_time;
         const exec_per = exec_time * 100 / total_time;
 
-        std.debug.print("\nstart of isolate:\t{d}us\t{d}%\n", .{ iso_time / us, iso_per });
+        std.debug.print("\ncreation of env:\t{d}us\t{d}%\n", .{ create_time / us, create_per });
         std.debug.print("load of apis:\t\t{d}us\t{d}%\n", .{ load_time / us, load_per });
         std.debug.print("exec:\t\t\t{d}us\t{d}%\n", .{ exec_time / us, exec_per });
         std.debug.print("Total:\t\t\t{d}us\n", .{total_time / us});
     }
-
-    return res;
 }
 
 pub const VM = struct {
@@ -165,6 +95,176 @@ pub const VM = struct {
     }
 };
 
+pub const Env = struct {
+    alloc_auto_free: bool,
+    loop: *Loop,
+
+    isolate: v8.Isolate,
+    isolate_params: v8.CreateParams,
+    hscope: v8.HandleScope,
+    globals: v8.ObjectTemplate,
+
+    context: ?v8.Context = null,
+
+    pub fn init(
+        alloc: std.mem.Allocator,
+        comptime alloc_auto_free: bool,
+        loop: *Loop,
+    ) !Env {
+
+        // globals values
+        // --------------
+
+        // allocator
+        utils.allocator = alloc;
+
+        // refs
+        refs.map = refs.Map{};
+
+        // I/O loop
+        utils.loop = loop;
+
+        // store
+        if (!alloc_auto_free) {
+            Store.default = Store.init(utils.allocator);
+        }
+
+        // v8 values
+        // ---------
+
+        // params
+        var params = v8.initCreateParams();
+        params.array_buffer_allocator = v8.createDefaultArrayBufferAllocator();
+
+        // isolate
+        var isolate = v8.Isolate.init(&params);
+        isolate.enter();
+
+        // handle scope
+        var hscope: v8.HandleScope = undefined;
+        hscope.init(isolate);
+
+        // ObjectTemplate for the global namespace
+        const globals = v8.ObjectTemplate.initDefault(isolate);
+
+        return .{
+            .loop = loop,
+            .alloc_auto_free = alloc_auto_free,
+            .isolate_params = params,
+            .isolate = isolate,
+            .hscope = hscope,
+            .globals = globals,
+        };
+    }
+
+    // load APIs into Javascript environement
+    pub fn load(self: Env, comptime apis: []API, tpls: []TPL) !void {
+        try gen.load(self.isolate, self.globals, apis, tpls);
+    }
+
+    // start a Javascript context
+    pub fn start(self: *Env) void {
+
+        // context
+        self.context = v8.Context.init(self.isolate, self.globals, null);
+        self.context.?.enter();
+    }
+
+    // compile and run a Javascript script
+    // if no error you need to call deinit on the returned result
+    pub fn exec(
+        self: Env,
+        alloc: std.mem.Allocator,
+        script: []const u8,
+        name: []const u8,
+        try_catch: v8.TryCatch,
+    ) !utils.ExecuteResult {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+
+        return jsExecScript(alloc, self.isolate, self.context.?, script, name, try_catch);
+    }
+
+    // compile and run a Javascript script with try/catch
+    // if no error you need to call deinit on the returned result
+    pub fn execTryCatch(
+        self: Env,
+        alloc: std.mem.Allocator,
+        script: []const u8,
+        name: []const u8,
+    ) utils.ExecuteResult {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+
+        // JS try cache
+        var try_catch: v8.TryCatch = undefined;
+        try_catch.init(self.isolate);
+        defer try_catch.deinit();
+
+        return jsExecScript(alloc, self.isolate, self.context.?, script, name, try_catch);
+    }
+
+    // add a Native object in the Javascript context
+    pub fn addObject(self: Env, comptime apis: []API, obj: anytype) !void {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+        return createJSObject(apis, obj, self.context.?.getGlobal(), self.context.?, self.isolate);
+    }
+
+    // stop a Javascript context
+    pub fn stop(self: *Env) void {
+        if (self.context == null) {
+            return; // no-op
+        }
+
+        // context
+        self.context.?.exit();
+        self.context = undefined;
+    }
+
+    pub fn deinit(self: *Env, alloc: std.mem.Allocator) void {
+
+        // v8 values
+        // ---------
+
+        // handle scope
+        var hscope = self.hscope;
+        hscope.deinit();
+
+        // isolate
+        var isolate = self.isolate;
+        isolate.exit();
+        isolate.deinit();
+
+        // params
+        v8.destroyArrayBufferAllocator(self.isolate_params.array_buffer_allocator.?);
+
+        // globals values
+        // --------------
+
+        // store
+        if (!self.alloc_auto_free) {
+            Store.default.?.deinit(alloc);
+            Store.default = undefined;
+        }
+
+        // refs
+        refs.map.deinit(alloc);
+        refs.map = undefined;
+
+        // I/O
+        utils.loop = undefined;
+
+        // allocator
+        utils.allocator = undefined;
+
+        self.* = undefined;
+    }
+};
+
 // Execute Javascript script
 // if no error you need to call deinit on the returned result
 pub fn jsExecScript(
@@ -181,10 +281,9 @@ pub fn jsExecScript(
     return res;
 }
 
-pub fn createJSObject(
-    comptime apis: []gen.API,
+fn createJSObject(
+    comptime apis: []API,
     obj: anytype,
-    tpls: []gen.ProtoTpl,
     target: v8.Object,
     ctx: v8.Context,
     isolate: v8.Isolate,
@@ -200,10 +299,11 @@ pub fn createJSObject(
         }
     }
     const T_refl = apis[obj_api_index].T_refl;
-    const tpl = tpls[obj_api_index].tpl;
+    const tpl = gen.getTpl(obj_api_index).tpl;
 
     // instantiate JS object
-    const js_obj = tpl.getInstanceTemplate().initInstance(ctx);
+    const instance_tpl = tpl.getInstanceTemplate();
+    const js_obj = instance_tpl.initInstance(ctx);
     const key = v8.String.initUtf8(isolate, T_refl.js_name);
     if (!target.setValue(ctx, key, js_obj)) {
         return error.CreateV8Object;

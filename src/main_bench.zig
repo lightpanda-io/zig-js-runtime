@@ -1,10 +1,7 @@
 const std = @import("std");
 
-const v8 = @import("v8");
-
+const jsruntime = @import("jsruntime.zig");
 const eng = @import("engine.zig");
-const gen = @import("generate.zig");
-const Loop = @import("loop.zig").SingleThreaded;
 
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
@@ -16,15 +13,15 @@ const us = std.time.ns_per_us;
 
 fn benchWithIsolate(
     alloc: std.mem.Allocator,
-    comptime execFn: eng.ExecFunc,
-    comptime apis: []gen.API,
+    comptime ctxExecFn: jsruntime.ContextExecFn,
+    comptime apis: []jsruntime.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     var ba = bench.allocator(alloc);
     const duration = try bench.call(
-        eng.Load,
-        .{ ba.allocator(), true, execFn, apis },
+        jsruntime.loadEnv,
+        .{ ba.allocator(), true, ctxExecFn, apis },
         iter,
         warmup,
     );
@@ -37,35 +34,35 @@ fn benchWithIsolate(
     };
 }
 
+var duration_global: u64 = undefined;
+
 fn benchWithoutIsolate(
     alloc: std.mem.Allocator,
-    comptime execFn: eng.ExecFunc,
-    comptime apis: []gen.API,
+    comptime ctxExecFn: jsruntime.ContextExecFn,
+    comptime apis: []jsruntime.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     var ba = bench.allocator(alloc);
     const s = struct {
         fn do(
-            loop: *Loop,
-            isolate: v8.Isolate,
-            globals: v8.ObjectTemplate,
-            tpls: []gen.ProtoTpl,
-            comptime apis_scoped: []gen.API,
-        ) !eng.ExecRes {
-            const t = try bench.call(
-                execFn,
-                .{ loop, isolate, globals, tpls, apis_scoped },
+            alloc_func: std.mem.Allocator,
+            js_env: *jsruntime.Env,
+            comptime apis_func: []jsruntime.API,
+        ) !void {
+            const duration = try bench.call(
+                ctxExecFn,
+                .{ alloc_func, js_env, apis_func },
                 iter,
                 warmup,
             );
-            return eng.ExecRes{ .Time = t };
+            duration_global = duration;
         }
     };
-    const res = try eng.Load(ba.allocator(), true, s.do, apis);
+    try eng.loadEnv(ba.allocator(), true, s.do, apis);
     const alloc_stats = ba.stats();
     return bench.Result{
-        .duration = res.Time,
+        .duration = duration_global,
         .alloc_nb = alloc_stats.alloc_nb,
         .realloc_nb = alloc_stats.realloc_nb,
         .alloc_size = alloc_stats.alloc_size,
@@ -74,19 +71,12 @@ fn benchWithoutIsolate(
 
 pub fn main() !void {
 
-    // benchmark conf
-    const iter = 100;
-    const warmup = iter / 20;
-    const title_fmt = "Benchmark jsengine 🚀 (~= {d} iters)";
-    var buf: [100]u8 = undefined;
-    const title = try std.fmt.bufPrint(buf[0..], title_fmt, .{iter});
-
-    // create v8 vm
-    const vm = eng.VM.init();
-    defer vm.deinit();
-
     // generate APIs
     const apis = comptime proto.generate(); // stage1: we need comptime
+
+    // create JS vm
+    const vm = jsruntime.VM.init();
+    defer vm.deinit();
 
     // allocators
     var gpa1 = std.heap.GeneralPurposeAllocator(.{}){};
@@ -97,6 +87,13 @@ pub fn main() !void {
     defer _ = gpa2.deinit();
     var alloc2 = std.heap.ArenaAllocator.init(gpa2.allocator());
     defer alloc2.deinit();
+
+    // benchmark conf
+    const iter = 100;
+    const warmup = iter / 20;
+    const title_fmt = "Benchmark jsengine 🚀 (~= {d} iters)";
+    var buf: [100]u8 = undefined;
+    const title = try std.fmt.bufPrint(buf[0..], title_fmt, .{iter});
 
     // benchmark funcs
     const res1 = try benchWithIsolate(alloc1.allocator(), proto.exec, apis, iter, warmup);

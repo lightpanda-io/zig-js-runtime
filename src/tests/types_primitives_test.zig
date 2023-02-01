@@ -1,10 +1,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("../utils.zig");
-const gen = @import("../generate.zig");
-const eng = @import("../engine.zig");
-const Loop = @import("../loop.zig").SingleThreaded;
+const jsruntime = @import("../jsruntime.zig");
 
 const tests = @import("test_utils.zig");
 
@@ -92,32 +89,29 @@ const Primitives = struct {
 };
 
 // generate API, comptime
-pub fn generate() []gen.API {
-    return gen.compile(.{Primitives});
+pub fn generate() []jsruntime.API {
+    return jsruntime.compile(.{Primitives});
 }
 
 // exec tests
 pub fn exec(
-    loop: *Loop,
-    isolate: v8.Isolate,
-    globals: v8.ObjectTemplate,
-    _: []gen.ProtoTpl,
-    comptime _: []gen.API,
-) !eng.ExecRes {
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
+    comptime _: []jsruntime.API,
+) !void {
 
-    // create v8 context
-    var context = v8.Context.init(isolate, globals, null);
-    context.enter();
-    defer context.exit();
+    // start JS env
+    js_env.start();
+    defer js_env.stop();
 
     // constructor
-    const case_cstr = [_]tests.Case{
+    var case_cstr = [_]tests.Case{
         .{ .src = "let p = new Primitives();", .ex = "undefined" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, case_cstr.len, case_cstr);
+    try tests.checkCases(alloc, js_env, &case_cstr);
 
     // JS <> Native translation of primitive types
-    const cases = [_]tests.Case{
+    var cases = [_]tests.Case{
 
         // String
         .{ .src = "p.checkString('ok ascii') === 'ok ascii';", .ex = "true" },
@@ -180,6 +174,5 @@ pub fn exec(
         .{ .src = "p.checkOptional(null, 3);", .ex = "3" },
         .{ .src = "p.checkNonOptional();", .ex = "TypeError" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases.len, cases);
-    return eng.ExecOK;
+    try tests.checkCases(alloc, js_env, &cases);
 }

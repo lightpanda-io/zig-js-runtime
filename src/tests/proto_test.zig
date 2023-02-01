@@ -1,10 +1,7 @@
 const std = @import("std");
 const v8 = @import("v8");
 
-const utils = @import("../utils.zig");
-const gen = @import("../generate.zig");
-const eng = @import("../engine.zig");
-const Loop = @import("../loop.zig").SingleThreaded;
+const jsruntime = @import("../jsruntime.zig");
 
 const tests = @import("test_utils.zig");
 
@@ -60,56 +57,53 @@ const User = struct {
 };
 
 // generate API, comptime
-pub fn generate() []gen.API {
-    return gen.compile(.{ User, Person, Entity });
+pub fn generate() []jsruntime.API {
+    return jsruntime.compile(.{ User, Person, Entity });
 }
 
 // exec tests
 pub fn exec(
-    loop: *Loop,
-    isolate: v8.Isolate,
-    globals: v8.ObjectTemplate,
-    _: []gen.ProtoTpl,
-    comptime _: []gen.API,
-) !eng.ExecRes {
+    alloc: std.mem.Allocator,
+    js_env: *jsruntime.Env,
+    comptime _: []jsruntime.API,
+) !void {
 
-    // create v8 context
-    var context = v8.Context.init(isolate, globals, null);
-    context.enter();
-    defer context.exit();
+    // start JS env
+    js_env.start();
+    defer js_env.stop();
 
     // 1. constructor
-    const cases1 = [_]tests.Case{
+    var cases1 = [_]tests.Case{
         .{ .src = "let p = new Person('Francis', 'Bouvier', 40);", .ex = "undefined" },
         .{ .src = "p.__proto__ === Person.prototype", .ex = "true" },
         .{ .src = "typeof(p.constructor) === 'function'", .ex = "true" },
         .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
         .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases1.len, cases1);
+    try tests.checkCases(alloc, js_env, &cases1);
 
     // 2. getter
-    const cases2 = [_]tests.Case{
+    var cases2 = [_]tests.Case{
         .{ .src = "p.age === 40", .ex = "true" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases2.len, cases2);
+    try tests.checkCases(alloc, js_env, &cases2);
 
     // 3. setter
-    const cases3 = [_]tests.Case{
+    var cases3 = [_]tests.Case{
         .{ .src = "p.age = 41;", .ex = "41" },
         .{ .src = "p.age", .ex = "41" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases3.len, cases3);
+    try tests.checkCases(alloc, js_env, &cases3);
 
     // 4. method
-    const cases4 = [_]tests.Case{
+    var cases4 = [_]tests.Case{
         .{ .src = "p.fullName() === 'Bouvier';", .ex = "true" },
         .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases4.len, cases4);
+    try tests.checkCases(alloc, js_env, &cases4);
 
     // prototype chain
-    const cases_proto = [_]tests.Case{
+    var cases_proto = [_]tests.Case{
         .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
         .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
         .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },
@@ -119,7 +113,5 @@ pub fn exec(
         .{ .src = "u.role = 2;", .ex = "2" },
         .{ .src = "u.age;", .ex = "43" },
     };
-    try tests.checkCases(loop, utils.allocator, isolate, context, cases_proto.len, cases_proto);
-
-    return eng.ExecOK;
+    try tests.checkCases(alloc, js_env, &cases_proto);
 }

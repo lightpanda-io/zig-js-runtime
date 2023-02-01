@@ -183,7 +183,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}src/engine.zig",
+                "{s}src/jsruntime.zig",
                 .{vendor_path},
             );
             const lib = std.build.Pkg{

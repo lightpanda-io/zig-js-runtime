@@ -12,14 +12,14 @@ const callback = @import("tests/cbk_test.zig");
 
 test {
 
-    // create v8 vm
+    // create JS vm
     const vm = eng.VM.init();
     defer vm.deinit();
 
     // base and prototype tests
     const proto_apis = comptime proto.generate(); // stage1: we need comptime
     var proto_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(proto_alloc.allocator(), false, proto.exec, proto_apis);
+    _ = try eng.loadEnv(proto_alloc.allocator(), false, proto.exec, proto_apis);
     const proto_alloc_stats = proto_alloc.stats();
     const proto_alloc_size = pretty.Measure{
         .unit = "b",
@@ -29,7 +29,7 @@ test {
     // primitive types tests
     const prim_apis = comptime primitive_types.generate(); // stage1: we need to comptime
     var prim_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
+    _ = try eng.loadEnv(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
     const prim_alloc_stats = prim_alloc.stats();
     const prim_alloc_size = pretty.Measure{
         .unit = "b",
@@ -39,7 +39,7 @@ test {
     // native types tests
     const nat_apis = comptime native_types.generate(); // stage1: we need to comptime
     var nat_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(nat_alloc.allocator(), false, native_types.exec, nat_apis);
+    _ = try eng.loadEnv(nat_alloc.allocator(), false, native_types.exec, nat_apis);
     const nat_alloc_stats = nat_alloc.stats();
     const nat_alloc_size = pretty.Measure{
         .unit = "b",
@@ -49,7 +49,7 @@ test {
     // callback tests
     const cbk_apis = comptime callback.generate(); // stage1: we need comptime
     var cbk_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.Load(cbk_alloc.allocator(), false, callback.exec, cbk_apis);
+    _ = try eng.loadEnv(cbk_alloc.allocator(), false, callback.exec, cbk_apis);
     const cbk_alloc_stats = cbk_alloc.stats();
     const cbk_alloc_size = pretty.Measure{
         .unit = "b",
