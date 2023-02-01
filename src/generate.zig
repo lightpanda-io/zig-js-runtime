@@ -97,7 +97,7 @@ fn setReturnType(
     if (ret.T_refl_index) |index| {
 
         // return is a user defined type
-        const js_obj = TPLs[index].tpl.getInstanceTemplate().initInstance(ctx);
+        const js_obj = getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
         _ = setNativeObject(
             alloc,
             all_T[index],
@@ -528,6 +528,10 @@ pub fn compile(comptime types: anytype) []API {
 // Therefore the content of thoses lists (and their order) should not be altered
 // afterwards.
 var TPLs: []ProtoTpl = undefined;
+
+pub fn getTpl(index: usize) ProtoTpl {
+    return TPLs[index];
+}
 
 // Load native APIs into a JS isolate
 // This function is called at runtime.

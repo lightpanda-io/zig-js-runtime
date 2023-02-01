@@ -1,9 +1,9 @@
 const std = @import("std");
+
 const v8 = @import("v8");
 
-const engine = @import("../engine.zig");
+const jsruntime = @import("../jsruntime.zig");
 const utils = @import("../utils.zig");
-const Loop = @import("../loop.zig").SingleThreaded;
 
 fn isTypeError(expected: []const u8, msg: []const u8) bool {
     if (!std.mem.eql(u8, expected, "TypeError")) {
@@ -40,12 +40,9 @@ fn caseError(src: []const u8, exp: []const u8, res: []const u8, stack: ?[]const 
 }
 
 pub fn checkCases(
-    loop: *Loop,
     alloc: std.mem.Allocator,
-    isolate: v8.Isolate,
-    context: v8.Context,
-    comptime n: comptime_int,
-    cases: [n]Case,
+    js_env: *jsruntime.Env,
+    cases: []Case,
 ) !void {
     var has_error = false;
 
@@ -54,13 +51,13 @@ pub fn checkCases(
 
         // try cache
         var try_catch: v8.TryCatch = undefined;
-        try_catch.init(isolate);
+        try_catch.init(js_env.isolate);
         defer try_catch.deinit();
 
         // execute script
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
-        const res = engine.jsExecScript(alloc, isolate, context, case.src, name, try_catch);
+        const res = try js_env.exec(alloc, case.src, name, try_catch);
         defer res.deinit();
 
         // check script error
@@ -87,7 +84,7 @@ pub fn checkCases(
 
         // loop until all JS callbacks are done,
         // blocking operation
-        loop.run() catch {
+        js_env.loop.run() catch {
             cbk_res.success = false;
         };
 
@@ -103,11 +100,11 @@ pub fn checkCases(
 
                 // callback try catch
                 cbk_alloc = true;
-                const ctx = isolate.getCurrentContext();
+                const ctx = js_env.context.?;
                 const except = try_catch.getException().?;
-                cbk_res.result = try utils.valueToUtf8(alloc, except, isolate, ctx);
+                cbk_res.result = try utils.valueToUtf8(alloc, except, js_env.isolate, ctx);
                 const stack = try_catch.getStackTrace(ctx).?;
-                cbk_res.stack = try utils.valueToUtf8(alloc, stack, isolate, ctx);
+                cbk_res.stack = try utils.valueToUtf8(alloc, stack, js_env.isolate, ctx);
                 if (!isTypeError(case.cbk_ex, cbk_res.result)) {
                     cbk_error = true;
                 }
