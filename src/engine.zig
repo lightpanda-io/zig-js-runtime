@@ -207,11 +207,18 @@ pub const Env = struct {
     }
 
     // add a Native object in the Javascript context
-    pub fn addObject(self: Env, comptime apis: []API, obj: anytype) !void {
+    pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) !void {
         if (self.context == null) {
             return error.EnvNotStarted;
         }
-        return createJSObject(apis, obj, self.context.?.getGlobal(), self.context.?, self.isolate);
+        return createJSObject(
+            apis,
+            obj,
+            name,
+            self.context.?.getGlobal(),
+            self.context.?,
+            self.isolate,
+        );
     }
 
     // stop a Javascript context
@@ -284,6 +291,7 @@ pub fn jsExecScript(
 fn createJSObject(
     comptime apis: []API,
     obj: anytype,
+    name: []const u8,
     target: v8.Object,
     ctx: v8.Context,
     isolate: v8.Isolate,
@@ -304,7 +312,7 @@ fn createJSObject(
     // instantiate JS object
     const instance_tpl = tpl.getInstanceTemplate();
     const js_obj = instance_tpl.initInstance(ctx);
-    const key = v8.String.initUtf8(isolate, T_refl.js_name);
+    const key = v8.String.initUtf8(isolate, name);
     if (!target.setValue(ctx, key, js_obj)) {
         return error.CreateV8Object;
     }

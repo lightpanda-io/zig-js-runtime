@@ -124,7 +124,7 @@ pub fn shellExec(
 
     // add console object
     const console = jsruntime.Console{};
-    try js_env.addObject(apis, console);
+    try js_env.addObject(apis, console, "console");
 
     // JS try cache
     var try_catch: v8.TryCatch = undefined;
@@ -217,7 +217,6 @@ pub fn shell(
     comptime var do_fn: jsruntime.ContextExecFn = exec;
     if (ctxExecFn) |func| {
         do_fn = func;
-        std.debug.print("ok\n", .{});
     }
     try jsruntime.loadEnv(alloc, alloc_auto_free, do_fn, apis);
 }
