@@ -19,5 +19,5 @@ pub fn main() !void {
     const alloc = gpa.allocator();
 
     // launch shell
-    try jsruntime.shell(alloc, false, apis, null, "/tmp/jsruntime-shell.sock");
+    try jsruntime.shell(alloc, false, apis, null, .{ .app_name = "jsruntime-shell" });
 }
