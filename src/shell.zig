@@ -12,8 +12,52 @@ const jsruntime = @import("jsruntime.zig");
 const IO = @import("loop.zig").IO;
 
 // Global variables
-var socket_p: []const u8 = undefined;
 var socket_fd: std.os.socket_t = undefined;
+var conf: Config = undefined;
+
+// Config
+pub const Config = struct {
+    app_name: []const u8,
+
+    // if not provided will be /tmp/{app_name}.sock
+    socket_path: ?[]const u8 = null,
+    p: []const u8 = undefined,
+
+    history: bool = true,
+    history_max: ?u8 = null,
+    history_path: ?[]const u8 = null,
+
+    const socket_path_default = "/tmp/{s}.sock"; // with app_name
+    const history_max_default = 50; // if history is true
+    const history_path_default = "{s}/.cache/{s}/history.txt"; // with $HOME, app_anme
+
+    fn populate(self: *Config, socket_path_buf: []u8, history_path_buf: []u8) !void {
+        if (self.socket_path == null) {
+            self.socket_path = try std.fmt.bufPrint(
+                socket_path_buf,
+                socket_path_default,
+                .{self.app_name},
+            );
+        }
+        if (self.history) {
+            if (self.history_max == null) {
+                self.history_max = history_max_default;
+            }
+            if (self.history_path == null) {
+                const home = std.os.getenv("HOME").?;
+                // NOTE: we are using bufPrintZ as we need a null-terminated slice
+                // to translate as c char
+                self.history_path = try std.fmt.bufPrintZ(
+                    history_path_buf,
+                    history_path_default,
+                    .{ home, self.app_name },
+                );
+                const f = try openOrCreateFile(self.history_path.?);
+                f.close();
+            }
+        }
+    }
+};
 
 // I/O connection context
 const ConnContext = struct {
@@ -186,24 +230,28 @@ pub fn shell(
     comptime alloc_auto_free: bool,
     comptime apis: []jsruntime.API,
     comptime ctxExecFn: ?jsruntime.ContextExecFn,
-    socket_path: []const u8,
+    comptime config: Config,
 ) !void {
 
-    // set socket path
-    socket_p = socket_path;
+    // set config
+    var cf = config;
+    var socket_path_buf: [100]u8 = undefined;
+    var history_path_buf: [100]u8 = undefined;
+    try cf.populate(&socket_path_buf, &history_path_buf);
+    conf = cf;
 
     // remove socket file of internal server
     // reuse_address (SO_REUSEADDR flag) does not seems to work on unix socket
     // see: https://gavv.net/articles/unix-socket-reuse/
     // TODO: use a lock file instead
-    std.os.unlink(socket_p) catch |err| {
+    std.os.unlink(conf.socket_path.?) catch |err| {
         if (err != error.FileNotFound) {
             return err;
         }
     };
 
     // create internal server listening on a unix socket
-    var addr = try std.net.Address.initUnix(socket_p);
+    var addr = try std.net.Address.initUnix(conf.socket_path.?);
     var server = std.net.StreamServer.init(.{ .reuse_address = true });
     defer server.deinit();
     try server.listen(addr);
@@ -231,9 +279,19 @@ fn repl() !void {
     , .{});
 
     // create a socket client connected to the internal server
-    const socket = try std.net.connectUnixSocket(socket_p);
+    const socket = try std.net.connectUnixSocket(conf.socket_path.?);
 
     var ack: [2]u8 = undefined;
+
+    // history load
+    if (conf.history) {
+        if (c.linenoiseHistoryLoad(conf.history_path.?.ptr) != 0) {
+            return error.LinenoiseHistoryLoad;
+        }
+        if (c.linenoiseHistorySetMaxLen(conf.history_max.?) != 1) {
+            return error.LinenoiseHistorySetMaxLen;
+        }
+    }
 
     // infinite loop
     while (true) {
@@ -258,6 +316,16 @@ fn repl() !void {
                 // free the line
                 c.linenoiseFree(line);
                 break;
+            }
+
+            // add line in history
+            if (conf.history) {
+                if (c.linenoiseHistoryAdd(line) != 1) {
+                    return error.LinenoiseHistoryAdd;
+                }
+                if (c.linenoiseHistorySave(conf.history_path.?.ptr) != 0) {
+                    return error.LinenoiseHistorySave;
+                }
             }
 
             // send the input command to the internal server
@@ -288,4 +356,38 @@ fn repl() !void {
 fn printStdout(comptime format: []const u8, args: anytype) void {
     const stdout = std.io.getStdOut().writer();
     stdout.print(format, args) catch unreachable;
+}
+
+// Utils
+// -----
+
+fn openOrCreateFile(path: []const u8) !std.fs.File {
+    var file: std.fs.File = undefined;
+    if (std.fs.openFileAbsolute(path, .{})) |f| {
+        file = f;
+    } else |err| switch (err) {
+        error.FileNotFound => {
+
+            // file does not exists, let's check the dir
+            const dir_path = std.fs.path.dirname(path);
+            if (dir_path != null) {
+                var dir: std.fs.Dir = undefined;
+                if (std.fs.openDirAbsolute(dir_path.?, .{})) |d| {
+                    dir = d;
+                    dir.close();
+                } else |dir_err| switch (dir_err) {
+                    // create dir if not exists
+                    error.FileNotFound => {
+                        try std.fs.makeDirAbsolute(dir_path.?);
+                    },
+                    else => return dir_err,
+                }
+            }
+
+            // create the file
+            file = try std.fs.createFileAbsolute(path, .{ .read = true });
+        },
+        else => return err,
+    }
+    return file;
 }
