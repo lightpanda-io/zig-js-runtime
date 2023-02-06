@@ -81,11 +81,9 @@ pub fn checkCases(
         };
         var cbk_alloc = false;
 
-        // loop until all JS callbacks are done,
+        // wait until all JS callbacks are done,
         // blocking operation
-        js_env.loop.run() catch {
-            cbk_res.success = false;
-        };
+        try js_env.wait(alloc, try_catch, &cbk_res);
 
         // check callback error
         var cbk_error = false;
@@ -95,21 +93,8 @@ pub fn checkCases(
                 cbk_error = true;
             }
         } else {
-            if (try_catch.hasCaught()) {
-
-                // callback try catch
-                cbk_alloc = true;
-                const ctx = js_env.context.?;
-                const except = try_catch.getException().?;
-                cbk_res.result = try utils.valueToUtf8(alloc, except, js_env.isolate, ctx);
-                const stack = try_catch.getStackTrace(ctx).?;
-                cbk_res.stack = try utils.valueToUtf8(alloc, stack, js_env.isolate, ctx);
-                if (!isTypeError(case.cbk_ex, cbk_res.result)) {
-                    cbk_error = true;
-                }
-            } else {
+            if (!isTypeError(case.cbk_ex, cbk_res.result)) {
                 cbk_error = true;
-                cbk_res.result = "IO kernel error";
             }
         }
 

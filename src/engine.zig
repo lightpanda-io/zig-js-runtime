@@ -205,6 +205,33 @@ pub const Env = struct {
         return self.exec(alloc, script, name, try_catch);
     }
 
+    // wait I/O loop until all JS callbacks are executed
+    // This is a blocking operation.
+    pub fn wait(
+        self: Env,
+        alloc: std.mem.Allocator,
+        try_catch: v8.TryCatch,
+        cbk_res: ?*JSResult,
+    ) !void {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+
+        // run loop
+        utils.loop.run() catch |err| {
+            if (try_catch.hasCaught()) {
+                if (cbk_res) |res| {
+                    res.success = false;
+                    return res.setError(alloc, self.isolate, self.context.?, try_catch);
+                }
+                // otherwise ignore JS errors
+            } else {
+                // IO kernel error
+                return err;
+            }
+        };
+    }
+
     // add a Native object in the Javascript context
     pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) !void {
         if (self.context == null) {
