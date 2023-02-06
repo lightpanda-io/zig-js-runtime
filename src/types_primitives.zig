@@ -17,12 +17,6 @@ pub fn nativeToJS(
     js_res: v8.ReturnValue,
     isolate: v8.Isolate,
 ) !void {
-
-    // null
-    if (zig_T.optional_T != null and zig_val == null) {
-        return js_res.set(v8.initNull(isolate));
-    }
-
     const js_val = switch (zig_T.T) {
 
         // undefined
