@@ -320,11 +320,12 @@ fn repl() !void {
 
             // add line in history
             if (conf.history) {
-                if (c.linenoiseHistoryAdd(line) != 1) {
-                    return error.LinenoiseHistoryAdd;
-                }
-                if (c.linenoiseHistorySave(conf.history_path.?.ptr) != 0) {
-                    return error.LinenoiseHistorySave;
+                if (c.linenoiseHistoryAdd(line) == 1) {
+                    // save only if line has been added
+                    // (ie. not on duplicated line)
+                    if (c.linenoiseHistorySave(conf.history_path.?.ptr) != 0) {
+                        return error.LinenoiseHistorySave;
+                    }
                 }
             }
 
