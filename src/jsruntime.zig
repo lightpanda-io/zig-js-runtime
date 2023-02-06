@@ -16,3 +16,4 @@ pub const VM = eng.VM;
 pub const loadEnv = eng.loadEnv;
 pub const Env = eng.Env;
 pub const ContextExecFn = eng.ContextExecFn;
+pub const JSResult = eng.JSResult;

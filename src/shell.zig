@@ -127,7 +127,7 @@ fn cmdCallback(
         std.debug.print("JS exec error: {s}\n", .{@errorName(err)});
         return;
     };
-    defer res.deinit();
+    defer res.deinit(ctx.alloc);
 
     // JS print result
     var success = if (res.success) "<- " else "";

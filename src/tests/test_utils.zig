@@ -58,7 +58,7 @@ pub fn checkCases(
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
         const res = try js_env.exec(alloc, case.src, name, try_catch);
-        defer res.deinit();
+        defer res.deinit(alloc);
 
         // check script error
         var case_error = false;
@@ -74,8 +74,7 @@ pub fn checkCases(
         }
 
         // callback
-        var cbk_res = utils.ExecuteResult{
-            .alloc = alloc,
+        var cbk_res = jsruntime.JSResult{
             .success = true,
             // assume that the return value of the successfull callback is "undefined"
             .result = "undefined",
@@ -127,7 +126,7 @@ pub fn checkCases(
             caseError(case.src, case.cbk_ex, cbk_res.result, cbk_res.stack);
         }
         if (cbk_alloc) {
-            cbk_res.deinit();
+            cbk_res.deinit(alloc);
         }
     }
 
