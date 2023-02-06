@@ -17,3 +17,7 @@ pub const loadEnv = eng.loadEnv;
 pub const Env = eng.Env;
 pub const ContextExecFn = eng.ContextExecFn;
 pub const JSResult = eng.JSResult;
+
+pub const bench_allocator = @import("bench.zig").allocator;
+
+pub const test_utils = @import("tests/test_utils.zig");
