@@ -32,31 +32,58 @@ pub fn setNativeObject(
 ) !void {
     const T = T_refl.T;
 
-    // assign and bind native obj to JS obj
+    // check obj type
     var obj_ptr: *T = undefined;
     const obj_T = @TypeOf(obj);
     var addObject: bool = undefined;
-    if (comptime obj_T == T) {
+    comptime var is_pointer: bool = undefined;
+    comptime var is_optional: bool = undefined;
+    comptime {
+        if (obj_T == T) {
+            is_pointer = false;
+            is_optional = false;
+        } else if (obj_T == ?T) {
+            is_pointer = false;
+            is_optional = true;
+        } else if (obj_T == *T) {
+            is_pointer = true;
+            is_optional = false;
+        } else if (obj_T == ?*T) {
+            is_pointer = true;
+            is_optional = true;
+        } else {
+            return error.NativeObjectMismatch;
+        }
+    }
+
+    // assign and bind native obj to JS obj
+    if (comptime is_pointer) {
+
+        // obj is a pointer of T
+        // no need to create it in heap,
+        // we assume it has been done already by the API
+        // just assign pointer to native object
+        if (comptime is_optional) {
+            obj_ptr = obj.?;
+        } else {
+            obj_ptr = obj;
+        }
+        if (Store.default) |store| {
+            addObject = !store.containsObject(obj_ptr);
+        }
+    } else {
 
         // obj is a value of T
         // create a pointer in heap
         // (otherwise on the stack it will be delete when the function returns),
         // and assign pointer's dereference value to native object
         obj_ptr = try alloc.create(T);
-        obj_ptr.* = obj;
-        addObject = true;
-    } else if (comptime obj_T == *T) {
-
-        // obj is a pointer of T
-        // no need to create it in heap,
-        // we assume it has been done already by the API
-        // just assign pointer to native object
-        obj_ptr = obj;
-        if (Store.default) |store| {
-            addObject = !store.containsObject(obj_ptr);
+        if (comptime is_optional) {
+            obj_ptr.* = obj.?;
+        } else {
+            obj_ptr.* = obj;
         }
-    } else {
-        return error.NativeObjectMismatch;
+        addObject = true;
     }
 
     // if the object is an empty struct (ie. a kind of container)
@@ -94,9 +121,18 @@ fn setReturnType(
     ctx: v8.Context,
     isolate: v8.Isolate,
 ) !void {
+
+    // check for null values
+    if (comptime ret.optional_T != null and res == null) {
+        // no need to set anything
+        js_res.set(v8.initNull(isolate));
+        return;
+    }
+
     if (ret.T_refl_index) |index| {
 
         // return is a user defined type
+
         const js_obj = getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
         _ = setNativeObject(
             alloc,

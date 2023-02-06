@@ -38,9 +38,27 @@ const Car = struct {
 
     // return *<Struct> as getter
     pub fn get_brandPtr(self: Car) *Brand {
-        // var brand = utils.allocator.create(Brand) catch unreachable;
-        // brand.* = self.brand;
         return self.brand_ptr;
+    }
+
+    // return ?<Struct> as getter
+    pub fn get_brandOpt(self: Car) ?Brand {
+        return self.brand;
+    }
+
+    // return ?*<Struct> as getter
+    pub fn get_brandPtrOpt(self: Car) ?*Brand {
+        return self.brand_ptr;
+    }
+
+    // return ?<Struct> null as getter
+    pub fn get_brandOptNull(_: Car) ?Brand {
+        return null;
+    }
+
+    // return ?*<Struct> null as getter
+    pub fn get_brandPtrOptNull(_: Car) ?*Brand {
+        return null;
     }
 
     // return <Struct> as method
@@ -98,6 +116,14 @@ pub fn exec(
         // and check back the set of a new name on brand1Ptr_agin in brand1Ptr
         .{ .src = "brand1Ptr_again.name = 'Citroën'", .ex = "Citroën" },
         .{ .src = "brand1Ptr.name", .ex = "Citroën" },
+
+        // null test
+        .{ .src = "let brand_opt = car.brandOpt", .ex = "undefined" },
+        .{ .src = "brand_opt.name", .ex = "Renault" },
+        .{ .src = "let brand_ptr_opt = car.brandPtrOpt", .ex = "undefined" },
+        .{ .src = "brand_ptr_opt.name", .ex = "Citroën" },
+        .{ .src = "car.brandOptNull", .ex = "null" },
+        .{ .src = "car.brandPtrOptNull", .ex = "null" },
     };
     try tests.checkCases(alloc, js_env, &cases);
 }
