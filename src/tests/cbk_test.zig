@@ -52,7 +52,7 @@ pub fn generate() []jsruntime.API {
 
 // exec tests
 pub fn exec(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     js_env: *jsruntime.Env,
     comptime _: []jsruntime.API,
 ) !void {
@@ -65,7 +65,7 @@ pub fn exec(
     var case_cstr = [_]tests.Case{
         .{ .src = "let window = new Window();", .ex = "undefined" },
     };
-    try tests.checkCases(alloc, js_env, &case_cstr);
+    try tests.checkCases(js_env, &case_cstr);
 
     // cbkSyncWithoutArg
     var cases_cbk_sync_without_arg = [_]tests.Case{
@@ -89,7 +89,7 @@ pub fn exec(
         },
         .{ .src = "m;", .ex = "2" },
     };
-    try tests.checkCases(alloc, js_env, &cases_cbk_sync_without_arg);
+    try tests.checkCases(js_env, &cases_cbk_sync_without_arg);
 
     // cbkSyncWithArg
     var cases_cbk_sync_with_arg = [_]tests.Case{
@@ -113,7 +113,7 @@ pub fn exec(
         },
         .{ .src = "y;", .ex = "3" },
     };
-    try tests.checkCases(alloc, js_env, &cases_cbk_sync_with_arg);
+    try tests.checkCases(js_env, &cases_cbk_sync_with_arg);
 
     // cbkAsync
     var cases_cbk_async = [_]tests.Case{
@@ -141,7 +141,7 @@ pub fn exec(
             .ex = "undefined",
         },
     };
-    try tests.checkCases(alloc, js_env, &cases_cbk_async);
+    try tests.checkCases(js_env, &cases_cbk_async);
 
     // cbkAsyncWithArg
     var cases_cbk_async_with_arg = [_]tests.Case{
@@ -169,5 +169,5 @@ pub fn exec(
             .ex = "undefined",
         },
     };
-    try tests.checkCases(alloc, js_env, &cases_cbk_async_with_arg);
+    try tests.checkCases(js_env, &cases_cbk_async_with_arg);
 }

@@ -95,7 +95,7 @@ pub fn generate() []jsruntime.API {
 
 // exec tests
 pub fn exec(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     js_env: *jsruntime.Env,
     comptime _: []jsruntime.API,
 ) !void {
@@ -108,7 +108,7 @@ pub fn exec(
     var case_cstr = [_]tests.Case{
         .{ .src = "let p = new Primitives();", .ex = "undefined" },
     };
-    try tests.checkCases(alloc, js_env, &case_cstr);
+    try tests.checkCases(js_env, &case_cstr);
 
     // JS <> Native translation of primitive types
     var cases = [_]tests.Case{
@@ -174,5 +174,5 @@ pub fn exec(
         .{ .src = "p.checkOptional(null, 3);", .ex = "3" },
         .{ .src = "p.checkNonOptional();", .ex = "TypeError" },
     };
-    try tests.checkCases(alloc, js_env, &cases);
+    try tests.checkCases(js_env, &cases);
 }

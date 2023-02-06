@@ -42,7 +42,6 @@ fn caseError(src: []const u8, exp: []const u8, res: []const u8, stack: ?[]const 
 }
 
 pub fn checkCases(
-    alloc: std.mem.Allocator,
     js_env: *jsruntime.Env,
     cases: []Case,
 ) !void {
@@ -88,7 +87,6 @@ pub fn checkCases(
             .result = "undefined",
         };
         // no need to cbk_res.deinit on a FixBufferAllocator
-        var cbk_alloc = false;
 
         // wait until all JS callbacks are done,
         // blocking operation
@@ -118,9 +116,6 @@ pub fn checkCases(
             caseError(case.src, case.ex, res.result, res.stack);
         } else if (cbk_error) {
             caseError(case.src, case.cbk_ex, cbk_res.result, cbk_res.stack);
-        }
-        if (cbk_alloc) {
-            cbk_res.deinit(alloc);
         }
     }
 

@@ -63,7 +63,7 @@ pub fn generate() []jsruntime.API {
 
 // exec tests
 pub fn exec(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     js_env: *jsruntime.Env,
     comptime _: []jsruntime.API,
 ) !void {
@@ -80,27 +80,27 @@ pub fn exec(
         .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
         .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
-    try tests.checkCases(alloc, js_env, &cases1);
+    try tests.checkCases(js_env, &cases1);
 
     // 2. getter
     var cases2 = [_]tests.Case{
         .{ .src = "p.age === 40", .ex = "true" },
     };
-    try tests.checkCases(alloc, js_env, &cases2);
+    try tests.checkCases(js_env, &cases2);
 
     // 3. setter
     var cases3 = [_]tests.Case{
         .{ .src = "p.age = 41;", .ex = "41" },
         .{ .src = "p.age", .ex = "41" },
     };
-    try tests.checkCases(alloc, js_env, &cases3);
+    try tests.checkCases(js_env, &cases3);
 
     // 4. method
     var cases4 = [_]tests.Case{
         .{ .src = "p.fullName() === 'Bouvier';", .ex = "true" },
         .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
     };
-    try tests.checkCases(alloc, js_env, &cases4);
+    try tests.checkCases(js_env, &cases4);
 
     // prototype chain
     var cases_proto = [_]tests.Case{
@@ -113,5 +113,5 @@ pub fn exec(
         .{ .src = "u.role = 2;", .ex = "2" },
         .{ .src = "u.age;", .ex = "43" },
     };
-    try tests.checkCases(alloc, js_env, &cases_proto);
+    try tests.checkCases(js_env, &cases_proto);
 }

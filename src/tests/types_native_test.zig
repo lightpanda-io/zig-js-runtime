@@ -79,7 +79,7 @@ pub fn generate() []jsruntime.API {
 
 // exec tests
 pub fn exec(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     js_env: *jsruntime.Env,
     comptime _: []jsruntime.API,
 ) !void {
@@ -125,5 +125,5 @@ pub fn exec(
         .{ .src = "car.brandOptNull", .ex = "null" },
         .{ .src = "car.brandPtrOptNull", .ex = "null" },
     };
-    try tests.checkCases(alloc, js_env, &cases);
+    try tests.checkCases(js_env, &cases);
 }
