@@ -5,6 +5,8 @@ const v8 = @import("v8");
 const jsruntime = @import("../jsruntime.zig");
 const utils = @import("../utils.zig");
 
+const js_response_size = 200;
+
 fn isTypeError(expected: []const u8, msg: []const u8) bool {
     if (!std.mem.eql(u8, expected, "TypeError")) {
         return false;
@@ -54,11 +56,16 @@ pub fn checkCases(
         try_catch.init(js_env.isolate);
         defer try_catch.deinit();
 
+        // res buf
+        var res_buf: [js_response_size]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&res_buf);
+        const fba_alloc = fba.allocator();
+
         // execute script
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
-        const res = try js_env.exec(alloc, case.src, name, try_catch);
-        defer res.deinit(alloc);
+        const res = try js_env.exec(fba_alloc, case.src, name, try_catch);
+        // no need to res.deinit on a FixBufferAllocator
 
         // check script error
         var case_error = false;
@@ -72,6 +79,7 @@ pub fn checkCases(
                 case_error = true;
             }
         }
+        fba.reset();
 
         // callback
         var cbk_res = jsruntime.JSResult{
@@ -79,11 +87,12 @@ pub fn checkCases(
             // assume that the return value of the successfull callback is "undefined"
             .result = "undefined",
         };
+        // no need to cbk_res.deinit on a FixBufferAllocator
         var cbk_alloc = false;
 
         // wait until all JS callbacks are done,
         // blocking operation
-        try js_env.wait(alloc, try_catch, &cbk_res);
+        try js_env.wait(fba_alloc, try_catch, &cbk_res);
 
         // check callback error
         var cbk_error = false;
