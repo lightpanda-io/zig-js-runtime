@@ -47,6 +47,12 @@ pub fn checkCases(
 ) !void {
     var has_error = false;
 
+    // res buf
+    var res_buf: [js_response_size]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&res_buf);
+    const fba_alloc = fba.allocator();
+
+    // cases
     for (cases) |case, i| {
         test_case += 1;
 
@@ -54,11 +60,6 @@ pub fn checkCases(
         var try_catch: v8.TryCatch = undefined;
         try_catch.init(js_env.isolate);
         defer try_catch.deinit();
-
-        // res buf
-        var res_buf: [js_response_size]u8 = undefined;
-        var fba = std.heap.FixedBufferAllocator.init(&res_buf);
-        const fba_alloc = fba.allocator();
 
         // execute script
         var buf: [99]u8 = undefined;
@@ -78,7 +79,6 @@ pub fn checkCases(
                 case_error = true;
             }
         }
-        fba.reset();
 
         // callback
         var cbk_res = jsruntime.JSResult{
@@ -117,6 +117,8 @@ pub fn checkCases(
         } else if (cbk_error) {
             caseError(case.src, case.cbk_ex, cbk_res.result, cbk_res.stack);
         }
+
+        fba.reset();
     }
 
     if (has_error) {
