@@ -130,8 +130,15 @@ fn cmdCallback(
     defer res.deinit(ctx.alloc);
 
     // JS print result
-    var success = if (res.success) "<- " else "";
-    printStdout("{s}{s}\n", .{ success, res.result });
+    if (res.success) {
+        if (std.mem.eql(u8, res.result, "undefined")) {
+            printStdout("<- \x1b[38;5;242m{s}\x1b[0m\n", .{res.result});
+        } else {
+            printStdout("<- \x1b[33m{s}\x1b[0m\n", .{res.result});
+        }
+    } else {
+        printStdout("{s}\n", .{res.result});
+    }
 
     // acknowledge to repl result has been printed
     _ = std.os.write(ctx.socket, "ok") catch unreachable;
