@@ -96,7 +96,6 @@ pub const VM = struct {
 };
 
 pub const Env = struct {
-    alloc_auto_free: bool,
     loop: *Loop,
 
     isolate: v8.Isolate,
@@ -149,7 +148,6 @@ pub const Env = struct {
 
         return .{
             .loop = loop,
-            .alloc_auto_free = alloc_auto_free,
             .isolate_params = params,
             .isolate = isolate,
             .hscope = hscope,
@@ -279,9 +277,9 @@ pub const Env = struct {
         // --------------
 
         // store
-        if (!self.alloc_auto_free) {
-            Store.default.?.deinit(alloc);
-            Store.default = undefined;
+        if (Store.default) |store| {
+            store.deinit(alloc);
+            Store.default = null;
         }
 
         // refs
