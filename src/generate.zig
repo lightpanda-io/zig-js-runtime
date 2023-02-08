@@ -195,6 +195,7 @@ fn generateConstructor(
             if (func.?.first_optional_arg != null) {
                 func_args_required = func.?.first_optional_arg.?;
             }
+            func_args_required -= func.?.index_offset;
             const js_params_len = info.length();
             if (js_params_len < func_args_required) {
                 const args = .{
@@ -211,13 +212,16 @@ fn generateConstructor(
             // call native constructor function
             var args: func.?.args_T = undefined;
             inline for (func.?.args) |arg, i| {
-                const value = jsToNative(
-                    utils.allocator,
-                    arg,
-                    info.getArg(i - func.?.index_offset),
-                    isolate,
-                    ctx,
-                ) catch unreachable;
+                const value = switch (arg.T) {
+                    std.mem.Allocator => utils.allocator,
+                    else => jsToNative(
+                        utils.allocator,
+                        arg,
+                        info.getArg(i - func.?.index_offset),
+                        isolate,
+                        ctx,
+                    ) catch unreachable,
+                };
                 @field(args, arg.name.?) = value;
             }
             const obj = @call(.{}, T_refl.T.constructor, args);
@@ -362,6 +366,7 @@ fn generateMethod(
             @field(args, "0") = obj_ptr.*;
             inline for (func.args) |arg, i| {
                 const value = switch (arg.T) {
+                    std.mem.Allocator => utils.allocator,
                     *Loop => utils.loop,
                     cbk.Func => cbk.Func.init(
                         utils.allocator,
