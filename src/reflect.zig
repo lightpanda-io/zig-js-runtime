@@ -28,6 +28,7 @@ const builtin_types = [_]type{
     bool,
 
     // internal types
+    std.mem.Allocator,
     *Loop,
     cbk.Func,
     cbk.FuncSync,
@@ -271,6 +272,11 @@ pub const Func = struct {
             const arg_name = try itoa(x);
 
             args_types[i] = Type.reflect(arg.arg_type.?, arg_name);
+
+            // allocator
+            if (args_types[i].T == std.mem.Allocator) {
+                index_offset += 1;
+            }
 
             // loop
             if (args_types[i].T == *Loop) {

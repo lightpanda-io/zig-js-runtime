@@ -1,5 +1,4 @@
 const std = @import("std");
-const v8 = @import("v8");
 
 const jsruntime = @import("../jsruntime.zig");
 
@@ -19,7 +18,7 @@ const Person = struct {
     last_name: []u8,
     age: u32,
 
-    pub fn constructor(first_name: []u8, last_name: []u8, age: u32) Person {
+    pub fn constructor(_: std.mem.Allocator, first_name: []u8, last_name: []u8, age: u32) Person {
         return .{
             .first_name = first_name,
             .last_name = last_name,
@@ -46,8 +45,13 @@ const User = struct {
 
     pub const prototype = *Person;
 
-    pub fn constructor(first_name: []u8, last_name: []u8, age: u32) User {
-        const proto = Person.constructor(first_name, last_name, age);
+    pub fn constructor(
+        alloc: std.mem.Allocator,
+        first_name: []u8,
+        last_name: []u8,
+        age: u32,
+    ) User {
+        const proto = Person.constructor(alloc, first_name, last_name, age);
         return .{ .proto = proto, .role = 1 };
     }
 
