@@ -8,6 +8,7 @@ const pretty = @import("pretty.zig");
 const proto = @import("tests/proto_test.zig");
 const primitive_types = @import("tests/types_primitives_test.zig");
 const native_types = @import("tests/types_native_test.zig");
+const multiple_types = @import("tests/types_multiple_test.zig");
 const callback = @import("tests/cbk_test.zig");
 
 test {
@@ -52,6 +53,18 @@ test {
         .value = nat_alloc_stats.alloc_size,
     };
 
+    // multiple types tests
+    const multi_apis = comptime multiple_types.generate(); // stage1: we need to comptime
+    var multi_alloc = bench.allocator(std.testing.allocator);
+    var multi_arena = std.heap.ArenaAllocator.init(multi_alloc.allocator());
+    defer multi_arena.deinit();
+    _ = try eng.loadEnv(&multi_arena, multiple_types.exec, multi_apis);
+    const multi_alloc_stats = multi_alloc.stats();
+    const multi_alloc_size = pretty.Measure{
+        .unit = "b",
+        .value = multi_alloc_stats.alloc_size,
+    };
+
     // callback tests
     const cbk_apis = comptime callback.generate(); // stage1: we need comptime
     var cbk_alloc = bench.allocator(std.testing.allocator);
@@ -75,12 +88,13 @@ test {
         "ALLOCATIONS",
         "HEAP SIZE",
     };
-    const table = try pretty.GenerateTable(4, row_shape, pretty.TableConf{ .margin_left = "  " });
+    const table = try pretty.GenerateTable(5, row_shape, pretty.TableConf{ .margin_left = "  " });
     const title = "Test jsengine ✅";
     var t = table.init(title, header);
     try t.addRow(.{ "Prototype", proto_alloc.alloc_nb, proto_alloc_size });
     try t.addRow(.{ "Primitives", prim_alloc.alloc_nb, prim_alloc_size });
     try t.addRow(.{ "Natives", nat_alloc.alloc_nb, nat_alloc_size });
+    try t.addRow(.{ "Multiples", multi_alloc.alloc_nb, multi_alloc_size });
     try t.addRow(.{ "Callbacks", cbk_alloc.alloc_nb, cbk_alloc_size });
 
     const out = std.io.getStdErr().writer();

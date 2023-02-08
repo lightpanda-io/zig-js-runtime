@@ -37,7 +37,7 @@ const builtin_types = [_]type{
 
 pub const Type = struct {
     T: type, // could be pointer or concrete
-    name: ?[]u8, // only for function parameters
+    name: ?[]const u8, // only for function parameters or union member
 
     // is this type a builtin or a custom struct?
     // those fields are mutually exclusing
@@ -47,9 +47,18 @@ pub const Type = struct {
     T_refl_index: ?usize = null,
 
     optional_T: ?type, // child of an optional type
+    union_T: ?[]Type,
 
     fn lookup(comptime self: *Type, comptime structs: []Struct) void {
         if (self.is_builtin) {
+            return;
+        }
+
+        // if union, lookup each possible type
+        if (self.union_T) |union_types| {
+            inline for (union_types) |*tt| {
+                tt.lookup(structs);
+            }
             return;
         }
 
@@ -70,13 +79,26 @@ pub const Type = struct {
         }
     }
 
-    fn reflect(comptime T: type, comptime name: ?[]u8) Type {
+    fn reflect(comptime T: type, comptime name: ?[]const u8) Type {
         const info = @typeInfo(T);
 
         // optional T
         var optional_T: ?type = null;
         if (info == .Optional) {
             optional_T = info.Optional.child;
+        }
+
+        // union T
+        var union_T: ?[]Type = null;
+        if (info == .Union) {
+            if (info.Union.tag_type == null) {
+                @compileError("reflect error: Union type should be a tagged union");
+            }
+            var union_types: [info.Union.fields.len]Type = undefined;
+            inline for (info.Union.fields) |field, i| {
+                union_types[i] = Type.reflect(field.field_type, field.name);
+            }
+            union_T = &union_types;
         }
 
         // underlying T
@@ -99,6 +121,7 @@ pub const Type = struct {
             .name = name,
             .is_builtin = is_builtin,
             .optional_T = optional_T,
+            .union_T = union_T,
         };
     }
 };
