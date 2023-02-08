@@ -79,13 +79,9 @@ pub fn main() !void {
     defer vm.deinit();
 
     // allocators
-    var gpa1 = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa1.deinit();
-    var alloc1 = std.heap.ArenaAllocator.init(gpa1.allocator());
+    var alloc1 = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer alloc1.deinit();
-    var gpa2 = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa2.deinit();
-    var alloc2 = std.heap.ArenaAllocator.init(gpa2.allocator());
+    var alloc2 = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer alloc2.deinit();
 
     // benchmark conf
