@@ -108,6 +108,7 @@ pub fn main() !void {
         []const u8,
         pretty.Measure,
         u64,
+        u64,
         pretty.Measure,
     };
     const table = try pretty.GenerateTable(2, row_shape, pretty.TableConf{ .margin_left = "  " });
@@ -115,11 +116,12 @@ pub fn main() !void {
         "FUNCTION",
         "DURATION (per iter)",
         "ALLOCATIONS (nb)",
+        "RE-ALLOCATIONS (nb)",
         "HEAP SIZE",
     };
     var t = table.init(title, header);
-    try t.addRow(.{ "With Isolate", dur1, res1.alloc_nb, size1 });
-    try t.addRow(.{ "Without Isolate", dur2, res2.alloc_nb, size2 });
+    try t.addRow(.{ "With Isolate", dur1, res1.alloc_nb, res1.realloc_nb, size1 });
+    try t.addRow(.{ "Without Isolate", dur2, res2.alloc_nb, res2.realloc_nb, size2 });
     const out = std.io.getStdOut().writer();
     try t.render(out);
 }
