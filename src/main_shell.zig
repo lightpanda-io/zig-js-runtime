@@ -16,8 +16,9 @@ pub fn main() !void {
     // alloc
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
-    const alloc = gpa.allocator();
+    var arena = std.heap.ArenaAllocator.init(gpa.allocator());
+    defer arena.deinit();
 
     // launch shell
-    try jsruntime.shell(alloc, false, apis, null, .{ .app_name = "jsruntime-shell" });
+    try jsruntime.shell(&arena, apis, null, .{ .app_name = "jsruntime-shell" });
 }

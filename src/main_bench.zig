@@ -12,20 +12,20 @@ const kb = 1024;
 const us = std.time.ns_per_us;
 
 fn benchWithIsolate(
-    alloc: std.mem.Allocator,
+    bench_alloc: *bench.Allocator,
+    arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: jsruntime.ContextExecFn,
     comptime apis: []jsruntime.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
-    var ba = bench.allocator(alloc);
     const duration = try bench.call(
         jsruntime.loadEnv,
-        .{ ba.allocator(), true, ctxExecFn, apis },
+        .{ arena_alloc, ctxExecFn, apis },
         iter,
         warmup,
     );
-    const alloc_stats = ba.stats();
+    const alloc_stats = bench_alloc.stats();
     return bench.Result{
         .duration = duration,
         .alloc_nb = alloc_stats.alloc_nb,
@@ -37,13 +37,13 @@ fn benchWithIsolate(
 var duration_global: u64 = undefined;
 
 fn benchWithoutIsolate(
-    alloc: std.mem.Allocator,
+    bench_alloc: *bench.Allocator,
+    arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: jsruntime.ContextExecFn,
     comptime apis: []jsruntime.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
-    var ba = bench.allocator(alloc);
     const s = struct {
         fn do(
             alloc_func: std.mem.Allocator,
@@ -59,8 +59,8 @@ fn benchWithoutIsolate(
             duration_global = duration;
         }
     };
-    try eng.loadEnv(ba.allocator(), true, s.do, apis);
-    const alloc_stats = ba.stats();
+    try eng.loadEnv(arena_alloc, s.do, apis);
+    const alloc_stats = bench_alloc.stats();
     return bench.Result{
         .duration = duration_global,
         .alloc_nb = alloc_stats.alloc_nb,
@@ -79,10 +79,12 @@ pub fn main() !void {
     defer vm.deinit();
 
     // allocators
-    var alloc1 = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc1.deinit();
-    var alloc2 = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer alloc2.deinit();
+    var bench1 = bench.allocator(std.heap.page_allocator);
+    var arena1 = std.heap.ArenaAllocator.init(bench1.allocator());
+    defer arena1.deinit();
+    var bench2 = bench.allocator(std.heap.page_allocator);
+    var arena2 = std.heap.ArenaAllocator.init(bench2.allocator());
+    defer arena2.deinit();
 
     // benchmark conf
     const iter = 100;
@@ -92,8 +94,8 @@ pub fn main() !void {
     const title = try std.fmt.bufPrint(buf[0..], title_fmt, .{iter});
 
     // benchmark funcs
-    const res1 = try benchWithIsolate(alloc1.allocator(), proto.exec, apis, iter, warmup);
-    const res2 = try benchWithoutIsolate(alloc2.allocator(), proto.exec, apis, iter, warmup);
+    const res1 = try benchWithIsolate(&bench1, &arena1, proto.exec, apis, iter, warmup);
+    const res2 = try benchWithoutIsolate(&bench2, &arena2, proto.exec, apis, iter, warmup);
 
     // benchmark measures
     const dur1 = pretty.Measure{ .unit = "us", .value = res1.duration / us };

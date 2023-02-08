@@ -6,7 +6,6 @@ const v8 = @import("v8");
 const utils = @import("utils.zig");
 const Loop = @import("loop.zig").SingleThreaded;
 const refs = @import("refs.zig");
-const Store = @import("store.zig");
 const gen = @import("generate.zig");
 const refl = @import("reflect.zig");
 
@@ -18,11 +17,11 @@ const TPL = public.TPL;
 pub const ContextExecFn = (fn (std.mem.Allocator, *Env, comptime []API) anyerror!void);
 
 pub fn loadEnv(
-    alloc: std.mem.Allocator,
-    comptime alloc_auto_free: bool,
+    arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: ContextExecFn,
     comptime apis: []API,
 ) !void {
+    const alloc = arena_alloc.allocator();
 
     // create JS env
     var start: std.time.Instant = undefined;
@@ -31,8 +30,8 @@ pub fn loadEnv(
     }
     var loop = try Loop.init(alloc);
     defer loop.deinit();
-    var js_env = try Env.init(alloc, alloc_auto_free, &loop);
-    defer js_env.deinit(alloc);
+    var js_env = try Env.init(arena_alloc, &loop);
+    defer js_env.deinit();
 
     // load APIs in JS env
     var load_start: std.time.Instant = undefined;
@@ -105,28 +104,19 @@ pub const Env = struct {
 
     context: ?v8.Context = null,
 
-    pub fn init(
-        alloc: std.mem.Allocator,
-        comptime alloc_auto_free: bool,
-        loop: *Loop,
-    ) !Env {
+    pub fn init(arena_alloc: *std.heap.ArenaAllocator, loop: *Loop) !Env {
 
         // globals values
         // --------------
 
         // allocator
-        utils.allocator = alloc;
+        utils.allocator = arena_alloc.allocator();
 
         // refs
         refs.map = refs.Map{};
 
         // I/O loop
         utils.loop = loop;
-
-        // store
-        if (!alloc_auto_free) {
-            Store.default = Store.init(utils.allocator);
-        }
 
         // v8 values
         // ---------
@@ -256,7 +246,7 @@ pub const Env = struct {
         self.context = undefined;
     }
 
-    pub fn deinit(self: *Env, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Env) void {
 
         // v8 values
         // ---------
@@ -276,20 +266,9 @@ pub const Env = struct {
         // globals values
         // --------------
 
-        // store
-        if (Store.default) |store| {
-            store.deinit(alloc);
-            Store.default = null;
-        }
-
-        // refs
-        refs.map.deinit(alloc);
+        // unset globals
         refs.map = undefined;
-
-        // I/O
         utils.loop = undefined;
-
-        // allocator
         utils.allocator = undefined;
 
         self.* = undefined;

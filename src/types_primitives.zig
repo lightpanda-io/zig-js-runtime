@@ -4,7 +4,6 @@ const v8 = @import("v8");
 const refl = @import("reflect.zig");
 const utils = @import("utils.zig");
 const engine = @import("engine.zig");
-const Store = @import("store.zig");
 
 const i64Num = @import("types.zig").i64Num;
 const u64Num = @import("types.zig").u64Num;
@@ -102,11 +101,7 @@ pub fn jsToNative(
 
         // list of bytes (including strings)
         []u8, ?[]u8, []const u8, ?[]const u8 => {
-            const buf = try utils.valueToUtf8(alloc, js_val, isolate, ctx);
-            if (Store.default != null) {
-                try Store.default.?.addString(buf);
-            }
-            return buf;
+            return try utils.valueToUtf8(alloc, js_val, isolate, ctx);
         },
 
         // floats

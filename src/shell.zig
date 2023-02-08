@@ -233,8 +233,7 @@ pub fn shellExec(
 }
 
 pub fn shell(
-    alloc: std.mem.Allocator,
-    comptime alloc_auto_free: bool,
+    arena_alloc: *std.heap.ArenaAllocator,
     comptime apis: []jsruntime.API,
     comptime ctxExecFn: ?jsruntime.ContextExecFn,
     comptime config: Config,
@@ -273,7 +272,7 @@ pub fn shell(
     if (ctxExecFn) |func| {
         do_fn = func;
     }
-    try jsruntime.loadEnv(alloc, alloc_auto_free, do_fn, apis);
+    try jsruntime.loadEnv(arena_alloc, do_fn, apis);
 }
 
 fn repl() !void {

@@ -19,7 +19,9 @@ test {
     // base and prototype tests
     const proto_apis = comptime proto.generate(); // stage1: we need comptime
     var proto_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.loadEnv(proto_alloc.allocator(), false, proto.exec, proto_apis);
+    var proto_arena = std.heap.ArenaAllocator.init(proto_alloc.allocator());
+    defer proto_arena.deinit();
+    _ = try eng.loadEnv(&proto_arena, proto.exec, proto_apis);
     const proto_alloc_stats = proto_alloc.stats();
     const proto_alloc_size = pretty.Measure{
         .unit = "b",
@@ -29,7 +31,9 @@ test {
     // primitive types tests
     const prim_apis = comptime primitive_types.generate(); // stage1: we need to comptime
     var prim_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.loadEnv(prim_alloc.allocator(), false, primitive_types.exec, prim_apis);
+    var prim_arena = std.heap.ArenaAllocator.init(prim_alloc.allocator());
+    defer prim_arena.deinit();
+    _ = try eng.loadEnv(&prim_arena, primitive_types.exec, prim_apis);
     const prim_alloc_stats = prim_alloc.stats();
     const prim_alloc_size = pretty.Measure{
         .unit = "b",
@@ -39,7 +43,9 @@ test {
     // native types tests
     const nat_apis = comptime native_types.generate(); // stage1: we need to comptime
     var nat_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.loadEnv(nat_alloc.allocator(), false, native_types.exec, nat_apis);
+    var nat_arena = std.heap.ArenaAllocator.init(nat_alloc.allocator());
+    defer nat_arena.deinit();
+    _ = try eng.loadEnv(&nat_arena, native_types.exec, nat_apis);
     const nat_alloc_stats = nat_alloc.stats();
     const nat_alloc_size = pretty.Measure{
         .unit = "b",
@@ -49,7 +55,9 @@ test {
     // callback tests
     const cbk_apis = comptime callback.generate(); // stage1: we need comptime
     var cbk_alloc = bench.allocator(std.testing.allocator);
-    _ = try eng.loadEnv(cbk_alloc.allocator(), false, callback.exec, cbk_apis);
+    var cbk_arena = std.heap.ArenaAllocator.init(cbk_alloc.allocator());
+    defer cbk_arena.deinit();
+    _ = try eng.loadEnv(&cbk_arena, callback.exec, cbk_apis);
     const cbk_alloc_stats = cbk_alloc.stats();
     const cbk_alloc_size = pretty.Measure{
         .unit = "b",

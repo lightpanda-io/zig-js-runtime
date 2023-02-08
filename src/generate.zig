@@ -2,7 +2,6 @@ const std = @import("std");
 const v8 = @import("v8");
 
 const utils = @import("utils.zig");
-const Store = @import("store.zig");
 const refs = @import("refs.zig");
 const refl = @import("reflect.zig");
 const Loop = @import("loop.zig").SingleThreaded;
@@ -68,9 +67,6 @@ pub fn setNativeObject(
         } else {
             obj_ptr = obj;
         }
-        if (Store.default) |store| {
-            addObject = !store.containsObject(obj_ptr);
-        }
     } else {
 
         // obj is a value of T
@@ -92,10 +88,6 @@ pub fn setNativeObject(
         return;
     }
 
-    if (Store.default != null and addObject) {
-        try Store.default.?.addObject(obj_ptr, T_refl.size, T_refl.alignment);
-    }
-
     // bind the native object pointer to JS obj
     var ext: v8.External = undefined;
     if (comptime T_refl.is_mem_guarantied()) {
@@ -103,9 +95,6 @@ pub fn setNativeObject(
     } else {
         var int_ptr = try alloc.create(usize);
         int_ptr.* = @ptrToInt(obj_ptr);
-        if (Store.default != null) {
-            try Store.default.?.addObject(int_ptr, @sizeOf(usize), @alignOf(usize));
-        }
         ext = v8.External.init(isolate, int_ptr);
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
