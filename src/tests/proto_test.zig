@@ -2,7 +2,7 @@ const std = @import("std");
 
 const jsruntime = @import("../jsruntime.zig");
 
-const tests = @import("test_utils.zig");
+const tests = jsruntime.test_utils;
 
 // TODO: handle memory allocation in the data struct itself.
 // Each struct should have a deinit method to free internal memory and destroy object itself.

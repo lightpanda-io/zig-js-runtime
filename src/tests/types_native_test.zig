@@ -1,11 +1,8 @@
 const std = @import("std");
 
-const v8 = @import("v8");
-
-const utils = @import("../utils.zig");
 const jsruntime = @import("../jsruntime.zig");
 
-const tests = @import("test_utils.zig");
+const tests = jsruntime.test_utils;
 
 const Brand = struct {
     name: []const u8,
@@ -23,10 +20,10 @@ const Car = struct {
     brand: Brand,
     brand_ptr: *Brand,
 
-    pub fn constructor() Car {
+    pub fn constructor(alloc: std.mem.Allocator) Car {
         var brand_name: []const u8 = "Renault";
         const brand = Brand{ .name = brand_name };
-        var brand_ptr = utils.allocator.create(Brand) catch unreachable;
+        var brand_ptr = alloc.create(Brand) catch unreachable;
         brand_ptr.* = Brand{ .name = brand_name };
         return .{ .brand = brand, .brand_ptr = brand_ptr };
     }

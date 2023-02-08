@@ -1,12 +1,11 @@
 const std = @import("std");
-const v8 = @import("v8");
 
 const jsruntime = @import("../jsruntime.zig");
 
 const u64Num = @import("../types.zig").u64Num;
 const cbk = @import("../callback.zig");
 
-const tests = @import("test_utils.zig");
+const tests = jsruntime.test_utils;
 
 pub const Window = struct {
     pub fn constructor() Window {
