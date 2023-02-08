@@ -145,6 +145,34 @@ pub const Env = struct {
         };
     }
 
+    pub fn deinit(self: *Env) void {
+
+        // v8 values
+        // ---------
+
+        // handle scope
+        var hscope = self.hscope;
+        hscope.deinit();
+
+        // isolate
+        var isolate = self.isolate;
+        isolate.exit();
+        isolate.deinit();
+
+        // params
+        v8.destroyArrayBufferAllocator(self.isolate_params.array_buffer_allocator.?);
+
+        // globals values
+        // --------------
+
+        // unset globals
+        refs.map = undefined;
+        utils.loop = undefined;
+        utils.allocator = undefined;
+
+        self.* = undefined;
+    }
+
     // load APIs into Javascript environement
     pub fn load(self: Env, comptime apis: []API, tpls: []TPL) !void {
         try gen.load(self.isolate, self.globals, apis, tpls);
@@ -156,6 +184,32 @@ pub const Env = struct {
         // context
         self.context = v8.Context.init(self.isolate, self.globals, null);
         self.context.?.enter();
+    }
+
+    // stop a Javascript context
+    pub fn stop(self: *Env) void {
+        if (self.context == null) {
+            return; // no-op
+        }
+
+        // context
+        self.context.?.exit();
+        self.context = undefined;
+    }
+
+    // add a Native object in the Javascript context
+    pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) !void {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+        return createJSObject(
+            apis,
+            obj,
+            name,
+            self.context.?.getGlobal(),
+            self.context.?,
+            self.isolate,
+        );
     }
 
     // compile and run a Javascript script
@@ -218,60 +272,6 @@ pub const Env = struct {
                 return err;
             }
         };
-    }
-
-    // add a Native object in the Javascript context
-    pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) !void {
-        if (self.context == null) {
-            return error.EnvNotStarted;
-        }
-        return createJSObject(
-            apis,
-            obj,
-            name,
-            self.context.?.getGlobal(),
-            self.context.?,
-            self.isolate,
-        );
-    }
-
-    // stop a Javascript context
-    pub fn stop(self: *Env) void {
-        if (self.context == null) {
-            return; // no-op
-        }
-
-        // context
-        self.context.?.exit();
-        self.context = undefined;
-    }
-
-    pub fn deinit(self: *Env) void {
-
-        // v8 values
-        // ---------
-
-        // handle scope
-        var hscope = self.hscope;
-        hscope.deinit();
-
-        // isolate
-        var isolate = self.isolate;
-        isolate.exit();
-        isolate.deinit();
-
-        // params
-        v8.destroyArrayBufferAllocator(self.isolate_params.array_buffer_allocator.?);
-
-        // globals values
-        // --------------
-
-        // unset globals
-        refs.map = undefined;
-        utils.loop = undefined;
-        utils.allocator = undefined;
-
-        self.* = undefined;
     }
 };
 
