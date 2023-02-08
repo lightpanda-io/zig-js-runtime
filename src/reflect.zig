@@ -58,12 +58,9 @@ pub const Type = struct {
         if (self.optional_T) |optional_T| {
             T = optional_T;
         }
-        if (@typeInfo(T) == .Pointer) {
-            T = @typeInfo(T).Pointer.child;
-        }
 
         inline for (structs) |s| {
-            if (s.T == T) {
+            if (T == s.T or T == *s.T) {
                 self.T_refl_index = s.index;
             }
         }
