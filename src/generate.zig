@@ -118,6 +118,25 @@ fn setReturnType(
         return;
     }
 
+    // handle union type
+    if (comptime ret.union_T) |union_types| {
+        // retrieve the active field and setReturntype accordingly
+        const activeTag = @tagName(std.meta.activeTag(res));
+        inline for (union_types) |tt| {
+            if (std.mem.eql(u8, activeTag, tt.name.?)) {
+                return setReturnType(
+                    alloc,
+                    all_T,
+                    tt,
+                    @field(res, tt.name.?),
+                    js_res,
+                    ctx,
+                    isolate,
+                );
+            }
+        }
+    }
+
     if (ret.T_refl_index) |index| {
 
         // return is a user defined type
