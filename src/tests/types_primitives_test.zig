@@ -1,9 +1,8 @@
 const std = @import("std");
-const v8 = @import("v8");
 
 const jsruntime = @import("../jsruntime.zig");
 
-const tests = @import("test_utils.zig");
+const tests = jsruntime.test_utils;
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
 const Primitives = struct {
