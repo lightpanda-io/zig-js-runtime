@@ -558,7 +558,9 @@ pub fn compile(comptime types: anytype) []API {
     comptime {
 
         // call types reflection
-        const all_T = refl.do(types);
+        const all_T = refl.do(types) catch |err| {
+            @compileError(@errorName(err));
+        };
 
         // generate APIs
         var apis: [all_T.len]API = undefined;
