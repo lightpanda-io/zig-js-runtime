@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const eng = @import("engine.zig");
+const ref = @import("reflect.zig");
 
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
@@ -12,6 +13,10 @@ const multiple_types = @import("tests/types_multiple_test.zig");
 const callback = @import("tests/cbk_test.zig");
 
 test {
+    std.debug.print("\n", .{});
+
+    // reflect tests
+    try ref.tests();
 
     // test to do
     comptime var tests_nb: usize = 0;
