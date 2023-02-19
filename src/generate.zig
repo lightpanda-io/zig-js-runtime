@@ -194,7 +194,7 @@ fn generateConstructor(
     comptime T_refl: refl.Struct,
     comptime func: ?refl.Func,
 ) v8.FunctionCallback {
-    const zig_cbk = struct {
+    return struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
             // retrieve isolate and context
@@ -254,8 +254,7 @@ fn generateConstructor(
                 isolate,
             ) catch unreachable;
         }
-    };
-    return zig_cbk.constructor;
+    }.constructor;
 }
 
 fn generateGetter(
@@ -263,7 +262,7 @@ fn generateGetter(
     comptime func: refl.Func,
     comptime all_T: []refl.Struct,
 ) v8.AccessorNameGetterCallback {
-    const zig_cbk = struct {
+    return struct {
         fn getter(
             _: ?*const v8.Name,
             raw_info: ?*const v8.C_PropertyCallbackInfo,
@@ -293,8 +292,7 @@ fn generateGetter(
                 isolate,
             ) catch unreachable;
         }
-    };
-    return zig_cbk.getter;
+    }.getter;
 }
 
 fn generateSetter(
@@ -302,7 +300,7 @@ fn generateSetter(
     comptime func: refl.Func,
     comptime all_T: []refl.Struct,
 ) v8.AccessorNameSetterCallback {
-    const zig_cbk = struct {
+    return struct {
         // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
         fn setter(
             _: ?*const v8.Name,
@@ -336,8 +334,7 @@ fn generateSetter(
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
         }
-    };
-    return zig_cbk.setter;
+    }.setter;
 }
 
 fn generateMethod(
@@ -345,7 +342,7 @@ fn generateMethod(
     comptime func: refl.Func,
     comptime all_T: []refl.Struct,
 ) v8.FunctionCallback {
-    const zig_cbk = struct {
+    return struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
             // retrieve isolate and context
@@ -433,8 +430,7 @@ fn generateMethod(
                 }
             }
         }
-    };
-    return zig_cbk.method;
+    }.method;
 }
 
 // Compile and loading mechanism
@@ -468,7 +464,7 @@ pub const ProtoTpl = struct {
 const LoadFunc = (fn (v8.Isolate, v8.ObjectTemplate, ?ProtoTpl) anyerror!ProtoTpl);
 
 fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
-    const s = struct {
+    return struct {
 
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
@@ -547,8 +543,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             // return the FunctionTemplate of the constructor
             return ProtoTpl{ .tpl = cstr_tpl, .index = T_refl.index };
         }
-    };
-    return s.load;
+    }.load;
 }
 
 // Compile native types to native APIs
