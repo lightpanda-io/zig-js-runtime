@@ -60,6 +60,43 @@ fn checkArgsLen(
     return false;
 }
 
+fn getArgs(
+    comptime func: refl.Func,
+    info: v8.FunctionCallbackInfo,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) func.args_T {
+    var args: func.args_T = undefined;
+    inline for (func.args) |arg, i| {
+        const value = switch (arg.T) {
+            std.mem.Allocator => utils.allocator,
+            *Loop => utils.loop,
+            cbk.Func => cbk.Func.init(
+                utils.allocator,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.FuncSync => cbk.FuncSync.init(
+                utils.allocator,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.Arg => cbk.Arg{}, // stage1: we need type
+            else => jsToNative(
+                utils.allocator,
+                arg,
+                info.getArg(i - func.index_offset),
+                isolate,
+                ctx,
+            ) catch unreachable,
+        };
+        @field(args, arg.name.?) = value;
+    }
+    return args;
+}
+
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
@@ -251,24 +288,10 @@ fn generateConstructor(
                 return;
             }
 
-            // prepare call args
-            var args: func.args_T = undefined;
-            inline for (func.args) |arg, i| {
-                const value = switch (arg.T) {
-                    std.mem.Allocator => utils.allocator,
-                    else => jsToNative(
-                        utils.allocator,
-                        arg,
-                        info.getArg(i - func.index_offset),
-                        isolate,
-                        ctx,
-                    ) catch unreachable,
-                };
-                @field(args, arg.name.?) = value;
-            }
-
             // call the native func
-            const obj = @call(.{}, T_refl.T.constructor, args);
+            const args = getArgs(func, info, isolate, ctx);
+            const cstr_func = @field(T_refl.T, func.name);
+            const obj = @call(.{}, cstr_func, args);
 
             // set native object to JS
             setNativeObject(
@@ -383,38 +406,9 @@ fn generateMethod(
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
 
-            // prepare call args
-            var args: func.args_T = undefined;
+            // call native func
+            var args = getArgs(func, info, isolate, ctx);
             @field(args, "0") = obj_ptr.*;
-            inline for (func.args) |arg, i| {
-                const value = switch (arg.T) {
-                    std.mem.Allocator => utils.allocator,
-                    *Loop => utils.loop,
-                    cbk.Func => cbk.Func.init(
-                        utils.allocator,
-                        func,
-                        info,
-                        isolate,
-                    ) catch unreachable,
-                    cbk.FuncSync => cbk.FuncSync.init(
-                        utils.allocator,
-                        func,
-                        info,
-                        isolate,
-                    ) catch unreachable,
-                    cbk.Arg => cbk.Arg{}, // stage1: we need type
-                    else => jsToNative(
-                        utils.allocator,
-                        arg,
-                        info.getArg(i - func.index_offset),
-                        isolate,
-                        ctx,
-                    ) catch unreachable,
-                };
-                @field(args, arg.name.?) = value;
-            }
-
-            // call the native func
             const method_func = @field(T_refl.T, func.name);
             const res = @call(.{}, method_func, args);
 
