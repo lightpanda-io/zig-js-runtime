@@ -29,7 +29,7 @@ const builtin_types = [_]type{
 
     // internal types
     std.mem.Allocator,
-    *Loop,
+    Loop,
     cbk.Func,
     cbk.FuncSync,
     cbk.Arg,
@@ -37,7 +37,11 @@ const builtin_types = [_]type{
 
 pub const Type = struct {
     T: type, // could be pointer or concrete
-    name: ?[]const u8, // only for function parameters or union member
+    name: ?[]const u8, // not available for return type
+
+    under_T: type,
+    is_opt: bool,
+    is_ptr: bool,
 
     // is this type a builtin or a custom struct?
     // those fields are mutually exclusing
@@ -46,10 +50,11 @@ pub const Type = struct {
     is_builtin: bool,
     T_refl_index: ?usize = null,
 
-    optional_T: ?type, // child of an optional type
     union_T: ?[]Type,
 
     fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
+
+        // if builtin, lookup is not necessary
         if (self.is_builtin) {
             return;
         }
@@ -62,14 +67,9 @@ pub const Type = struct {
             return;
         }
 
-        // underlying T
-        var T = self.T;
-        if (self.optional_T) |optional_T| {
-            T = optional_T;
-        }
-
+        // check under_T in all structs (and nested structs)
         inline for (structs) |s| {
-            if (T == s.T or T == *s.T) {
+            if (self.under_T == s.T) {
                 self.T_refl_index = s.index;
             }
         }
@@ -82,12 +82,6 @@ pub const Type = struct {
 
     fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
         const info = @typeInfo(T);
-
-        // optional T
-        var optional_T: ?type = null;
-        if (info == .Optional) {
-            optional_T = info.Optional.child;
-        }
 
         // union T
         var union_T: ?[]Type = null;
@@ -104,15 +98,34 @@ pub const Type = struct {
         }
 
         // underlying T
-        var underlying_T = T;
-        if (optional_T) |child| {
-            underlying_T = child;
+        // NOTE: the following cases are handled:
+        // - T is a value (under_T = T, is_opt false, is_ptr false)
+        // - T is a pointer (under_T = T child, is_opt false, is_ptr true)
+        // - T is an optional value (under_T = T child, is_opt true, is_ptr false)
+        // - T is an optional pointer (under T = T child child, is_opt true, is_ptr false)
+        var under_T: type = undefined;
+        var is_opt = false;
+        var is_ptr = false;
+        if (info == .Optional) {
+            is_opt = true;
+            const child_info = @typeInfo(info.Optional.child);
+            if (child_info == .Pointer) {
+                is_ptr = true;
+                under_T = child_info.Pointer.child;
+            } else {
+                under_T = info.Optional.child;
+            }
+        } else if (info == .Pointer) {
+            is_ptr = true;
+            under_T = info.Pointer.child;
+        } else {
+            under_T = T;
         }
 
         // builtin
         var is_builtin = false;
         for (builtin_types) |builtin_T| {
-            if (builtin_T == underlying_T) {
+            if (builtin_T == under_T) {
                 is_builtin = true;
                 break;
             }
@@ -121,8 +134,10 @@ pub const Type = struct {
         return Type{
             .T = T,
             .name = name,
+            .under_T = under_T,
+            .is_opt = is_opt,
+            .is_ptr = is_ptr,
             .is_builtin = is_builtin,
-            .optional_T = optional_T,
             .union_T = union_T,
         };
     }
@@ -265,17 +280,24 @@ pub const Func = struct {
 
         // self special case (only for methods)
         var args_start = 0;
+        var self_T: ?type = null;
         if (struct_T != null and args.len > 0) {
             if (kind != .constructor) {
                 // ignore self arg
                 args_start = 1;
+                self_T = args[0].arg_type.?;
             }
-            if (kind == .setter and args[0].arg_type.? != *struct_T.?) {
+            if (kind == .setter and self_T.? != *struct_T.?) {
                 fmtErr("setter {s} first argument should be *self", .{@typeName(T)});
                 return error.FuncSetterFirstArgNotSelfPtr;
-            } else if ((kind == .getter or kind == .method) and (args[0].arg_type.? != struct_T.?)) {
-                fmtErr("getter/method {s} first argument should be self", .{@typeName(T)});
-                return error.FuncGetterMethodFirstArgNotSelf;
+            } else if ((kind == .getter) and (self_T.? != struct_T.?)) {
+                fmtErr("getter {s} first argument should be self", .{@typeName(T)});
+                return error.FuncGetterFirstArgNotSelf;
+            } else if ((kind == .method)) {
+                if (self_T.? != struct_T.? and self_T.? != *struct_T.?) {
+                    fmtErr("method {s} first argument should be self or *self", .{@typeName(T)});
+                    return error.FuncMethodFirstArgNotSelfOrSelfPtr;
+                }
             }
         }
 
@@ -331,7 +353,7 @@ pub const Func = struct {
         var i = args_types.len;
         while (i > 0) {
             i -= 1;
-            if (args_types[i].optional_T == null) {
+            if (!args_types[i].is_opt) {
                 break;
             }
             first_optional_arg = i;
@@ -352,10 +374,6 @@ pub const Func = struct {
 
         // reflect func
         const args_slice = args_types[0..];
-        var self_T: ?type = null;
-        if (kind != .constructor) {
-            self_T = struct_T;
-        }
         const args_T = comptime Args.reflect(self_T, args_slice);
 
         return Func{
@@ -710,9 +728,6 @@ fn fmtErr(comptime fmt: []const u8, args: anytype) void {
         var buf_msg: [200]u8 = undefined;
         const msg = try std.fmt.bufPrint(&buf_msg, fmt, args);
         std.debug.print("reflect error: {s}\n", .{msg});
-        // var buf: [220]u8 = undefined;
-        // const msg_err = try std.fmt.bufPrint(&buf, "reflect error: {s}\n", .{msg});
-        // @compileError(msg_err);
     }
 }
 
@@ -736,7 +751,8 @@ const Error = error{
     FuncNoSelf,
     FuncGetterMultiArg,
     FuncSetterFirstArgNotSelfPtr,
-    FuncGetterMethodFirstArgNotSelf,
+    FuncGetterFirstArgNotSelf,
+    FuncMethodFirstArgNotSelfOrSelfPtr,
     FuncVoidArg,
     FuncMultiCbk,
 
@@ -796,8 +812,11 @@ const TestFuncGetterMultiArg = struct {
 const TestFuncSetterFirstArgNotSelfPtr = struct {
     pub fn set_example(_: TestFuncSetterFirstArgNotSelfPtr) void {}
 };
-const TestFuncGetterMethodFirstArgNotSelf = struct {
-    pub fn get_example(_: *TestFuncGetterMethodFirstArgNotSelf) void {}
+const TestFuncGetterFirstArgNotSelf = struct {
+    pub fn get_example(_: *TestFuncGetterFirstArgNotSelf) void {}
+};
+const TestFuncMethodFirstArgNotSelfOrSelfPtr = struct {
+    pub fn _example(_: bool) void {}
 };
 const TestFuncVoidArg = struct {
     pub fn _example(_: TestFuncVoidArg, _: void) void {}
@@ -867,8 +886,12 @@ pub fn tests() !void {
         error.FuncSetterFirstArgNotSelfPtr,
     );
     try ensureErr(
-        .{TestFuncGetterMethodFirstArgNotSelf},
-        error.FuncGetterMethodFirstArgNotSelf,
+        .{TestFuncGetterFirstArgNotSelf},
+        error.FuncGetterFirstArgNotSelf,
+    );
+    try ensureErr(
+        .{TestFuncMethodFirstArgNotSelfOrSelfPtr},
+        error.FuncMethodFirstArgNotSelfOrSelfPtr,
     );
     try ensureErr(
         .{TestFuncVoidArg},

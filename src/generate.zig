@@ -86,6 +86,7 @@ fn getArgs(
             cbk.Arg => cbk.Arg{}, // stage1: we need type
             else => jsToNative(
                 utils.allocator,
+                T_refl,
                 arg,
                 info.getArg(i - func.index_offset),
                 isolate,
@@ -100,44 +101,23 @@ fn getArgs(
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
-    obj: anytype,
+    comptime obj_T: refl.Type,
+    obj: obj_T.T,
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
     const T = T_refl.T;
 
-    // check obj type
-    var obj_ptr: *T = undefined;
-    const obj_T = @TypeOf(obj);
-    var addObject: bool = undefined;
-    comptime var is_pointer: bool = undefined;
-    comptime var is_optional: bool = undefined;
-    comptime {
-        if (obj_T == T) {
-            is_pointer = false;
-            is_optional = false;
-        } else if (obj_T == ?T) {
-            is_pointer = false;
-            is_optional = true;
-        } else if (obj_T == *T) {
-            is_pointer = true;
-            is_optional = false;
-        } else if (obj_T == ?*T) {
-            is_pointer = true;
-            is_optional = true;
-        } else {
-            return error.NativeObjectMismatch;
-        }
-    }
-
     // assign and bind native obj to JS obj
-    if (comptime is_pointer) {
+    var obj_ptr: *T = undefined;
+
+    if (obj_T.is_ptr) {
 
         // obj is a pointer of T
         // no need to create it in heap,
         // we assume it has been done already by the API
         // just assign pointer to native object
-        if (comptime is_optional) {
+        if (obj_T.is_opt) {
             obj_ptr = obj.?;
         } else {
             obj_ptr = obj;
@@ -149,12 +129,11 @@ pub fn setNativeObject(
         // (otherwise on the stack it will be delete when the function returns),
         // and assign pointer's dereference value to native object
         obj_ptr = try alloc.create(T);
-        if (comptime is_optional) {
+        if (obj_T.is_opt) {
             obj_ptr.* = obj.?;
         } else {
             obj_ptr.* = obj;
         }
-        addObject = true;
     }
 
     // if the object is an empty struct (ie. a kind of container)
@@ -187,7 +166,7 @@ fn setReturnType(
 ) !void {
 
     // check for null values
-    if (comptime ret.optional_T != null and res == null) {
+    if (comptime ret.is_opt and res == null) {
         // no need to set anything
         js_res.set(v8.initNull(isolate));
         return;
@@ -220,6 +199,7 @@ fn setReturnType(
         _ = setNativeObject(
             alloc,
             all_T[index],
+            ret,
             res,
             js_obj,
             isolate,
@@ -288,8 +268,10 @@ fn generateConstructor(
                 return;
             }
 
-            // call the native func
+            // prepare args
             const args = getArgs(func, info, isolate, ctx);
+
+            // call the native func
             const cstr_func = @field(T_refl.T, func.name);
             const obj = @call(.{}, cstr_func, args);
 
@@ -297,6 +279,7 @@ fn generateConstructor(
             setNativeObject(
                 utils.allocator,
                 T_refl,
+                func.return_type,
                 obj,
                 info.getThis(),
                 isolate,
@@ -403,12 +386,19 @@ fn generateMethod(
                 return;
             }
 
+            // prepare args
+            var args = getArgs(func, info, isolate, ctx);
+
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+            const self_T = @TypeOf(@field(args, "0"));
+            if (self_T == T_refl.T) {
+                @field(args, "0") = obj_ptr.*;
+            } else if (self_T == *T_refl.T) {
+                @field(args, "0") = obj_ptr;
+            }
 
             // call native func
-            var args = getArgs(func, info, isolate, ctx);
-            @field(args, "0") = obj_ptr.*;
             const method_func = @field(T_refl.T, func.name);
             const res = @call(.{}, method_func, args);
 

@@ -37,6 +37,10 @@ const Person = struct {
     pub fn _fullName(self: Person) []u8 {
         return self.last_name;
     }
+
+    pub fn _setAgeMethod(self: *Person, age: u32) void {
+        self.age = age;
+    }
 };
 
 const User = struct {
@@ -103,6 +107,7 @@ pub fn exec(
     var cases4 = [_]tests.Case{
         .{ .src = "p.fullName() === 'Bouvier';", .ex = "true" },
         .{ .src = "p.fullName('unused arg') === 'Bouvier';", .ex = "true" },
+        .{ .src = "p.setAgeMethod(42); p.age", .ex = "42" },
     };
     try tests.checkCases(js_env, &cases4);
 

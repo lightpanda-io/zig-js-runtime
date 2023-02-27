@@ -76,7 +76,7 @@ pub fn jsToNative(
         // distinct comptime condition, otherwise compile error
         comptime {
             // if Native optional type return null
-            if (zig_T.optional_T != null) {
+            if (zig_T.is_opt) {
                 return null;
             }
         }
@@ -111,8 +111,8 @@ pub fn jsToNative(
         // integers signed
         i8, ?i8, i16, ?i16 => {
             const v = try js_val.toI32(ctx);
-            if (zig_T.optional_T != null) {
-                return @intCast(zig_T.optional_T.?, v);
+            if (zig_T.is_opt) {
+                return @intCast(zig_T.under_T, v);
             }
             return @intCast(zig_T.T, v);
         },
@@ -132,8 +132,8 @@ pub fn jsToNative(
         // integers unsigned
         u8, ?u8, u16, ?u16 => {
             const v = try js_val.toU32(ctx);
-            if (zig_T.optional_T != null) {
-                return @intCast(zig_T.optional_T.?, v);
+            if (zig_T.is_opt) {
+                return @intCast(zig_T.under_T, v);
             }
             return @intCast(zig_T.T, v);
         },
