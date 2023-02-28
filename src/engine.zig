@@ -321,13 +321,17 @@ fn createJSObject(
     isolate: v8.Isolate,
 ) !void {
 
-    // retrieve obj tpl
+    // retrieve obj API and template
     comptime var obj_api_index: comptime_int = undefined;
     comptime {
+        const obj_T = @TypeOf(obj);
         inline for (apis) |api| {
-            if (@TypeOf(obj) == api.T_refl.T or @TypeOf(obj) == *api.T_refl.T) {
+            if (obj_T == api.T_refl.T or obj_T == *api.T_refl.T) {
                 obj_api_index = api.T_refl.index;
+                break;
             }
+        } else {
+            @compileError("addOject type is not in apis");
         }
     }
     const T_refl = apis[obj_api_index].T_refl;
@@ -345,6 +349,7 @@ fn createJSObject(
     try gen.setNativeObject(
         utils.allocator,
         T_refl,
+        T_refl.value,
         obj,
         js_obj,
         isolate,

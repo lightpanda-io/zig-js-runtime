@@ -454,6 +454,7 @@ pub const Struct = struct {
     name: []const u8,
     js_name: []const u8,
     T: type,
+    value: Type,
     mem_layout: std.builtin.Type.ContainerLayout,
 
     // index on the types list
@@ -680,6 +681,7 @@ pub const Struct = struct {
             .name = struct_name,
             .js_name = jsName(struct_name),
             .T = T,
+            .value = try Type.reflect(T, null),
             .mem_layout = obj.Struct.layout,
 
             // index in types list
