@@ -103,14 +103,14 @@ pub fn packages(comptime vendor_path: []const u8) type {
         fn zig_v8(step: *std.build.LibExeObjStep) !std.build.Pkg {
             const include_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/zig-v8",
+                "{s}deps/zig-v8/src",
                 .{vendor_path},
             );
             step.addIncludePath(include_path);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/zig-v8/v8.zig",
+                "{s}deps/zig-v8/src/v8.zig",
                 .{vendor_path},
             );
             return .{
@@ -150,7 +150,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}../zig-v8/v8-build/{s}-{s}/{s}/ninja/obj/zig/libc_v8.a",
+                "{s}deps/zig-v8/v8-build/{s}-{s}/{s}/ninja/obj/zig/libc_v8.a",
                 .{ vendor_path, @tagName(arch), @tagName(os), mode_str },
             );
             step.addObjectFile(lib_path);
