@@ -56,16 +56,18 @@ pub fn checkCases(
     for (cases) |case, i| {
         test_case += 1;
 
-        // try cache
-        var try_catch: v8.TryCatch = undefined;
-        try_catch.init(js_env.isolate);
-        defer try_catch.deinit();
-
-        // execute script
+        // prepare script execution
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
-        const res = try js_env.exec(fba_alloc, case.src, name, try_catch);
-        // no need to res.deinit on a FixBufferAllocator
+        var res = jsruntime.JSResult{};
+        var cbk_res = jsruntime.JSResult{
+            .success = true,
+            // assume that the return value of the successfull callback is "undefined"
+            .result = "undefined",
+        };
+        // no need to deinit on a FixBufferAllocator
+
+        try js_env.run(fba_alloc, case.src, name, &res, &cbk_res);
 
         // check script error
         var case_error = false;
@@ -79,18 +81,6 @@ pub fn checkCases(
                 case_error = true;
             }
         }
-
-        // callback
-        var cbk_res = jsruntime.JSResult{
-            .success = true,
-            // assume that the return value of the successfull callback is "undefined"
-            .result = "undefined",
-        };
-        // no need to cbk_res.deinit on a FixBufferAllocator
-
-        // wait until all JS callbacks are done,
-        // blocking operation
-        try js_env.wait(fba_alloc, try_catch, &cbk_res);
 
         // check callback error
         var cbk_error = false;

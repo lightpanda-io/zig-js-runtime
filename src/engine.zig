@@ -273,6 +273,43 @@ pub const Env = struct {
             }
         };
     }
+
+    // run a JS script and wait for all callbacks
+    // try_catch + exec + wait
+    pub fn run(
+        self: Env,
+        alloc: std.mem.Allocator,
+        script: []const u8,
+        name: ?[]const u8,
+        res: *JSResult,
+        cbk_res: ?*JSResult,
+    ) !void {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+
+        // JS try cache
+        var try_catch: v8.TryCatch = undefined;
+        try_catch.init(self.isolate);
+        defer try_catch.deinit();
+
+        // exec script
+        try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch);
+
+        // run loop
+        utils.loop.run() catch |err| {
+            if (try_catch.hasCaught()) {
+                if (cbk_res) |r| {
+                    r.success = false;
+                    return r.setError(alloc, self.isolate, self.context.?, try_catch);
+                }
+                // otherwise ignore JS errors
+            } else {
+                // IO kernel error
+                return err;
+            }
+        };
+    }
 };
 
 fn createJSObject(
