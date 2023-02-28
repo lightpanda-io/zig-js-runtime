@@ -61,6 +61,7 @@ fn checkArgsLen(
 }
 
 fn getArgs(
+    comptime T_refl: refl.Struct,
     comptime func: refl.Func,
     info: v8.FunctionCallbackInfo,
     isolate: v8.Isolate,
@@ -269,7 +270,7 @@ fn generateConstructor(
             }
 
             // prepare args
-            const args = getArgs(func, info, isolate, ctx);
+            const args = getArgs(T_refl, func, info, isolate, ctx);
 
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
@@ -349,6 +350,7 @@ fn generateSetter(
             const js_value = v8.Value{ .handle = raw_value.? };
             const zig_value = jsToNative(
                 utils.allocator,
+                T_refl,
                 func.args[0],
                 js_value,
                 isolate,
@@ -387,7 +389,7 @@ fn generateMethod(
             }
 
             // prepare args
-            var args = getArgs(func, info, isolate, ctx);
+            var args = getArgs(T_refl, func, info, isolate, ctx);
 
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;

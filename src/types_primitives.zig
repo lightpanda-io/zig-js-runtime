@@ -53,6 +53,7 @@ pub fn nativeToJS(
 /// allocator is only used if the JS value is a string.
 pub fn jsToNative(
     alloc: std.mem.Allocator,
+    comptime T_refl: refl.Struct,
     comptime zig_T: refl.Type,
     js_val: v8.Value,
     isolate: v8.Isolate,
@@ -89,6 +90,32 @@ pub fn jsToNative(
         // TODO: return JS NaN for JS Undefined on int/float Native types.
     }
 
+    // JS objects
+    if (zig_T.nested_index) |index| {
+        if (!js_val.isObject()) {
+            return error.JSNotObject;
+        }
+        const js_obj = js_val.castTo(v8.Object);
+        const nested_T = T_refl.nested[index];
+        // using under_T to handle both mandatory and optional JS object
+        var obj: zig_T.under_T = undefined;
+        inline for (nested_T.fields) |field| {
+            const key = v8.String.initUtf8(isolate, field.name.?);
+            if (!js_obj.has(ctx, key.toValue())) {
+                return error.JSWrongObject;
+            }
+            const field_js_val = try js_obj.getValue(ctx, key);
+            const field_val = try jsToNative(alloc, T_refl, field, field_js_val, isolate, ctx);
+            @field(obj, field.name.?) = field_val;
+        }
+        // here we could handle pointer to JS object
+        // (by allocating a pointer, setting it's value to obj and returning it)
+        // but for this kind of use case a complete type API is preferable
+        // over an anonymous JS object
+        return obj;
+    }
+
+    // JS values
     // JS is liberal, you can pass:
     // - numeric value as string arg
     // - string value as numeric arg

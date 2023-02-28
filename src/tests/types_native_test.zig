@@ -69,9 +69,39 @@ const Car = struct {
     }
 };
 
+const Country = struct {
+    stats: Stats,
+
+    pub const Stats = struct {
+        population: u32,
+        pib: []const u8,
+    };
+
+    pub fn constructor(stats: Stats) Country {
+        return .{ .stats = stats };
+    }
+
+    pub fn get_population(self: Country) u32 {
+        return self.stats.population;
+    }
+
+    pub fn get_pib(self: Country) []const u8 {
+        return self.stats.pib;
+    }
+
+    // optional
+    pub fn _changeStats(self: *Country, stats: ?Stats) void {
+        if (stats) |s| {
+            self.stats = s;
+        }
+    }
+
+    // pointer (ie. *Stats) is not supported by design
+};
+
 // generate API, comptime
 pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ Brand, Car });
+    return jsruntime.compile(.{ Brand, Car, Country });
 }
 
 // exec tests
@@ -84,6 +114,14 @@ pub fn exec(
     // start JS env
     js_env.start();
     defer js_env.stop();
+
+    var native_arg = [_]tests.Case{
+        .{ .src = "let stats = {'pib': '322Mds', 'population': 80}; let country = new Country(stats);", .ex = "undefined" },
+        .{ .src = "country.population;", .ex = "80" },
+        .{ .src = "let stats2 = {'pib': '342Mds', 'population': 80}; country.changeStats(stats2);", .ex = "undefined" },
+        .{ .src = "country.pib;", .ex = "342Mds" },
+    };
+    try tests.checkCases(js_env, &native_arg);
 
     var cases = [_]tests.Case{
         .{ .src = "let car = new Car();", .ex = "undefined" },

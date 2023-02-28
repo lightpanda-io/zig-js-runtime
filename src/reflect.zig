@@ -49,6 +49,7 @@ pub const Type = struct {
     // and if T_refl_index == null => is_builtin is true
     is_builtin: bool,
     T_refl_index: ?usize = null,
+    nested_index: ?usize = null,
 
     union_T: ?[]Type,
 
@@ -71,10 +72,24 @@ pub const Type = struct {
         inline for (structs) |s| {
             if (self.under_T == s.T) {
                 self.T_refl_index = s.index;
+                break;
+            }
+            inline for (s.nested) |nested, i| {
+                if (self.under_T == nested.T) {
+                    if (self.is_ptr) {
+                        fmtErr("type {s} pointer on nested struct is not allowed, choose a type struct for this use case", .{@typeName(self.T)});
+                        return error.TypeNestedPtr;
+                    }
+                    self.nested_index = i;
+                    break;
+                }
+            }
+            if (self.nested_index != null) {
+                break;
             }
         }
 
-        if (!self.is_builtin and self.T_refl_index == null) {
+        if (self.T_refl_index == null and self.nested_index == null) {
             fmtErr("type {s} lookup should be either builtin or defined", .{@typeName(self.T)});
             return error.TypeLookup;
         }
@@ -398,6 +413,42 @@ pub const Func = struct {
     }
 };
 
+pub const StructNested = struct {
+    T: type,
+    fields: []Type,
+
+    fn isNested(comptime T: type, comptime decl: std.builtin.Type.Declaration) bool {
+
+        // exclude private declarations
+        if (!decl.is_pub) {
+            return false;
+        }
+
+        // exclude declarations who are not types
+        const decl_type = @field(T, decl.name);
+        if (@TypeOf(decl_type) != type) {
+            return false;
+        }
+
+        // exclude types who are not structs
+        if (@typeInfo(decl_type) != .Struct) {
+            return false;
+        }
+
+        return true;
+    }
+
+    fn reflect(comptime T: type) StructNested {
+        const info = @typeInfo(T);
+
+        var fields: [info.Struct.fields.len]Type = undefined;
+        inline for (info.Struct.fields) |field, i| {
+            fields[i] = try Type.reflect(field.field_type, field.name);
+        }
+        return .{ .T = T, .fields = &fields };
+    }
+};
+
 pub const Struct = struct {
     // struct info
     name: []const u8,
@@ -419,6 +470,9 @@ pub const Struct = struct {
     setters: []Func,
     methods: []Func,
 
+    // nested types
+    nested: []StructNested,
+
     // TODO: is it necessary?
     alignment: u29,
     size: usize,
@@ -430,7 +484,9 @@ pub const Struct = struct {
     }
 
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
-        // TODO: necessary also for constructor?
+        if (self.constructor) |*constructor| {
+            try constructor.lookupTypes(structs);
+        }
         inline for (self.getters) |*getter| {
             try getter.lookupTypes(structs);
         }
@@ -522,6 +578,26 @@ pub const Struct = struct {
                 break;
             }
             proto_T = T_proto;
+        }
+
+        // nested types
+        var nested_nb: usize = 0;
+        // first iteration to retrieve the number of nested structs
+        inline for (obj.Struct.decls) |decl| {
+            if (StructNested.isNested(T, decl)) {
+                nested_nb += 1;
+            }
+        }
+        var nested: [nested_nb]StructNested = undefined;
+        if (nested_nb > 0) {
+            var nested_done: usize = 0;
+            inline for (obj.Struct.decls) |decl| {
+                if (StructNested.isNested(T, decl)) {
+                    const decl_type = @field(T, decl.name);
+                    nested[nested_done] = StructNested.reflect(decl_type);
+                    nested_done += 1;
+                }
+            }
         }
 
         // retrieve the number of each function kind
@@ -617,6 +693,9 @@ pub const Struct = struct {
             .getters = getters[0..],
             .setters = setters[0..],
             .methods = methods[0..],
+
+            // nested types
+            .nested = nested[0..],
 
             .alignment = ptr_info.alignment,
             .size = @sizeOf(ptr_info.child),
@@ -758,6 +837,7 @@ const Error = error{
 
     // type errors
     TypeTaggedUnion,
+    TypeNestedPtr,
     TypeLookup,
 };
 
@@ -832,6 +912,10 @@ const TestTaggedUnion = union {
 };
 const TestTypeTaggedUnion = struct {
     pub fn _example(_: TestTypeTaggedUnion, _: TestTaggedUnion) void {}
+};
+const TestTypeNestedPtr = struct {
+    pub const TestTypeNestedBase = struct {};
+    pub fn _example(_: TestTypeNestedPtr, _: *TestTypeNestedBase) void {}
 };
 const TestType = struct {};
 const TestTypeLookup = struct {
@@ -912,6 +996,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructLookup},
         error.StructLookup,
+    );
+    try ensureErr(
+        .{TestTypeNestedPtr},
+        error.TypeNestedPtr,
     );
     try ensureErr(
         .{TestTypeLookup},
