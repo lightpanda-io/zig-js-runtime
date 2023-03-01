@@ -171,6 +171,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
             );
             const lib = step.builder.addStaticLibrary("linenoise", null);
             // TODO: use mode to add debug/release flags
+            lib.linkLibC();
             const cflags = [_][]const u8{};
             lib.addCSourceFile(lib_path, &cflags);
             step.linkLibrary(lib);
