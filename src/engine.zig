@@ -136,7 +136,7 @@ pub const Env = struct {
         // ObjectTemplate for the global namespace
         const globals = v8.ObjectTemplate.initDefault(isolate);
 
-        return .{
+        return Env{
             .loop = loop,
             .isolate_params = params,
             .isolate = isolate,

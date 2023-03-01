@@ -94,7 +94,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 "{s}deps/tigerbeetle-io/io.zig",
                 .{vendor_path},
             );
-            return .{
+            return std.build.Pkg{
                 .name = "tigerbeetle-io",
                 .source = .{ .path = lib_path },
             };
@@ -113,7 +113,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 "{s}deps/zig-v8/src/v8.zig",
                 .{vendor_path},
             );
-            return .{
+            return std.build.Pkg{
                 .name = "v8",
                 .source = .{ .path = lib_path },
             };
