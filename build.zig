@@ -91,7 +91,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
         fn tigerbeetle_io(step: *std.build.LibExeObjStep) !std.build.Pkg {
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/tigerbeetle-io/io.zig",
+                "{s}vendor/tigerbeetle-io/io.zig",
                 .{vendor_path},
             );
             return std.build.Pkg{
@@ -103,14 +103,14 @@ pub fn packages(comptime vendor_path: []const u8) type {
         fn zig_v8(step: *std.build.LibExeObjStep) !std.build.Pkg {
             const include_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/zig-v8/src",
+                "{s}vendor/zig-v8/src",
                 .{vendor_path},
             );
             step.addIncludePath(include_path);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/zig-v8/src/v8.zig",
+                "{s}vendor/zig-v8/src/v8.zig",
                 .{vendor_path},
             );
             return std.build.Pkg{
@@ -150,7 +150,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/zig-v8/v8-build/{s}-{s}/{s}/ninja/obj/zig/libc_v8.a",
+                "{s}vendor/zig-v8/v8-build/{s}-{s}/{s}/ninja/obj/zig/libc_v8.a",
                 .{ vendor_path, @tagName(arch), @tagName(os), mode_str },
             );
             step.addObjectFile(lib_path);
@@ -159,14 +159,14 @@ pub fn packages(comptime vendor_path: []const u8) type {
         pub fn add_shell(step: *std.build.LibExeObjStep, _: std.builtin.Mode) !void {
             const include_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/linenoise",
+                "{s}vendor/linenoise",
                 .{vendor_path},
             );
             step.addIncludePath(include_path);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}deps/linenoise/linenoise.c",
+                "{s}vendor/linenoise/linenoise.c",
                 .{vendor_path},
             );
             const lib = step.builder.addStaticLibrary("linenoise", null);
