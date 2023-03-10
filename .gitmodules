@@ -6,4 +6,4 @@
 	url = https://github.com/francisbouvier/tigerbeetle-io
 [submodule "vendor/linenoise-mob"]
 	path = vendor/linenoise-mob
-	url = git@github.com:rain-1/linenoise-mob.git
+	url = https://github.com/rain-1/linenoise-mob.git
