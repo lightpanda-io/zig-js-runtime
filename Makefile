@@ -74,13 +74,13 @@ vendor:
 
 ## Build in debug mode
 build:
-	@printf "\e[36mBuilding (debug, stage2)...\e[0m\n"
+	@printf "\e[36mBuilding (debug)...\e[0m\n"
 	@zig build bench || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 build-release:
-	@printf "\e[36mBuilding (release safe, stage2)...\e[0m\n"
-	@zig build bench -Drelease-safe || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@printf "\e[36mBuilding (release safe)...\e[0m\n"
+	@zig build -Drelease-safe || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 ## Run the benchmark in release-safe mode
@@ -90,9 +90,9 @@ run: build-release
 	@printf "\e[33mRun OK\e[0m\n"
 
 ## Run a JS shell in release-safe mode
-shell: build-release
-	@printf "\e[36mRunning...\e[0m\n"
-	@./zig-out/bin/jsruntime-shell || (printf "\e[33mRun ERROR\e[0m\n"; exit 1;)
+shell:
+	@printf "\e[36mBuilding shell (release safe)...\e[0m\n"
+	@zig build shell -Drelease-safe || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 
 ## Test
 test:
