@@ -1,9 +1,6 @@
 [submodule "vendor/zig-v8"]
 	path = vendor/zig-v8
 	url = https://github.com/francisbouvier/zig-v8-fork
-[submodule "vendor/linenoise"]
-	path = vendor/linenoise
-	url = https://github.com/antirez/linenoise
 [submodule "vendor/tigerbeetle-io"]
 	path = vendor/tigerbeetle-io
 	url = https://github.com/francisbouvier/tigerbeetle-io
