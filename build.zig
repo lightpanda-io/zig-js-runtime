@@ -155,14 +155,14 @@ pub fn packages(comptime vendor_path: []const u8) type {
         pub fn add_shell(step: *std.build.LibExeObjStep, _: std.builtin.Mode) !void {
             const include_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}vendor/linenoise",
+                "{s}vendor/linenoise-mob",
                 .{vendor_path},
             );
             step.addIncludePath(include_path);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}vendor/linenoise/linenoise.c",
+                "{s}vendor/linenoise-mob/linenoise.c",
                 .{vendor_path},
             );
             const lib = step.builder.addStaticLibrary("linenoise", null);
