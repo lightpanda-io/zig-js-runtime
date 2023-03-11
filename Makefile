@@ -60,7 +60,7 @@ V8_VERSION=11.1.134
 vendor:
 	@printf "\e[36mUpdating git submodules dependancies ...\e[0m\n" && \
 	git submodule update --init --recursive && \
-	git submodule update --remote && \
+	git pull --recurse-submodules && \
 	printf "=> Done\n" && \
 	printf "\e[36mDownloading v8 static library from s3 for \e[32m$(ARCH)-$(OS) \e[36m...\e[0m\n" && \
 	mkdir -p vendor/v8 && \
