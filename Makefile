@@ -63,8 +63,8 @@ vendor:
 	git pull --recurse-submodules && \
 	printf "=> Done\n" && \
 	printf "\e[36mDownloading v8 static library from s3 for \e[32m$(ARCH)-$(OS) \e[36m...\e[0m\n" && \
-	mkdir -p vendor/v8 && \
-	op run --env-file="vendor/.env" -- aws s3 sync s3://browsercore/v8/$(V8_VERSION)/$(ARCH)-$(OS) vendor/v8 && \
+	mkdir -p vendor/v8/$(ARCH)-$(OS) && \
+	op run --env-file="vendor/.env" -- aws s3 sync s3://browsercore/v8/$(V8_VERSION)/$(ARCH)-$(OS) vendor/v8/$(ARCH)-$(OS) && \
 	printf "=> Done\n"
 
 

@@ -146,8 +146,8 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}vendor/v8/{s}/libc_v8.a",
-                .{ vendor_path, mode_str },
+                "{s}vendor/v8/{s}-{s}/{s}/libc_v8.a",
+                .{ vendor_path, @tagName(arch), @tagName(os), mode_str },
             );
             step.addObjectFile(lib_path);
         }
