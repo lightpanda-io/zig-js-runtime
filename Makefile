@@ -1,10 +1,7 @@
 # Variables
 # ---------
 
-# manual
-V8_VERSION := 11.1.134
-
-# auto
+# OS and ARCH
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 	OS := linux
@@ -23,7 +20,7 @@ else ifeq ($(UNAME_M),arm64)
 else
 	$(error "CPU not supported")
 endif
-ifeq ($(OS), "macos" && ($(ARCH), "X86_64"))
+ifeq ($(OS), macos && ($(ARCH), X86_64))
 	$(error "OS/CPU not supported")
 endif
 
@@ -52,9 +49,10 @@ git_last_commit_full := git log --pretty=format:'%cd_%h' -n 1 --date=format:'%Y-
 
 # Dependancies
 # ------------
-.PHONY: vendor
+.PHONY: vendor build-v8 build-v8-linux build-v8-macos
 
-V8_VERSION=11.1.134
+V8_VERSION := 11.1.134
+V8_IMAGE := v8-$(V8_VERSION):$(ARCH)-$(OS)
 
 ## Fetch dependancies (op access required)
 vendor:
@@ -66,6 +64,24 @@ vendor:
 	mkdir -p vendor/v8/$(ARCH)-$(OS) && \
 	op run --env-file="vendor/.env" -- aws s3 sync s3://browsercore/v8/$(V8_VERSION)/$(ARCH)-$(OS) vendor/v8/$(ARCH)-$(OS) && \
 	printf "=> Done\n"
+
+
+build-v8-linux:
+	@printf "\e[36mBuilding v8 for $(ARCH)-$(OS) ...\e[0m\n" && \
+	op run --env-file="build/.env" -- docker build --build-arg GITHUB_TOKEN --build-arg AWS_ACCESS_KEY_ID --build-arg AWS_SECRET_ACCESS_KEY build/v8/$(ARCH)-$(OS) -t $(V8_IMAGE) && \
+	printf "=> Done\n"
+
+build-v8-macos:
+	@printf "\e[36mBuilding v8 for $(ARCH)-$(OS) ...\e[0m\n" && \
+	printf "=> TODO\n"
+
+## Build v8 for current OS/ARCH
+build-v8:
+ifeq ($(OS), macos)
+build-v8: build-v8-macos
+else ifeq ($(OS), linux)
+build-v8: build-v8-linux
+endif
 
 
 # Zig commands
