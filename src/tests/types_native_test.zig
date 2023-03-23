@@ -4,6 +4,9 @@ const jsruntime = @import("../jsruntime.zig");
 
 const tests = jsruntime.test_utils;
 
+// Native types with separate APIs
+// -------------------------------
+
 const Brand = struct {
     name: []const u8,
 
@@ -28,55 +31,69 @@ const Car = struct {
         return .{ .brand = brand, .brand_ptr = brand_ptr };
     }
 
-    // return <Struct> as getter
+    // As return value
+    // ---------------
+
+    // return <Struct> in getter
     pub fn get_brand(self: Car) Brand {
         return self.brand;
     }
 
-    // return *<Struct> as getter
+    // return *<Struct> in getter
     pub fn get_brandPtr(self: Car) *Brand {
         return self.brand_ptr;
     }
 
-    // return ?<Struct> as getter
+    // return ?<Struct> in getter
     pub fn get_brandOpt(self: Car) ?Brand {
         return self.brand;
     }
 
-    // return ?*<Struct> as getter
+    // return ?*<Struct> in getter
     pub fn get_brandPtrOpt(self: Car) ?*Brand {
         return self.brand_ptr;
     }
 
-    // return ?<Struct> null as getter
+    // return ?<Struct> null in getter
     pub fn get_brandOptNull(_: Car) ?Brand {
         return null;
     }
 
-    // return ?*<Struct> null as getter
+    // return ?*<Struct> null in getter
     pub fn get_brandPtrOptNull(_: Car) ?*Brand {
         return null;
     }
 
-    // return <Struct> as method
+    // return <Struct> in method
     pub fn _getBrand(self: Car) Brand {
         return self.get_brand();
     }
 
-    // return *<Struct> as method
+    // return *<Struct> in method
     pub fn _getBrandPtr(self: Car) *Brand {
         return self.get_brandPtr();
     }
 };
 
+// Native types with nested APIs
+// -----------------------------
+
 const Country = struct {
     stats: Stats,
 
+    // Nested type
+    // -----------
+    // NOTE: Nested types are objects litterals only supported as function argument,
+    // typically for Javascript options.
     pub const Stats = struct {
         population: u32,
         pib: []const u8,
     };
 
+    // As argument
+    // -----------
+
+    // <Struct> in method arg
     pub fn constructor(stats: Stats) Country {
         return .{ .stats = stats };
     }
@@ -89,14 +106,20 @@ const Country = struct {
         return self.stats.pib;
     }
 
-    // optional
+    // ?<Struct> optional in method arg
     pub fn _changeStats(self: *Country, stats: ?Stats) void {
         if (stats) |s| {
             self.stats = s;
         }
     }
 
-    // pointer (ie. *Stats) is not supported by design
+    // *<Struct> (ie. pointer) is not supported by design,
+    // for a pointer use case, use a seperate Native API.
+
+    // As return value
+    // ---------------
+    // not supported by design
+    // to pass a Native type as return value, use a seperate Native API.
 };
 
 // generate API, comptime
@@ -115,15 +138,15 @@ pub fn exec(
     js_env.start();
     defer js_env.stop();
 
-    var native_arg = [_]tests.Case{
+    var nested_arg = [_]tests.Case{
         .{ .src = "let stats = {'pib': '322Mds', 'population': 80}; let country = new Country(stats);", .ex = "undefined" },
         .{ .src = "country.population;", .ex = "80" },
         .{ .src = "let stats2 = {'pib': '342Mds', 'population': 80}; country.changeStats(stats2);", .ex = "undefined" },
         .{ .src = "country.pib;", .ex = "342Mds" },
     };
-    try tests.checkCases(js_env, &native_arg);
+    try tests.checkCases(js_env, &nested_arg);
 
-    var cases = [_]tests.Case{
+    var separate_cases = [_]tests.Case{
         .{ .src = "let car = new Car();", .ex = "undefined" },
 
         // basic tests for getter
@@ -160,5 +183,5 @@ pub fn exec(
         .{ .src = "car.brandOptNull", .ex = "null" },
         .{ .src = "car.brandPtrOptNull", .ex = "null" },
     };
-    try tests.checkCases(js_env, &cases);
+    try tests.checkCases(js_env, &separate_cases);
 }
