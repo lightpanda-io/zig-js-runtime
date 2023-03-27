@@ -9,44 +9,42 @@ const i64Num = @import("types.zig").i64Num;
 const u64Num = @import("types.zig").u64Num;
 
 /// Convert a Native value to a JS value
-/// and set it to the JS result provided.
 pub fn nativeToJS(
-    comptime zig_T: refl.Type,
-    zig_val: zig_T.T,
-    js_res: v8.ReturnValue,
+    comptime T: type,
+    val: T,
     isolate: v8.Isolate,
-) !void {
-    const js_val = switch (zig_T.T) {
+) !v8.Value {
+    const js_val = switch (T) {
 
         // undefined
-        void => return,
+        void => v8.initUndefined(isolate),
 
         // list of bytes (ie. string)
-        []u8, []const u8 => v8.String.initUtf8(isolate, zig_val),
+        []u8, []const u8 => v8.String.initUtf8(isolate, val),
 
         // floats
-        f32 => v8.Number.init(isolate, @floatCast(f32, zig_val)),
-        f64 => v8.Number.init(isolate, zig_val),
+        f32 => v8.Number.init(isolate, @floatCast(f32, val)),
+        f64 => v8.Number.init(isolate, val),
 
         // integers signed
-        i8, i16 => v8.Integer.initI32(isolate, @intCast(i32, zig_val)),
-        i32 => v8.Integer.initI32(isolate, zig_val),
-        i64Num => v8.Number.initBitCastedI64(isolate, zig_val.get()),
-        i64 => v8.BigInt.initI64(isolate, zig_val),
+        i8, i16 => v8.Integer.initI32(isolate, @intCast(i32, val)),
+        i32 => v8.Integer.initI32(isolate, val),
+        i64Num => v8.Number.initBitCastedI64(isolate, val.get()),
+        i64 => v8.BigInt.initI64(isolate, val),
 
         // integers unsigned
-        u8, u16 => v8.Integer.initU32(isolate, @intCast(u32, zig_val)),
-        u32 => v8.Integer.initU32(isolate, zig_val),
-        u64Num => v8.Number.initBitCastedU64(isolate, zig_val.get()),
-        u64 => v8.BigInt.initU64(isolate, zig_val),
+        u8, u16 => v8.Integer.initU32(isolate, @intCast(u32, val)),
+        u32 => v8.Integer.initU32(isolate, val),
+        u64Num => v8.Number.initBitCastedU64(isolate, val.get()),
+        u64 => v8.BigInt.initU64(isolate, val),
 
         // bool
-        bool => v8.Boolean.init(isolate, zig_val),
+        bool => v8.Boolean.init(isolate, val),
 
         else => return error.NativeTypeUnhandled,
     };
 
-    js_res.set(js_val);
+    return v8.getValue(js_val);
 }
 
 /// Convert a JS value to a Native value

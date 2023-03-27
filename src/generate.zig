@@ -209,13 +209,12 @@ fn setReturnType(
     } else {
 
         // return is a builtin type
-        nativeToJS(
-            ret,
+        const js_val = nativeToJS(
+            ret.T,
             res,
-            js_res,
             isolate,
-        ) catch unreachable; // NOTE: should not happen
-        // has types have been checked at reflect
+        ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
+        js_res.setValueHandle(js_val.handle);
     }
 }
 
