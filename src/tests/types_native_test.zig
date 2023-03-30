@@ -86,19 +86,19 @@ const Country = struct {
     // NOTE: Nested types are objects litterals only supported as function argument,
     // typically for Javascript options.
     pub const Stats = struct {
-        population: u32,
+        population: ?u32,
         pib: []const u8,
     };
 
     // As argument
     // -----------
 
-    // <Struct> in method arg
+    // <NestedStruct> in method arg
     pub fn constructor(stats: Stats) Country {
         return .{ .stats = stats };
     }
 
-    pub fn get_population(self: Country) u32 {
+    pub fn get_population(self: Country) ?u32 {
         return self.stats.population;
     }
 
@@ -106,7 +106,7 @@ const Country = struct {
         return self.stats.pib;
     }
 
-    // ?<Struct> optional in method arg
+    // ?<NestedStruct> optional in method arg
     pub fn _changeStats(self: *Country, stats: ?Stats) void {
         if (stats) |s| {
             self.stats = s;
@@ -118,8 +118,21 @@ const Country = struct {
 
     // As return value
     // ---------------
-    // not supported by design
-    // to pass a Native type as return value, use a seperate Native API.
+
+    // return <NestedStruct> in getter
+    pub fn get_stats(self: Country) Stats {
+        return self.stats;
+    }
+
+    // return ?<NestedStruct> in method (null)
+    pub fn _doStatsNull(_: Country) ?Stats {
+        return null;
+    }
+
+    // return ?<NestedStruct> in method (non-null)
+    pub fn _doStatsNotNull(self: Country) ?Stats {
+        return self.stats;
+    }
 };
 
 // generate API, comptime
@@ -141,8 +154,12 @@ pub fn exec(
     var nested_arg = [_]tests.Case{
         .{ .src = "let stats = {'pib': '322Mds', 'population': 80}; let country = new Country(stats);", .ex = "undefined" },
         .{ .src = "country.population;", .ex = "80" },
+        .{ .src = "let stats_without_population = {'pib': '342Mds'}; country.changeStats(stats_without_population)", .ex = "undefined" },
         .{ .src = "let stats2 = {'pib': '342Mds', 'population': 80}; country.changeStats(stats2);", .ex = "undefined" },
         .{ .src = "country.pib;", .ex = "342Mds" },
+        .{ .src = "country.stats.pib;", .ex = "342Mds" },
+        .{ .src = "country.doStatsNull();", .ex = "null" },
+        .{ .src = "country.doStatsNotNull().pib;", .ex = "342Mds" },
     };
     try tests.checkCases(js_env, &nested_arg);
 
