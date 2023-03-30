@@ -103,7 +103,7 @@ pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime obj_T: refl.Type,
-    obj: obj_T.T,
+    obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
@@ -112,17 +112,13 @@ pub fn setNativeObject(
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
 
-    if (obj_T.is_ptr) {
+    if (obj_T.under_ptr != null) {
 
         // obj is a pointer of T
         // no need to create it in heap,
         // we assume it has been done already by the API
         // just assign pointer to native object
-        if (obj_T.is_opt) {
-            obj_ptr = obj.?;
-        } else {
-            obj_ptr = obj;
-        }
+        obj_ptr = obj;
     } else {
 
         // obj is a value of T
@@ -130,11 +126,7 @@ pub fn setNativeObject(
         // (otherwise on the stack it will be delete when the function returns),
         // and assign pointer's dereference value to native object
         obj_ptr = try alloc.create(T);
-        if (obj_T.is_opt) {
-            obj_ptr.* = obj.?;
-        } else {
-            obj_ptr.* = obj;
-        }
+        obj_ptr.* = obj;
     }
 
     // if the object is an empty struct (ie. a kind of container)
@@ -161,30 +153,36 @@ fn setReturnType(
     comptime all_T: []refl.Struct,
     comptime ret: refl.Type,
     res: anytype,
-    js_res: v8.ReturnValue,
     ctx: v8.Context,
     isolate: v8.Isolate,
-) !void {
+) !v8.Value {
+    const val_T = if (ret.under_opt) |T| T else ret.T;
+    var val: val_T = undefined;
 
-    // check for null values
-    if (comptime ret.is_opt and res == null) {
-        // no need to set anything
-        js_res.set(v8.initNull(isolate));
-        return;
+    // Optional
+    if (ret.under_opt != null) {
+        if (res == null) {
+            // if null just return JS null
+            return isolate.initNull().toValue();
+        } else {
+            // otherwise replace with the underlying type
+            val = res.?;
+        }
+    } else {
+        val = res;
     }
 
-    // handle union type
+    // Union type
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
-        const activeTag = @tagName(std.meta.activeTag(res));
+        const activeTag = @tagName(std.meta.activeTag(val));
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setReturnType(
                     alloc,
                     all_T,
                     tt,
-                    @field(res, tt.name.?),
-                    js_res,
+                    @field(val, tt.name.?),
                     ctx,
                     isolate,
                 );
@@ -192,30 +190,58 @@ fn setReturnType(
         }
     }
 
+    if (ret.nested_index) |nested_index| {
+
+        // return is a user defined nested type
+
+        // create a JS object
+        // and call setReturnType on each object fields
+        const js_obj = v8.Object.init(isolate);
+        const nested = all_T[ret.T_refl_index.?].nested[nested_index];
+        inline for (nested.fields) |field| {
+            const name = field.name.?;
+            const js_val = try setReturnType(
+                alloc,
+                all_T,
+                field,
+                @field(val, name),
+                ctx,
+                isolate,
+            );
+            const key = v8.String.initUtf8(isolate, name);
+            if (!js_obj.setValue(ctx, key, js_val)) {
+                return error.JSObjectSetValue;
+            }
+        }
+        return js_obj.toValue();
+    }
+
     if (ret.T_refl_index) |index| {
 
         // return is a user defined type
 
+        // instantiate a JS object from template
+        // and bind it to the native object
         const js_obj = getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
         _ = setNativeObject(
             alloc,
             all_T[index],
             ret,
-            res,
+            val,
             js_obj,
             isolate,
         ) catch unreachable;
-        js_res.set(js_obj);
-    } else {
-
-        // return is a builtin type
-        const js_val = nativeToJS(
-            ret.T,
-            res,
-            isolate,
-        ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
-        js_res.setValueHandle(js_val.handle);
+        return js_obj.toValue();
     }
+
+    // return is a builtin type
+
+    const js_val = nativeToJS(
+        ret,
+        val,
+        isolate,
+    ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
+    return js_val;
 }
 
 fn getNativeObject(
@@ -275,7 +301,7 @@ fn generateConstructor(
             const cstr_func = @field(T_refl.T, func.name);
             const obj = @call(.{}, cstr_func, args);
 
-            // set native object to JS
+            // bind native object to JS new object
             setNativeObject(
                 utils.allocator,
                 T_refl,
@@ -313,15 +339,15 @@ fn generateGetter(
             const res = @call(.{}, getter_func, .{obj_ptr.*});
 
             // return to javascript the result
-            setReturnType(
+            const js_val = setReturnType(
                 utils.allocator,
                 all_T,
                 func.return_type,
                 res,
-                info.getReturnValue(),
                 isolate.getCurrentContext(),
                 isolate,
             ) catch unreachable;
+            info.getReturnValue().setValueHandle(js_val.handle);
         }
     }.getter;
 }
@@ -404,15 +430,15 @@ fn generateMethod(
             const res = @call(.{}, method_func, args);
 
             // return to javascript the result
-            setReturnType(
+            const js_val = setReturnType(
                 utils.allocator,
                 all_T,
                 func.return_type,
                 res,
-                info.getReturnValue(),
                 ctx,
                 isolate,
             ) catch unreachable;
+            info.getReturnValue().setValueHandle(js_val.handle);
 
             // sync callback
             // for test purpose, does not have any sense in real case

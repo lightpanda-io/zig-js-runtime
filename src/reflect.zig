@@ -39,19 +39,30 @@ pub const Type = struct {
     T: type, // could be pointer or concrete
     name: ?[]const u8, // not available for return type
 
-    under_T: type,
-    is_opt: bool,
-    is_ptr: bool,
+    under_opt: ?type,
+    under_ptr: ?type,
 
     // is this type a builtin or a custom struct?
     // those fields are mutually exclusing
     // ie. if is_bultin => T_refl_index is not null
     // and if T_refl_index == null => is_builtin is true
-    is_builtin: bool,
+    is_builtin: bool = false,
     T_refl_index: ?usize = null,
-    nested_index: ?usize = null,
+    nested_index: ?usize = null, // T_refl_index is mandatory in this case
 
     union_T: ?[]Type,
+
+    pub fn under_T(comptime self: Type) type {
+        comptime {
+            if (self.under_ptr) |T| {
+                return T;
+            }
+            if (self.under_opt) |T| {
+                return T;
+            }
+            return self.T;
+        }
+    }
 
     fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
 
@@ -70,16 +81,17 @@ pub const Type = struct {
 
         // check under_T in all structs (and nested structs)
         inline for (structs) |s| {
-            if (self.under_T == s.T) {
+            if (self.under_T() == s.T) {
                 self.T_refl_index = s.index;
                 break;
             }
             inline for (s.nested) |nested, i| {
-                if (self.under_T == nested.T) {
-                    if (self.is_ptr) {
+                if (self.under_T() == nested.T) {
+                    if (self.under_ptr != null) {
                         fmtErr("type {s} pointer on nested struct is not allowed, choose a type struct for this use case", .{@typeName(self.T)});
                         return error.TypeNestedPtr;
                     }
+                    self.T_refl_index = s.index;
                     self.nested_index = i;
                     break;
                 }
@@ -114,47 +126,41 @@ pub const Type = struct {
 
         // underlying T
         // NOTE: the following cases are handled:
-        // - T is a value (under_T = T, is_opt false, is_ptr false)
-        // - T is a pointer (under_T = T child, is_opt false, is_ptr true)
-        // - T is an optional value (under_T = T child, is_opt true, is_ptr false)
-        // - T is an optional pointer (under T = T child child, is_opt true, is_ptr false)
-        var under_T: type = undefined;
-        var is_opt = false;
-        var is_ptr = false;
+        // - T is a value (under_opt = null, under_ptr = null)
+        // - T is a pointer (under_opt = null, under_ptr = T child)
+        // - T is an optional value (under_opt = T child, under_ptr = null)
+        // - T is an optional pointer (under_opt = T child, under_ptr = T child child)
+        var under_opt: ?type = null;
+        var under_ptr: ?type = null;
         if (info == .Optional) {
-            is_opt = true;
+            under_opt = info.Optional.child;
             const child_info = @typeInfo(info.Optional.child);
             if (child_info == .Pointer) {
-                is_ptr = true;
-                under_T = child_info.Pointer.child;
-            } else {
-                under_T = info.Optional.child;
+                under_ptr = child_info.Pointer.child;
             }
-        } else if (info == .Pointer) {
-            is_ptr = true;
-            under_T = info.Pointer.child;
-        } else {
-            under_T = T;
+        } else if (info == .Pointer and info.Pointer.size != .Slice) {
+            // NOTE: slice are pointers but we handle them as single value
+            under_ptr = info.Pointer.child;
         }
 
+        var t = Type{
+            .T = T,
+            .name = name,
+            .under_opt = under_opt,
+            .under_ptr = under_ptr,
+            .union_T = union_T,
+        };
+
         // builtin
-        var is_builtin = false;
+        const under = t.under_T();
         for (builtin_types) |builtin_T| {
-            if (builtin_T == under_T) {
-                is_builtin = true;
+            if (builtin_T == under) {
+                t.is_builtin = true;
                 break;
             }
         }
 
-        return Type{
-            .T = T,
-            .name = name,
-            .under_T = under_T,
-            .is_opt = is_opt,
-            .is_ptr = is_ptr,
-            .is_builtin = is_builtin,
-            .union_T = union_T,
-        };
+        return t;
     }
 };
 
@@ -368,7 +374,7 @@ pub const Func = struct {
         var i = args_types.len;
         while (i > 0) {
             i -= 1;
-            if (!args_types[i].is_opt) {
+            if (args_types[i].under_opt == null) {
                 break;
             }
             first_optional_arg = i;
@@ -387,7 +393,7 @@ pub const Func = struct {
         }
         const js_name = jsName(field_name);
 
-        // reflect func
+        // reflect args
         const args_slice = args_types[0..];
         const args_T = comptime Args.reflect(self_T, args_slice);
 
