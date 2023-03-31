@@ -9,6 +9,7 @@ const pretty = @import("pretty.zig");
 const proto = @import("tests/proto_test.zig");
 const primitive_types = @import("tests/types_primitives_test.zig");
 const native_types = @import("tests/types_native_test.zig");
+const complex_types = @import("tests/types_complex_test.zig");
 const multiple_types = @import("tests/types_multiple_test.zig");
 const callback = @import("tests/cbk_test.zig");
 
@@ -22,10 +23,11 @@ test {
     comptime var tests_nb: usize = 0;
     const do_proto = true;
     const do_prim = true;
-    const do_nat = true;
+    const do_nat = true; // TODO: if enable alone we have "exceeded 1000 backwards branches" error
+    const do_complex = true;
     const do_multi = true;
     const do_cbk = true;
-    if (!do_proto and !do_prim and !do_nat and !do_multi and !do_cbk) {
+    if (!do_proto and !do_prim and !do_nat and !do_complex and !do_multi and !do_cbk) {
         std.debug.print("\nWARNING: No end to end tests.\n", .{});
         return;
     }
@@ -65,6 +67,17 @@ test {
         var nat_arena = std.heap.ArenaAllocator.init(nat_alloc.allocator());
         defer nat_arena.deinit();
         _ = try eng.loadEnv(&nat_arena, native_types.exec, nat_apis);
+    }
+
+    // complex types tests
+    var complex_alloc: bench.Allocator = undefined;
+    if (do_complex) {
+        tests_nb += 1;
+        const complex_apis = comptime complex_types.generate(); // stage1: we need to comptime
+        complex_alloc = bench.allocator(std.testing.allocator);
+        var complex_arena = std.heap.ArenaAllocator.init(complex_alloc.allocator());
+        defer complex_arena.deinit();
+        _ = try eng.loadEnv(&complex_arena, complex_types.exec, complex_apis);
     }
 
     // multiple types tests
@@ -132,6 +145,15 @@ test {
             .value = nat_alloc_stats.alloc_size,
         };
         try t.addRow(.{ "Natives", nat_alloc.alloc_nb, nat_alloc_size });
+    }
+
+    if (do_complex) {
+        const complex_alloc_stats = complex_alloc.stats();
+        const complex_alloc_size = pretty.Measure{
+            .unit = "b",
+            .value = complex_alloc_stats.alloc_size,
+        };
+        try t.addRow(.{ "Complexes", complex_alloc.alloc_nb, complex_alloc_size });
     }
 
     if (do_multi) {

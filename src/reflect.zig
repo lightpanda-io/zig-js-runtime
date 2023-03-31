@@ -206,6 +206,17 @@ const Args = struct {
     }
 };
 
+const Symbol = enum {
+    iterator,
+
+    fn reflect(comptime name: []const u8) ?Symbol {
+        if (std.mem.eql(u8, name, "_symbol_iterator")) {
+            return Symbol.iterator;
+        }
+        return null;
+    }
+};
+
 const FuncKind = enum {
     ignore,
     constructor,
@@ -263,6 +274,9 @@ pub const Func = struct {
     // async
     callback_index: ?usize,
     args_callback_nb: usize,
+
+    // symbol
+    symbol: ?Symbol,
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 
@@ -413,6 +427,9 @@ pub const Func = struct {
             // func callback
             .callback_index = callback_index,
             .args_callback_nb = args_callback_nb,
+
+            // symbol
+            .symbol = Symbol.reflect(name),
 
             .setter_index = null,
         };
