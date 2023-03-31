@@ -550,14 +550,21 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
                 }
             }
 
-            // create a v8 FunctinTemplate for each T methods,
+            // create a v8 FunctionTemplate for each T methods,
             // with the corresponding zig callbacks,
             // and attach them to the object template
             inline for (T_refl.methods) |method| {
                 const func = generateMethod(T_refl, method, all_T);
                 const func_tpl = v8.FunctionTemplate.initCallback(isolate, func);
-                const key = v8.String.initUtf8(isolate, method.js_name);
-                prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+                if (method.symbol) |symbol| {
+                    const key = switch (symbol) {
+                        .iterator => v8.Symbol.getIterator(isolate),
+                    };
+                    prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+                } else {
+                    const key = v8.String.initUtf8(isolate, method.js_name);
+                    prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+                }
             }
 
             // return the FunctionTemplate of the constructor

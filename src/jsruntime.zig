@@ -18,6 +18,11 @@ pub const Env = eng.Env;
 pub const ContextExecFn = eng.ContextExecFn;
 pub const JSResult = eng.JSResult;
 
+const types = @import("types.zig");
+pub const i64Num = types.i64Num;
+pub const u64Num = types.u64Num;
+pub const Iterable = types.Iterable;
+
 pub const bench_allocator = @import("bench.zig").allocator;
 
 pub const test_utils = @import("tests/test_utils.zig");
