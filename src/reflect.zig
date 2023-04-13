@@ -208,10 +208,13 @@ const Args = struct {
 
 const Symbol = enum {
     iterator,
+    string_tag,
 
     fn reflect(comptime name: []const u8) ?Symbol {
         if (std.mem.eql(u8, name, "_symbol_iterator")) {
             return Symbol.iterator;
+        } else if (std.mem.eql(u8, name, "get_symbol_toStringTag")) {
+            return Symbol.string_tag;
         }
         return null;
     }

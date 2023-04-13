@@ -41,6 +41,10 @@ const Person = struct {
     pub fn _setAgeMethod(self: *Person, age: u32) void {
         self.age = age;
     }
+
+    pub fn get_symbol_toStringTag(_: Person) []const u8 {
+        return "MyPerson";
+    }
 };
 
 const User = struct {
@@ -85,6 +89,7 @@ pub fn exec(
         .{ .src = "let p = new Person('Francis', 'Bouvier', 40);", .ex = "undefined" },
         .{ .src = "p.__proto__ === Person.prototype", .ex = "true" },
         .{ .src = "typeof(p.constructor) === 'function'", .ex = "true" },
+        .{ .src = "p[Symbol.toStringTag] === 'MyPerson';", .ex = "true" }, // custom string tag
         .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
         .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
