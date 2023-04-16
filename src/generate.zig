@@ -452,6 +452,19 @@ fn generateMethod(
     }.method;
 }
 
+fn generateStringTag(comptime name: []const u8) v8.AccessorNameGetterCallback {
+    return struct {
+        fn stringTag(
+            _: ?*const v8.C_Name,
+            raw_info: ?*const v8.C_PropertyCallbackInfo,
+        ) callconv(.C) void {
+            const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
+            const js_name = v8.String.initUtf8(info.getIsolate(), name);
+            info.getReturnValue().set(js_name);
+        }
+    }.stringTag;
+}
+
 // Compile and loading mechanism
 // -----------------------------
 
@@ -555,6 +568,11 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
                     const setter_func = generateSetter(T_refl, setter, all_T);
                     prototype.setGetterAndSetter(key, getter_func, setter_func);
                 }
+            }
+            // add string tag if not provided
+            if (!T_refl.string_tag) {
+                const key = v8.Symbol.getToStringTag(isolate).toName();
+                prototype.setGetter(key, generateStringTag(T_refl.name));
             }
 
             // create a v8 FunctionTemplate for each T methods,

@@ -121,6 +121,7 @@ pub fn exec(
         .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
         .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
         .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },
+        .{ .src = "u[Symbol.toStringTag] === 'User';", .ex = "true" }, // generic string tag
         .{ .src = "u.fullName();", .ex = "Englund" },
         .{ .src = "u.age;", .ex = "42" },
         .{ .src = "u.age = 43;", .ex = "43" },
