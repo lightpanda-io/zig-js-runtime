@@ -208,10 +208,13 @@ const Args = struct {
 
 const Symbol = enum {
     iterator,
+    string_tag,
 
     fn reflect(comptime name: []const u8) ?Symbol {
         if (std.mem.eql(u8, name, "_symbol_iterator")) {
             return Symbol.iterator;
+        } else if (std.mem.eql(u8, name, "get_symbol_toStringTag")) {
+            return Symbol.string_tag;
         }
         return null;
     }
@@ -476,6 +479,7 @@ pub const Struct = struct {
     // struct info
     name: []const u8,
     js_name: []const u8,
+    string_tag: bool,
     T: type,
     value: Type,
     mem_layout: std.builtin.Type.ContainerLayout,
@@ -697,12 +701,24 @@ pub const Struct = struct {
             }
         }
 
+        // string tag
+        var string_tag: bool = false;
+        for (getters) |getter| {
+            if (getter.symbol) |symbol| {
+                if (symbol == .string_tag) {
+                    string_tag = true;
+                    break;
+                }
+            }
+        }
+
         const ptr_info = @typeInfo(*T).Pointer;
 
         return Struct{
             // struct info
             .name = struct_name,
             .js_name = jsName(struct_name),
+            .string_tag = string_tag,
             .T = T,
             .value = try Type.reflect(T, null),
             .mem_layout = obj.Struct.layout,

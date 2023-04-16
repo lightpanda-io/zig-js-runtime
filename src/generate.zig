@@ -321,7 +321,7 @@ fn generateGetter(
 ) v8.AccessorNameGetterCallback {
     return struct {
         fn getter(
-            _: ?*const v8.Name,
+            _: ?*const v8.C_Name,
             raw_info: ?*const v8.C_PropertyCallbackInfo,
         ) callconv(.C) void {
 
@@ -358,9 +358,8 @@ fn generateSetter(
     comptime all_T: []refl.Struct,
 ) v8.AccessorNameSetterCallback {
     return struct {
-        // TODO: why can we use v8.Name but not v8.Value (v8.C_Value)?
         fn setter(
-            _: ?*const v8.Name,
+            _: ?*const v8.C_Name,
             raw_value: ?*const v8.C_Value,
             raw_info: ?*const v8.C_PropertyCallbackInfo,
         ) callconv(.C) void {
@@ -453,6 +452,19 @@ fn generateMethod(
     }.method;
 }
 
+fn generateStringTag(comptime name: []const u8) v8.AccessorNameGetterCallback {
+    return struct {
+        fn stringTag(
+            _: ?*const v8.C_Name,
+            raw_info: ?*const v8.C_PropertyCallbackInfo,
+        ) callconv(.C) void {
+            const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
+            const js_name = v8.String.initUtf8(info.getIsolate(), name);
+            info.getReturnValue().set(js_name);
+        }
+    }.stringTag;
+}
+
 // Compile and loading mechanism
 // -----------------------------
 
@@ -500,7 +512,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             // and attach it to the global namespace
             const cstr_func = generateConstructor(T_refl, T_refl.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
-            const cstr_key = v8.String.initUtf8(isolate, T_refl.name);
+            const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
             // set the optional prototype of the constructor
@@ -540,7 +552,15 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             // with the corresponding zig callbacks
             inline for (T_refl.getters) |getter| {
                 const getter_func = generateGetter(T_refl, getter, all_T);
-                const key = v8.String.initUtf8(isolate, getter.js_name);
+                var key: v8.Name = undefined;
+                if (getter.symbol) |symbol| {
+                    key = switch (symbol) {
+                        .string_tag => v8.Symbol.getToStringTag(isolate),
+                        else => unreachable,
+                    }.toName();
+                } else {
+                    key = v8.String.initUtf8(isolate, getter.js_name).toName();
+                }
                 if (getter.setter_index == null) {
                     prototype.setGetter(key, getter_func);
                 } else {
@@ -549,6 +569,11 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
                     prototype.setGetterAndSetter(key, getter_func, setter_func);
                 }
             }
+            // add string tag if not provided
+            if (!T_refl.string_tag) {
+                const key = v8.Symbol.getToStringTag(isolate).toName();
+                prototype.setGetter(key, generateStringTag(T_refl.name));
+            }
 
             // create a v8 FunctionTemplate for each T methods,
             // with the corresponding zig callbacks,
@@ -556,15 +581,16 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             inline for (T_refl.methods) |method| {
                 const func = generateMethod(T_refl, method, all_T);
                 const func_tpl = v8.FunctionTemplate.initCallback(isolate, func);
+                var key: v8.Name = undefined;
                 if (method.symbol) |symbol| {
-                    const key = switch (symbol) {
+                    key = switch (symbol) {
                         .iterator => v8.Symbol.getIterator(isolate),
-                    };
-                    prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+                        else => unreachable,
+                    }.toName();
                 } else {
-                    const key = v8.String.initUtf8(isolate, method.js_name);
-                    prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+                    key = v8.String.initUtf8(isolate, method.js_name).toName();
                 }
+                prototype.set(key, func_tpl, v8.PropertyAttribute.None);
             }
 
             // return the FunctionTemplate of the constructor

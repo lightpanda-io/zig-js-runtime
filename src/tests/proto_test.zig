@@ -41,6 +41,10 @@ const Person = struct {
     pub fn _setAgeMethod(self: *Person, age: u32) void {
         self.age = age;
     }
+
+    pub fn get_symbol_toStringTag(_: Person) []const u8 {
+        return "MyPerson";
+    }
 };
 
 const User = struct {
@@ -85,6 +89,7 @@ pub fn exec(
         .{ .src = "let p = new Person('Francis', 'Bouvier', 40);", .ex = "undefined" },
         .{ .src = "p.__proto__ === Person.prototype", .ex = "true" },
         .{ .src = "typeof(p.constructor) === 'function'", .ex = "true" },
+        .{ .src = "p[Symbol.toStringTag] === 'MyPerson';", .ex = "true" }, // custom string tag
         .{ .src = "new Person('Francis', 40)", .ex = "TypeError" }, // arg is missing (last_name)
         .{ .src = "new Entity()", .ex = "TypeError" }, // illegal constructor
     };
@@ -116,6 +121,7 @@ pub fn exec(
         .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
         .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
         .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },
+        .{ .src = "u[Symbol.toStringTag] === 'User';", .ex = "true" }, // generic string tag
         .{ .src = "u.fullName();", .ex = "Englund" },
         .{ .src = "u.age;", .ex = "42" },
         .{ .src = "u.age = 43;", .ex = "43" },
