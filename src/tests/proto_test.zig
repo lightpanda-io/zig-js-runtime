@@ -68,9 +68,27 @@ const User = struct {
     }
 };
 
+const PersonPtr = struct {
+    name: []u8,
+
+    pub fn constructor(alloc: std.mem.Allocator, name: []u8) *PersonPtr {
+        var person_ptr = alloc.create(PersonPtr) catch unreachable;
+        person_ptr.* = .{ .name = name };
+        return person_ptr;
+    }
+
+    pub fn get_name(self: PersonPtr) []u8 {
+        return self.name;
+    }
+
+    pub fn set_name(self: *PersonPtr, name: []u8) void {
+        self.name = name;
+    }
+};
+
 // generate API, comptime
 pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ User, Person, Entity });
+    return jsruntime.compile(.{ User, Person, PersonPtr, Entity });
 }
 
 // exec tests
@@ -129,4 +147,11 @@ pub fn exec(
         .{ .src = "u.age;", .ex = "43" },
     };
     try tests.checkCases(js_env, &cases_proto);
+
+    // constructor returning pointer
+    var casesPtr = [_]tests.Case{
+        .{ .src = "let pptr = new PersonPtr('Francis');", .ex = "undefined" },
+        .{ .src = "pptr.name = 'Bouvier'; pptr.name === 'Bouvier'", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesPtr);
 }
