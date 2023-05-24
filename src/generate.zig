@@ -107,7 +107,7 @@ pub fn setNativeObject(
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
-    const T = T_refl.T;
+    const T = T_refl.Self();
 
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
@@ -248,8 +248,8 @@ fn getNativeObject(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     js_obj: v8.Object,
-) !*T_refl.T {
-    const T = T_refl.T;
+) !*T_refl.Self() {
+    const T = T_refl.Self();
 
     var obj_ptr: *T = undefined;
     if (T_refl.size == 0) {
@@ -418,9 +418,9 @@ fn generateMethod(
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
             const self_T = @TypeOf(@field(args, "0"));
-            if (self_T == T_refl.T) {
+            if (self_T == T_refl.Self()) {
                 @field(args, "0") = obj_ptr.*;
-            } else if (self_T == *T_refl.T) {
+            } else if (self_T == *T_refl.Self()) {
                 @field(args, "0") = obj_ptr;
             }
 

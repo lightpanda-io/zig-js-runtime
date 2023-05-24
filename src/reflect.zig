@@ -481,6 +481,7 @@ pub const Struct = struct {
     js_name: []const u8,
     string_tag: bool,
     T: type,
+    self_T: ?type,
     value: Type,
     mem_layout: std.builtin.Type.ContainerLayout,
 
@@ -504,6 +505,13 @@ pub const Struct = struct {
     // TODO: is it necessary?
     alignment: u29,
     size: usize,
+
+    pub fn Self(comptime self: Struct) type {
+        if (self.self_T) |T| {
+            return T;
+        }
+        return self.T;
+    }
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
@@ -628,6 +636,19 @@ pub const Struct = struct {
             }
         }
 
+        // self type
+        var self_T: ?type = null;
+        var real_T: type = undefined;
+        if (@hasDecl(T, "Self")) {
+            self_T = @field(T, "Self");
+            real_T = self_T.?;
+            // TODO:
+            // - check it's a type
+            // - check it's not a pointer
+        } else {
+            real_T = T;
+        }
+
         // retrieve the number of each function kind
         var getters_nb: u8 = 0;
         var setters_nb: u8 = 0;
@@ -666,7 +687,7 @@ pub const Struct = struct {
                 continue;
             }
             const func = @TypeOf(@field(T, decl.name));
-            const func_reflected = comptime try Func.reflect(func, kind, decl.name, T);
+            const func_reflected = comptime try Func.reflect(func, kind, decl.name, real_T);
 
             switch (kind) {
                 .constructor => {
@@ -712,7 +733,7 @@ pub const Struct = struct {
             }
         }
 
-        const ptr_info = @typeInfo(*T).Pointer;
+        const ptr_info = @typeInfo(*real_T).Pointer;
 
         return Struct{
             // struct info
@@ -720,6 +741,7 @@ pub const Struct = struct {
             .js_name = jsName(struct_name),
             .string_tag = string_tag,
             .T = T,
+            .self_T = self_T,
             .value = try Type.reflect(T, null),
             .mem_layout = obj.Struct.layout,
 

@@ -18,7 +18,7 @@ pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) 
     inline for (types) |T_refl| {
         if (T_refl.index == T_index.?) {
             if (T_refl.size != 0) { // stage1: condition is needed for empty structs
-                const target_ptr = @intToPtr(*T_refl.T, key.*);
+                const target_ptr = @intToPtr(*T_refl.Self(), key.*);
                 return try getRealObject(T, target_ptr);
             }
         }

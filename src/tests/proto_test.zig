@@ -86,9 +86,35 @@ const PersonPtr = struct {
     }
 };
 
+const UserContainer = struct {
+    pub const Self = User;
+
+    pub fn constructor(
+        alloc: std.mem.Allocator,
+        first_name: []u8,
+        last_name: []u8,
+        age: u32,
+    ) User {
+        const proto = Person.constructor(alloc, first_name, last_name, age);
+        return .{ .proto = proto, .role = 1 };
+    }
+
+    pub fn get_role_container(self: User) u8 {
+        return self.role;
+    }
+
+    pub fn set_role_container(self: *User, role: u8) void {
+        self.role = role;
+    }
+
+    pub fn _roleVal(self: User) u8 {
+        return self.role;
+    }
+};
+
 // generate API, comptime
 pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ User, Person, PersonPtr, Entity });
+    return jsruntime.compile(.{ User, Person, PersonPtr, Entity, UserContainer });
 }
 
 // exec tests
@@ -154,4 +180,13 @@ pub fn exec(
         .{ .src = "pptr.name = 'Bouvier'; pptr.name === 'Bouvier'", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesPtr);
+
+    // container
+    var casesContainer = [_]tests.Case{
+        .{ .src = "let uc = new UserContainer('Francis', 'Bouvier', 40);", .ex = "undefined" },
+        .{ .src = "uc.role_container === 1", .ex = "true" },
+        .{ .src = "uc.role_container = 2; uc.role_container === 2", .ex = "true" },
+        .{ .src = "uc.roleVal() === 2", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesContainer);
 }
