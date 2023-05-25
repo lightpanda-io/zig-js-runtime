@@ -187,6 +187,7 @@ pub fn exec(
         .{ .src = "uc.role_container === 1", .ex = "true" },
         .{ .src = "uc.role_container = 2; uc.role_container === 2", .ex = "true" },
         .{ .src = "uc.roleVal() === 2", .ex = "true" },
+        .{ .src = "uc.age === 40", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesContainer);
 }

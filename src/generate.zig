@@ -107,12 +107,12 @@ pub fn setNativeObject(
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
-    const T = T_refl.Self();
+    const T = obj_T.under_T();
 
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
 
-    if (obj_T.under_ptr != null) {
+    if (@typeInfo(@TypeOf(obj)) == .Pointer) {
 
         // obj is a pointer of T
         // no need to create it in heap,

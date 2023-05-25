@@ -450,6 +450,12 @@ pub const StructNested = struct {
             return false;
         }
 
+        // exclude Self special keyword
+        if (std.mem.eql(u8, decl.name, "Self")) {
+            // TODO: and "prototype"?
+            return false;
+        }
+
         // exclude declarations who are not types
         const decl_type = @field(T, decl.name);
         if (@TypeOf(decl_type) != type) {
@@ -567,6 +573,19 @@ pub const Struct = struct {
         // struct name
         const struct_name = shortName(T);
 
+        // self type
+        var self_T: ?type = null;
+        var real_T: type = undefined;
+        if (@hasDecl(T, "Self")) {
+            self_T = @field(T, "Self");
+            real_T = self_T.?;
+            // TODO:
+            // - check it's a type
+            // - check it's not a pointer
+        } else {
+            real_T = T;
+        }
+
         // protoype
         var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
@@ -581,13 +600,13 @@ pub const Struct = struct {
             T_proto = T_proto_info.Pointer.child;
 
             // check struct has a 'proto' field
-            if (!@hasField(T, "proto")) {
+            if (!@hasField(real_T, "proto")) {
                 fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
                 return error.StructWithoutProto;
             }
 
             // check the 'proto' field
-            inline for (obj.Struct.fields) |field, i| {
+            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
                     continue;
                 }
@@ -634,19 +653,6 @@ pub const Struct = struct {
                     nested_done += 1;
                 }
             }
-        }
-
-        // self type
-        var self_T: ?type = null;
-        var real_T: type = undefined;
-        if (@hasDecl(T, "Self")) {
-            self_T = @field(T, "Self");
-            real_T = self_T.?;
-            // TODO:
-            // - check it's a type
-            // - check it's not a pointer
-        } else {
-            real_T = T;
         }
 
         // retrieve the number of each function kind
@@ -742,7 +748,7 @@ pub const Struct = struct {
             .string_tag = string_tag,
             .T = T,
             .self_T = self_T,
-            .value = try Type.reflect(T, null),
+            .value = try Type.reflect(real_T, null),
             .mem_layout = obj.Struct.layout,
 
             // index in types list
