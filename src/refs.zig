@@ -2,6 +2,12 @@ const std = @import("std");
 
 const refl = @import("reflect.zig");
 
+// Map references all objects created in both JS and Native world
+// either from JS through a constructor template call
+// or from Native in an addObject call
+// - key is the adress of the object (as an int)
+// it will be store on the JS object as an internal field
+// - value is the index of API
 pub const Map = std.AutoHashMapUnmanaged(usize, usize);
 pub var map: Map = undefined;
 
@@ -10,14 +16,21 @@ pub fn addObject(alloc: std.mem.Allocator, key: usize, value: usize) !void {
 }
 
 pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
+
+    // use the object pointer (key) to retrieve the API index (value) in the map
     const key = @ptrCast(*usize, @alignCast(8, ptr));
     const T_index = map.get(key.*);
     if (T_index == null) {
         return error.NullReference;
     }
+
+    // get the API corresponding to the API index
+    // TODO: more efficient sorting?
     inline for (types) |T_refl| {
         if (T_refl.index == T_index.?) {
             if (T_refl.size != 0) { // stage1: condition is needed for empty structs
+                // go through the "proto" object chain
+                // to retrieve the good object corresponding to T
                 const target_ptr = @intToPtr(*T_refl.Self(), key.*);
                 return try getRealObject(T, target_ptr);
             }
