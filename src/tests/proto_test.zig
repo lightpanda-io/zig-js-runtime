@@ -88,6 +88,7 @@ const PersonPtr = struct {
 
 const UserContainer = struct {
     pub const Self = User;
+    pub const prototype = *Person;
 
     pub fn constructor(
         alloc: std.mem.Allocator,

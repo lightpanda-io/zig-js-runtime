@@ -579,9 +579,10 @@ pub const Struct = struct {
         if (@hasDecl(T, "Self")) {
             self_T = @field(T, "Self");
             real_T = self_T.?;
-            // TODO:
-            // - check it's a type
-            // - check it's not a pointer
+            if (@typeInfo(real_T) == .Pointer) {
+                fmtErr("type {s} Self type should not be a pointer", .{@typeName(T)});
+                return error.StructSelfPointer;
+            }
         } else {
             real_T = T;
         }
@@ -888,6 +889,7 @@ const Error = error{
     // struct errors
     StructNotStruct,
     StructPacked,
+    StructSelfPointer,
     StructPrototypeNotPointer,
     StructWithoutProto,
     StructProtoPointer,
@@ -926,6 +928,9 @@ fn ensureErr(arg: anytype, err: Error) !void {
 // structs tests
 const TestBase = struct {};
 const TestStructPacked = packed struct {};
+const TestStructSelfPointer = struct {
+    pub const Self = *TestBase;
+};
 const TestStructPrototypeNotPointer = struct {
     pub const prototype = TestBase;
 };
@@ -1003,6 +1008,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructPacked},
         error.StructPacked,
+    );
+    try ensureErr(
+        .{TestStructSelfPointer},
+        error.StructSelfPointer,
     );
     try ensureErr(
         .{TestStructPrototypeNotPointer},
