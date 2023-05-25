@@ -68,9 +68,54 @@ const User = struct {
     }
 };
 
+const PersonPtr = struct {
+    name: []u8,
+
+    pub fn constructor(alloc: std.mem.Allocator, name: []u8) *PersonPtr {
+        var person_ptr = alloc.create(PersonPtr) catch unreachable;
+        person_ptr.* = .{ .name = name };
+        return person_ptr;
+    }
+
+    pub fn get_name(self: PersonPtr) []u8 {
+        return self.name;
+    }
+
+    pub fn set_name(self: *PersonPtr, name: []u8) void {
+        self.name = name;
+    }
+};
+
+const UserContainer = struct {
+    pub const Self = User;
+    pub const prototype = *Person;
+
+    pub fn constructor(
+        alloc: std.mem.Allocator,
+        first_name: []u8,
+        last_name: []u8,
+        age: u32,
+    ) User {
+        const proto = Person.constructor(alloc, first_name, last_name, age);
+        return .{ .proto = proto, .role = 1 };
+    }
+
+    pub fn get_role_container(self: User) u8 {
+        return self.role;
+    }
+
+    pub fn set_role_container(self: *User, role: u8) void {
+        self.role = role;
+    }
+
+    pub fn _roleVal(self: User) u8 {
+        return self.role;
+    }
+};
+
 // generate API, comptime
 pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ User, Person, Entity });
+    return jsruntime.compile(.{ User, Person, PersonPtr, Entity, UserContainer });
 }
 
 // exec tests
@@ -129,4 +174,21 @@ pub fn exec(
         .{ .src = "u.age;", .ex = "43" },
     };
     try tests.checkCases(js_env, &cases_proto);
+
+    // constructor returning pointer
+    var casesPtr = [_]tests.Case{
+        .{ .src = "let pptr = new PersonPtr('Francis');", .ex = "undefined" },
+        .{ .src = "pptr.name = 'Bouvier'; pptr.name === 'Bouvier'", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesPtr);
+
+    // container
+    var casesContainer = [_]tests.Case{
+        .{ .src = "let uc = new UserContainer('Francis', 'Bouvier', 40);", .ex = "undefined" },
+        .{ .src = "uc.role_container === 1", .ex = "true" },
+        .{ .src = "uc.role_container = 2; uc.role_container === 2", .ex = "true" },
+        .{ .src = "uc.roleVal() === 2", .ex = "true" },
+        .{ .src = "uc.age === 40", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesContainer);
 }

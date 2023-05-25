@@ -450,6 +450,12 @@ pub const StructNested = struct {
             return false;
         }
 
+        // exclude Self special keyword
+        if (std.mem.eql(u8, decl.name, "Self")) {
+            // TODO: and "prototype"?
+            return false;
+        }
+
         // exclude declarations who are not types
         const decl_type = @field(T, decl.name);
         if (@TypeOf(decl_type) != type) {
@@ -481,6 +487,7 @@ pub const Struct = struct {
     js_name: []const u8,
     string_tag: bool,
     T: type,
+    self_T: ?type,
     value: Type,
     mem_layout: std.builtin.Type.ContainerLayout,
 
@@ -504,6 +511,13 @@ pub const Struct = struct {
     // TODO: is it necessary?
     alignment: u29,
     size: usize,
+
+    pub fn Self(comptime self: Struct) type {
+        if (self.self_T) |T| {
+            return T;
+        }
+        return self.T;
+    }
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
@@ -559,6 +573,20 @@ pub const Struct = struct {
         // struct name
         const struct_name = shortName(T);
 
+        // self type
+        var self_T: ?type = null;
+        var real_T: type = undefined;
+        if (@hasDecl(T, "Self")) {
+            self_T = @field(T, "Self");
+            real_T = self_T.?;
+            if (@typeInfo(real_T) == .Pointer) {
+                fmtErr("type {s} Self type should not be a pointer", .{@typeName(T)});
+                return error.StructSelfPointer;
+            }
+        } else {
+            real_T = T;
+        }
+
         // protoype
         var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
@@ -573,13 +601,13 @@ pub const Struct = struct {
             T_proto = T_proto_info.Pointer.child;
 
             // check struct has a 'proto' field
-            if (!@hasField(T, "proto")) {
+            if (!@hasField(real_T, "proto")) {
                 fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
                 return error.StructWithoutProto;
             }
 
             // check the 'proto' field
-            inline for (obj.Struct.fields) |field, i| {
+            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
                     continue;
                 }
@@ -666,7 +694,7 @@ pub const Struct = struct {
                 continue;
             }
             const func = @TypeOf(@field(T, decl.name));
-            const func_reflected = comptime try Func.reflect(func, kind, decl.name, T);
+            const func_reflected = comptime try Func.reflect(func, kind, decl.name, real_T);
 
             switch (kind) {
                 .constructor => {
@@ -712,7 +740,7 @@ pub const Struct = struct {
             }
         }
 
-        const ptr_info = @typeInfo(*T).Pointer;
+        const ptr_info = @typeInfo(*real_T).Pointer;
 
         return Struct{
             // struct info
@@ -720,7 +748,8 @@ pub const Struct = struct {
             .js_name = jsName(struct_name),
             .string_tag = string_tag,
             .T = T,
-            .value = try Type.reflect(T, null),
+            .self_T = self_T,
+            .value = try Type.reflect(real_T, null),
             .mem_layout = obj.Struct.layout,
 
             // index in types list
@@ -860,6 +889,7 @@ const Error = error{
     // struct errors
     StructNotStruct,
     StructPacked,
+    StructSelfPointer,
     StructPrototypeNotPointer,
     StructWithoutProto,
     StructProtoPointer,
@@ -898,6 +928,9 @@ fn ensureErr(arg: anytype, err: Error) !void {
 // structs tests
 const TestBase = struct {};
 const TestStructPacked = packed struct {};
+const TestStructSelfPointer = struct {
+    pub const Self = *TestBase;
+};
 const TestStructPrototypeNotPointer = struct {
     pub const prototype = TestBase;
 };
@@ -975,6 +1008,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructPacked},
         error.StructPacked,
+    );
+    try ensureErr(
+        .{TestStructSelfPointer},
+        error.StructSelfPointer,
     );
     try ensureErr(
         .{TestStructPrototypeNotPointer},

@@ -326,7 +326,7 @@ fn createJSObject(
     comptime {
         const obj_T = @TypeOf(obj);
         inline for (apis) |api| {
-            if (obj_T == api.T_refl.T or obj_T == *api.T_refl.T) {
+            if (obj_T == api.T_refl.Self() or obj_T == *api.T_refl.Self()) {
                 obj_api_index = api.T_refl.index;
                 break;
             }
