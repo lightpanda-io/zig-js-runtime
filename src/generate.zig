@@ -137,9 +137,11 @@ pub fn setNativeObject(
 
     // bind the native object pointer to JS obj
     var ext: v8.External = undefined;
-    if (comptime T_refl.is_mem_guarantied()) {
+    if (comptime T_refl.is_mem_guarantied() or T_refl.hasProtoCast()) {
+        // store directly the object pointer
         ext = v8.External.init(isolate, obj_ptr);
     } else {
+        // use the refs mechanism
         var int_ptr = try alloc.create(usize);
         int_ptr.* = @ptrToInt(obj_ptr);
         ext = v8.External.init(isolate, int_ptr);
@@ -258,11 +260,18 @@ fn getNativeObject(
         obj_ptr.* = T{};
     } else {
         // retrieve the zig object from it's javascript counterpart
-        const ext = js_obj.getInternalField(0).castTo(v8.External);
-        if (comptime T_refl.is_mem_guarantied()) {
-            obj_ptr = @ptrCast(*T, ext.get().?);
+        const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
+        if (@hasDecl(T_refl.T, "protoCast")) {
+            // T_refl provides a function to cast the pointer from high level Type
+            obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ext});
+        } else if (comptime T_refl.is_mem_guarantied()) {
+            // memory layout is fixed through prototype chain of T_refl
+            // with the proto Type at the begining of the address of the high level Type
+            // so we can safely use @ptrCast
+            obj_ptr = @ptrCast(*T, ext);
         } else {
-            obj_ptr = try refs.getObject(T, all_T, ext.get().?);
+            // use the refs mechanism to retrieve from high level Type
+            obj_ptr = try refs.getObject(T, all_T, ext);
         }
     }
     return obj_ptr;

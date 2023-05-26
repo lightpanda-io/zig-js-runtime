@@ -113,9 +113,43 @@ const UserContainer = struct {
     }
 };
 
+const PersonProtoCast = struct {
+    first_name: []const u8,
+
+    pub fn protoCast(child_ptr: anytype) *PersonProtoCast {
+        return @ptrCast(*PersonProtoCast, @alignCast(@alignOf(*PersonProtoCast), child_ptr));
+    }
+
+    pub fn constructor(first_name: []u8) PersonProtoCast {
+        return .{ .first_name = first_name };
+    }
+
+    pub fn get_name(self: PersonProtoCast) []const u8 {
+        return self.first_name;
+    }
+};
+
+const UserProtoCast = struct {
+    not_proto: PersonProtoCast,
+
+    pub const prototype = *PersonProtoCast;
+
+    pub fn constructor(first_name: []u8) UserProtoCast {
+        return .{ .not_proto = PersonProtoCast.constructor(first_name) };
+    }
+};
+
 // generate API, comptime
 pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ User, Person, PersonPtr, Entity, UserContainer });
+    return jsruntime.compile(.{
+        User,
+        Person,
+        PersonPtr,
+        Entity,
+        UserContainer,
+        PersonProtoCast,
+        UserProtoCast,
+    });
 }
 
 // exec tests
@@ -191,4 +225,11 @@ pub fn exec(
         .{ .src = "uc.age === 40", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesContainer);
+
+    // protoCast func
+    var casesProtoCast = [_]tests.Case{
+        .{ .src = "let upc = new UserProtoCast('Francis');", .ex = "undefined" },
+        .{ .src = "upc.name === 'Francis'", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesProtoCast);
 }

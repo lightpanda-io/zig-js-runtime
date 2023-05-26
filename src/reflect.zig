@@ -525,6 +525,17 @@ pub const Struct = struct {
         }
     }
 
+    pub fn hasProtoCast(comptime self: Struct) bool {
+        comptime {
+            if (self.proto_T) |T| {
+                if (@hasDecl(T, "protoCast")) {
+                    return true;
+                }
+            }
+            return false;
+        }
+    }
+
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
         if (self.constructor) |*constructor| {
             try constructor.lookupTypes(structs);
@@ -590,50 +601,81 @@ pub const Struct = struct {
         // protoype
         var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
-            var T_proto = @field(T, "prototype");
 
             // check the 'protoype' declaration is a pointer
-            const T_proto_info = @typeInfo(T_proto);
-            if (T_proto_info != .Pointer) {
+            const proto_info = @typeInfo(@field(T, "prototype"));
+            if (proto_info != .Pointer) {
                 fmtErr("struct {s} 'prototype' declared must be a Pointer", .{@typeName(T)});
                 return error.StructPrototypeNotPointer;
             }
-            T_proto = T_proto_info.Pointer.child;
+            proto_T = proto_info.Pointer.child;
 
-            // check struct has a 'proto' field
-            if (!@hasField(real_T, "proto")) {
-                fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
-                return error.StructWithoutProto;
+            var proto_res: ?type = null;
+
+            if (@hasField(real_T, "proto")) {
+
+                // check the 'proto' field
+                inline for (@typeInfo(real_T).Struct.fields) |field, i| {
+                    if (!std.mem.eql(u8, field.name, "proto")) {
+                        continue;
+                    }
+
+                    // check the 'proto' field is not a pointer
+                    if (@typeInfo(field.field_type) == .Pointer) {
+                        fmtErr("struct {s} 'proto' field should not be a Pointer", .{@typeName(T)});
+                        return error.StructProtoPointer;
+                    }
+
+                    // for layout where fields memory order is guarantied,
+                    // check the 'proto' field is the first one
+                    if (obj.Struct.layout != .Auto and i != 0) {
+                        fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
+                        return error.StructProtoLayout;
+                    }
+
+                    proto_res = field.field_type;
+                    break;
+                }
+            } else if (@hasDecl(proto_T.?, "protoCast")) {
+
+                // check that 'protoCast' is a compatible function
+                const proto_func = @typeInfo(@TypeOf(@field(proto_T.?, "protoCast")));
+                if (proto_func != .Fn) {
+                    return error.StructProtoCastNotFunction;
+                } else {
+                    const proto_args = proto_func.Fn.args;
+                    if (proto_args.len != 1) {
+                        return error.StructProtoCastWrongFunction;
+                    }
+                    if (!proto_args[0].is_generic) {
+                        // should be anytype
+                        // as the prototype has no idea which one of his 'children'
+                        // is going to call protoCast()
+                        return error.StructProtoCastWrongFunction;
+                    }
+                }
+                const ret_T = proto_func.Fn.return_type.?;
+                // can be a pointer or a value
+                const ret_T_info = @typeInfo(ret_T);
+                if (ret_T_info == .Pointer) {
+                    proto_res = ret_T_info.Pointer.child;
+                } else {
+                    proto_res = ret_T;
+                }
             }
 
-            // check the 'proto' field
-            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
-                if (!std.mem.eql(u8, field.name, "proto")) {
-                    continue;
-                }
+            if (proto_res) |res| {
 
-                // check the 'proto' field is not a pointer
-                if (@typeInfo(field.field_type) == .Pointer) {
-                    fmtErr("struct {s} 'proto' field should not be a Pointer", .{@typeName(T)});
-                    return error.StructProtoPointer;
-                }
-
-                // check the 'proto' field is the same type
-                // than the concrete type of the 'prototype' declaration
-                if (field.field_type != T_proto) {
+                // check the 'proto' result is the same type
+                // than the pointer type of the 'prototype' declaration
+                if (res != proto_T) {
                     fmtErr("struct {s} 'proto' field is different than 'prototype' declaration", .{@typeName(T)});
                     return error.StructProtoDifferent;
                 }
-
-                // for layout where fields memory order is guarantied,
-                // check the 'proto' field is the first one
-                if (obj.Struct.layout != .Auto and i != 0) {
-                    fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
-                    return error.StructProtoLayout;
-                }
-                break;
+            } else {
+                fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
+                return error.StructWithoutProto;
             }
-            proto_T = T_proto;
         }
 
         // nested types
@@ -893,6 +935,8 @@ const Error = error{
     StructPrototypeNotPointer,
     StructWithoutProto,
     StructProtoPointer,
+    StructProtoCastNotFunction,
+    StructProtoCastWrongFunction,
     StructProtoDifferent,
     StructProtoLayout,
     StructLookup,
@@ -936,6 +980,29 @@ const TestStructPrototypeNotPointer = struct {
 };
 const TestStructWithoutProto = struct {
     pub const prototype = *TestBase;
+};
+const TestBaseProtoCastNotFunction = struct {
+    pub const protoCast = "not a function";
+};
+const TestStructProtoCastNotFunction = struct {
+    pub const prototype = *TestBaseProtoCastNotFunction;
+};
+const TestBaseProtoCastWrongFunction = struct {
+    pub fn protoCast(_: TestBaseProtoCastWrongFunction) TestBaseProtoCastWrongFunction {
+        return .{};
+    }
+};
+const TestStructProtoCastWrongFunction = struct {
+    pub const prototype = *TestBaseProtoCastWrongFunction;
+};
+const TestBaseProtoCastDifferent = struct {
+    // should be TestBaseProtoCastDifferent or *TestBaseProtoCastDifferent
+    pub fn protoCast(_: anytype) bool {
+        return true;
+    }
+};
+const TestStructProtoCastDifferent = struct {
+    pub const prototype = *TestBaseProtoCastDifferent;
 };
 const TestStructProtoPointer = struct {
     proto: *TestBase,
@@ -1020,6 +1087,18 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructWithoutProto},
         error.StructWithoutProto,
+    );
+    try ensureErr(
+        .{TestStructProtoCastNotFunction},
+        error.StructProtoCastNotFunction,
+    );
+    try ensureErr(
+        .{TestStructProtoCastWrongFunction},
+        error.StructProtoCastWrongFunction,
+    );
+    try ensureErr(
+        .{TestStructProtoCastDifferent},
+        error.StructProtoDifferent,
     );
     try ensureErr(
         .{TestStructProtoPointer},
