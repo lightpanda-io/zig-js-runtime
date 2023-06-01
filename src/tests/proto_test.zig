@@ -117,7 +117,7 @@ const PersonProtoCast = struct {
     first_name: []const u8,
 
     pub fn protoCast(child_ptr: anytype) *PersonProtoCast {
-        return @ptrCast(*PersonProtoCast, @alignCast(@alignOf(*PersonProtoCast), child_ptr));
+        return @ptrCast(*PersonProtoCast, child_ptr);
     }
 
     pub fn constructor(first_name: []u8) PersonProtoCast {
