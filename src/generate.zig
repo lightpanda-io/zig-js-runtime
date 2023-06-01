@@ -269,7 +269,7 @@ fn getNativeObject(
             const ptr = @alignCast(@alignOf(T_refl.Self()), ext);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
-                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ext});
+                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ptr});
             } else {
                 // memory layout is fixed through prototype chain of T_refl
                 // with the proto Type at the begining of the address of the high level Type
