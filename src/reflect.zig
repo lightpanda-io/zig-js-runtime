@@ -81,7 +81,7 @@ pub const Type = struct {
 
         // check under_T in all structs (and nested structs)
         inline for (structs) |s| {
-            if (self.under_T() == s.T) {
+            if (self.under_T() == s.T or self.under_T() == s.Self()) {
                 self.T_refl_index = s.index;
                 break;
             }
