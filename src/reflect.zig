@@ -666,9 +666,14 @@ pub const Struct = struct {
 
             if (proto_res) |res| {
 
-                // check the 'proto' result is the same type
-                // than the pointer type of the 'prototype' declaration
-                if (res != proto_T) {
+                // check the 'proto' result is the same type than the 'prototype' declaration
+                var compare_T: type = undefined;
+                if (@hasDecl(proto_T.?, "Self")) {
+                    compare_T = @field(proto_T.?, "Self");
+                } else {
+                    compare_T = proto_T.?;
+                }
+                if (res != compare_T) {
                     fmtErr("struct {s} 'proto' field is different than 'prototype' declaration", .{@typeName(T)});
                     return error.StructProtoDifferent;
                 }
