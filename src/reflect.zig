@@ -518,16 +518,22 @@ pub const Struct = struct {
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
-            return self.mem_layout != .Auto;
+            if (self.mem_layout != .Auto) {
+                return true;
+            }
+            return self.hasProtoCast();
         }
     }
 
     pub fn hasProtoCast(comptime self: Struct) bool {
+        // TODO: we should check the entire proto chain
         comptime {
             if (self.proto_T) |T| {
                 if (@hasDecl(T, "protoCast")) {
                     return true;
                 }
+            } else if (@hasDecl(self.T, "protoCast")) {
+                return true;
             }
             return false;
         }

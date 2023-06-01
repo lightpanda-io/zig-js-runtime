@@ -137,7 +137,7 @@ pub fn setNativeObject(
 
     // bind the native object pointer to JS obj
     var ext: v8.External = undefined;
-    if (comptime T_refl.is_mem_guarantied() or T_refl.hasProtoCast()) {
+    if (comptime T_refl.is_mem_guarantied()) {
         // store directly the object pointer
         ext = v8.External.init(isolate, obj_ptr);
     } else {
@@ -178,6 +178,7 @@ fn setReturnType(
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
         const activeTag = @tagName(std.meta.activeTag(val));
+        // TODO: better algorythm?
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setReturnType(
@@ -261,14 +262,20 @@ fn getNativeObject(
     } else {
         // retrieve the zig object from it's javascript counterpart
         const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
-        if (@hasDecl(T_refl.T, "protoCast")) {
-            // T_refl provides a function to cast the pointer from high level Type
-            obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ext});
-        } else if (comptime T_refl.is_mem_guarantied()) {
-            // memory layout is fixed through prototype chain of T_refl
-            // with the proto Type at the begining of the address of the high level Type
-            // so we can safely use @ptrCast
-            obj_ptr = @ptrCast(*T, ext);
+        if (comptime T_refl.is_mem_guarantied()) {
+            // memory is fixed
+            // ensure the pointer is aligned (no-op at runtime)
+            // as External is a ?*anyopaque (ie. *void) with alignment 1
+            const ptr = @alignCast(@alignOf(T_refl.Self()), ext);
+            if (@hasDecl(T_refl.T, "protoCast")) {
+                // T_refl provides a function to cast the pointer from high level Type
+                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ext});
+            } else {
+                // memory layout is fixed through prototype chain of T_refl
+                // with the proto Type at the begining of the address of the high level Type
+                // so we can safely use @ptrCast
+                obj_ptr = @ptrCast(*T, ptr);
+            }
         } else {
             // use the refs mechanism to retrieve from high level Type
             obj_ptr = try refs.getObject(T, all_T, ext);

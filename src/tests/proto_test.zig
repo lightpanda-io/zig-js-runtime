@@ -228,6 +228,8 @@ pub fn exec(
 
     // protoCast func
     var casesProtoCast = [_]tests.Case{
+        .{ .src = "let ppc = new PersonProtoCast('Bouvier');", .ex = "undefined" },
+        .{ .src = "ppc.name === 'Bouvier'", .ex = "true" },
         .{ .src = "let upc = new UserProtoCast('Francis');", .ex = "undefined" },
         .{ .src = "upc.name === 'Francis'", .ex = "true" },
     };
