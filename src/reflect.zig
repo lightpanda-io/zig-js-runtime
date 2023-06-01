@@ -328,13 +328,10 @@ pub const Func = struct {
             if (kind == .setter and self_T.? != *struct_T.?) {
                 fmtErr("setter {s} first argument should be *self", .{@typeName(T)});
                 return error.FuncSetterFirstArgNotSelfPtr;
-            } else if ((kind == .getter) and (self_T.? != struct_T.?)) {
-                fmtErr("getter {s} first argument should be self", .{@typeName(T)});
-                return error.FuncGetterFirstArgNotSelf;
-            } else if ((kind == .method)) {
+            } else if (kind == .method or kind == .getter) {
                 if (self_T.? != struct_T.? and self_T.? != *struct_T.?) {
-                    fmtErr("method {s} first argument should be self or *self", .{@typeName(T)});
-                    return error.FuncMethodFirstArgNotSelfOrSelfPtr;
+                    fmtErr("getter/method {s} first argument should be self or *self", .{@typeName(T)});
+                    return error.FuncGetterMethodFirstArgNotSelfOrSelfPtr;
                 }
             }
         }
@@ -950,8 +947,7 @@ const Error = error{
     FuncNoSelf,
     FuncGetterMultiArg,
     FuncSetterFirstArgNotSelfPtr,
-    FuncGetterFirstArgNotSelf,
-    FuncMethodFirstArgNotSelfOrSelfPtr,
+    FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     FuncVoidArg,
     FuncMultiCbk,
 
@@ -1038,10 +1034,7 @@ const TestFuncGetterMultiArg = struct {
 const TestFuncSetterFirstArgNotSelfPtr = struct {
     pub fn set_example(_: TestFuncSetterFirstArgNotSelfPtr) void {}
 };
-const TestFuncGetterFirstArgNotSelf = struct {
-    pub fn get_example(_: *TestFuncGetterFirstArgNotSelf) void {}
-};
-const TestFuncMethodFirstArgNotSelfOrSelfPtr = struct {
+const TestFuncGetterMethodFirstArgNotSelfOrSelfPtr = struct {
     pub fn _example(_: bool) void {}
 };
 const TestFuncVoidArg = struct {
@@ -1132,12 +1125,8 @@ pub fn tests() !void {
         error.FuncSetterFirstArgNotSelfPtr,
     );
     try ensureErr(
-        .{TestFuncGetterFirstArgNotSelf},
-        error.FuncGetterFirstArgNotSelf,
-    );
-    try ensureErr(
-        .{TestFuncMethodFirstArgNotSelfOrSelfPtr},
-        error.FuncMethodFirstArgNotSelfOrSelfPtr,
+        .{TestFuncGetterMethodFirstArgNotSelfOrSelfPtr},
+        error.FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     );
     try ensureErr(
         .{TestFuncVoidArg},

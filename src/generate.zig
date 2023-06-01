@@ -342,10 +342,17 @@ fn generateGetter(
 
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+            var args: func.args_T = undefined;
+            const self_T = @TypeOf(@field(args, "0"));
+            if (self_T == T_refl.Self()) {
+                @field(args, "0") = obj_ptr.*;
+            } else if (self_T == *T_refl.Self()) {
+                @field(args, "0") = obj_ptr;
+            }
 
             // call the corresponding zig object method
             const getter_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, getter_func, .{obj_ptr.*});
+            const res = @call(.{}, getter_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(
