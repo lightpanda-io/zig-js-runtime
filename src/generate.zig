@@ -138,8 +138,10 @@ pub fn setNativeObject(
     // bind the native object pointer to JS obj
     var ext: v8.External = undefined;
     if (comptime T_refl.is_mem_guarantied()) {
+        // store directly the object pointer
         ext = v8.External.init(isolate, obj_ptr);
     } else {
+        // use the refs mechanism
         var int_ptr = try alloc.create(usize);
         int_ptr.* = @ptrToInt(obj_ptr);
         ext = v8.External.init(isolate, int_ptr);
@@ -176,6 +178,7 @@ fn setReturnType(
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
         const activeTag = @tagName(std.meta.activeTag(val));
+        // TODO: better algorythm?
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setReturnType(
@@ -258,11 +261,24 @@ fn getNativeObject(
         obj_ptr.* = T{};
     } else {
         // retrieve the zig object from it's javascript counterpart
-        const ext = js_obj.getInternalField(0).castTo(v8.External);
+        const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
         if (comptime T_refl.is_mem_guarantied()) {
-            obj_ptr = @ptrCast(*T, ext.get().?);
+            // memory is fixed
+            // ensure the pointer is aligned (no-op at runtime)
+            // as External is a ?*anyopaque (ie. *void) with alignment 1
+            const ptr = @alignCast(@alignOf(T_refl.Self()), ext);
+            if (@hasDecl(T_refl.T, "protoCast")) {
+                // T_refl provides a function to cast the pointer from high level Type
+                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ptr});
+            } else {
+                // memory layout is fixed through prototype chain of T_refl
+                // with the proto Type at the begining of the address of the high level Type
+                // so we can safely use @ptrCast
+                obj_ptr = @ptrCast(*T, ptr);
+            }
         } else {
-            obj_ptr = try refs.getObject(T, all_T, ext.get().?);
+            // use the refs mechanism to retrieve from high level Type
+            obj_ptr = try refs.getObject(T, all_T, ext);
         }
     }
     return obj_ptr;
@@ -333,10 +349,17 @@ fn generateGetter(
 
             // retrieve the zig object
             const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+            var args: func.args_T = undefined;
+            const self_T = @TypeOf(@field(args, "0"));
+            if (self_T == T_refl.Self()) {
+                @field(args, "0") = obj_ptr.*;
+            } else if (self_T == *T_refl.Self()) {
+                @field(args, "0") = obj_ptr;
+            }
 
             // call the corresponding zig object method
             const getter_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, getter_func, .{obj_ptr.*});
+            const res = @call(.{}, getter_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(

@@ -81,7 +81,7 @@ pub const Type = struct {
 
         // check under_T in all structs (and nested structs)
         inline for (structs) |s| {
-            if (self.under_T() == s.T) {
+            if (self.under_T() == s.T or self.under_T() == s.Self()) {
                 self.T_refl_index = s.index;
                 break;
             }
@@ -328,13 +328,10 @@ pub const Func = struct {
             if (kind == .setter and self_T.? != *struct_T.?) {
                 fmtErr("setter {s} first argument should be *self", .{@typeName(T)});
                 return error.FuncSetterFirstArgNotSelfPtr;
-            } else if ((kind == .getter) and (self_T.? != struct_T.?)) {
-                fmtErr("getter {s} first argument should be self", .{@typeName(T)});
-                return error.FuncGetterFirstArgNotSelf;
-            } else if ((kind == .method)) {
+            } else if (kind == .method or kind == .getter) {
                 if (self_T.? != struct_T.? and self_T.? != *struct_T.?) {
-                    fmtErr("method {s} first argument should be self or *self", .{@typeName(T)});
-                    return error.FuncMethodFirstArgNotSelfOrSelfPtr;
+                    fmtErr("getter/method {s} first argument should be self or *self", .{@typeName(T)});
+                    return error.FuncGetterMethodFirstArgNotSelfOrSelfPtr;
                 }
             }
         }
@@ -450,9 +447,11 @@ pub const StructNested = struct {
             return false;
         }
 
-        // exclude Self special keyword
+        // special keywords
+        // TODO: and "prototype"?
         if (std.mem.eql(u8, decl.name, "Self")) {
-            // TODO: and "prototype"?
+            return false;
+        } else if (std.mem.eql(u8, decl.name, "mem_guarantied")) {
             return false;
         }
 
@@ -489,7 +488,7 @@ pub const Struct = struct {
     T: type,
     self_T: ?type,
     value: Type,
-    mem_layout: std.builtin.Type.ContainerLayout,
+    mem_guarantied: bool,
 
     // index on the types list
     index: usize,
@@ -521,7 +520,24 @@ pub const Struct = struct {
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
-            return self.mem_layout != .Auto;
+            if (self.mem_guarantied) {
+                return true;
+            }
+            return self.hasProtoCast();
+        }
+    }
+
+    pub fn hasProtoCast(comptime self: Struct) bool {
+        // TODO: we should check the entire proto chain
+        comptime {
+            if (self.proto_T) |T| {
+                if (@hasDecl(T, "protoCast")) {
+                    return true;
+                }
+            } else if (@hasDecl(self.T, "protoCast")) {
+                return true;
+            }
+            return false;
         }
     }
 
@@ -587,53 +603,95 @@ pub const Struct = struct {
             real_T = T;
         }
 
+        var mem_guarantied = @hasDecl(T, "mem_guarantied");
+
         // protoype
         var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
-            var T_proto = @field(T, "prototype");
 
             // check the 'protoype' declaration is a pointer
-            const T_proto_info = @typeInfo(T_proto);
-            if (T_proto_info != .Pointer) {
+            const proto_info = @typeInfo(@field(T, "prototype"));
+            if (proto_info != .Pointer) {
                 fmtErr("struct {s} 'prototype' declared must be a Pointer", .{@typeName(T)});
                 return error.StructPrototypeNotPointer;
             }
-            T_proto = T_proto_info.Pointer.child;
+            proto_T = proto_info.Pointer.child;
 
-            // check struct has a 'proto' field
-            if (!@hasField(real_T, "proto")) {
-                fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
-                return error.StructWithoutProto;
+            var proto_res: ?type = null;
+
+            if (@hasField(real_T, "proto")) {
+
+                // check the 'proto' field
+                inline for (@typeInfo(real_T).Struct.fields) |field, i| {
+                    if (!std.mem.eql(u8, field.name, "proto")) {
+                        continue;
+                    }
+
+                    // check the 'proto' field is not a pointer
+                    if (@typeInfo(field.field_type) == .Pointer) {
+                        fmtErr("struct {s} 'proto' field should not be a Pointer", .{@typeName(T)});
+                        return error.StructProtoPointer;
+                    }
+
+                    // for layout where fields memory order is guarantied,
+                    // check the 'proto' field is the first one
+                    if (obj.Struct.layout != .Auto) {
+                        if (i != 0) {
+                            fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
+                            return error.StructProtoLayout;
+                        }
+                        mem_guarantied = true;
+                    }
+
+                    proto_res = field.field_type;
+                    break;
+                }
+            } else if (@hasDecl(proto_T.?, "protoCast")) {
+
+                // check that 'protoCast' is a compatible function
+                const proto_func = @typeInfo(@TypeOf(@field(proto_T.?, "protoCast")));
+                if (proto_func != .Fn) {
+                    return error.StructProtoCastNotFunction;
+                } else {
+                    const proto_args = proto_func.Fn.args;
+                    if (proto_args.len != 1) {
+                        return error.StructProtoCastWrongFunction;
+                    }
+                    if (!proto_args[0].is_generic) {
+                        // should be anytype
+                        // as the prototype has no idea which one of his 'children'
+                        // is going to call protoCast()
+                        return error.StructProtoCastWrongFunction;
+                    }
+                }
+                const ret_T = proto_func.Fn.return_type.?;
+
+                // can be a pointer or a value
+                const ret_T_info = @typeInfo(ret_T);
+                if (ret_T_info == .Pointer) {
+                    proto_res = ret_T_info.Pointer.child;
+                } else {
+                    proto_res = ret_T;
+                }
             }
 
-            // check the 'proto' field
-            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
-                if (!std.mem.eql(u8, field.name, "proto")) {
-                    continue;
-                }
+            if (proto_res) |res| {
 
-                // check the 'proto' field is not a pointer
-                if (@typeInfo(field.field_type) == .Pointer) {
-                    fmtErr("struct {s} 'proto' field should not be a Pointer", .{@typeName(T)});
-                    return error.StructProtoPointer;
+                // check the 'proto' result is the same type than the 'prototype' declaration
+                var compare_T: type = undefined;
+                if (@hasDecl(proto_T.?, "Self")) {
+                    compare_T = @field(proto_T.?, "Self");
+                } else {
+                    compare_T = proto_T.?;
                 }
-
-                // check the 'proto' field is the same type
-                // than the concrete type of the 'prototype' declaration
-                if (field.field_type != T_proto) {
+                if (res != compare_T) {
                     fmtErr("struct {s} 'proto' field is different than 'prototype' declaration", .{@typeName(T)});
                     return error.StructProtoDifferent;
                 }
-
-                // for layout where fields memory order is guarantied,
-                // check the 'proto' field is the first one
-                if (obj.Struct.layout != .Auto and i != 0) {
-                    fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
-                    return error.StructProtoLayout;
-                }
-                break;
+            } else if (!@hasDecl(proto_T.?, "mem_guarantied")) {
+                fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
+                return error.StructWithoutProto;
             }
-            proto_T = T_proto;
         }
 
         // nested types
@@ -750,7 +808,7 @@ pub const Struct = struct {
             .T = T,
             .self_T = self_T,
             .value = try Type.reflect(real_T, null),
-            .mem_layout = obj.Struct.layout,
+            .mem_guarantied = mem_guarantied,
 
             // index in types list
             .index = index,
@@ -787,8 +845,9 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
                 continue;
             }
             // is proto
-            if (s.mem_layout != proto.mem_layout) {
+            if (s.mem_guarantied != proto.mem_guarantied) {
                 // compiler error, should not happen
+                // TODO: check mem_guarantied
                 @panic("struct and proto struct should have the same memory layout");
             }
             s.proto_index = proto_index;
@@ -893,6 +952,8 @@ const Error = error{
     StructPrototypeNotPointer,
     StructWithoutProto,
     StructProtoPointer,
+    StructProtoCastNotFunction,
+    StructProtoCastWrongFunction,
     StructProtoDifferent,
     StructProtoLayout,
     StructLookup,
@@ -901,8 +962,7 @@ const Error = error{
     FuncNoSelf,
     FuncGetterMultiArg,
     FuncSetterFirstArgNotSelfPtr,
-    FuncGetterFirstArgNotSelf,
-    FuncMethodFirstArgNotSelfOrSelfPtr,
+    FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     FuncVoidArg,
     FuncMultiCbk,
 
@@ -937,6 +997,29 @@ const TestStructPrototypeNotPointer = struct {
 const TestStructWithoutProto = struct {
     pub const prototype = *TestBase;
 };
+const TestBaseProtoCastNotFunction = struct {
+    pub const protoCast = "not a function";
+};
+const TestStructProtoCastNotFunction = struct {
+    pub const prototype = *TestBaseProtoCastNotFunction;
+};
+const TestBaseProtoCastWrongFunction = struct {
+    pub fn protoCast(_: TestBaseProtoCastWrongFunction) TestBaseProtoCastWrongFunction {
+        return .{};
+    }
+};
+const TestStructProtoCastWrongFunction = struct {
+    pub const prototype = *TestBaseProtoCastWrongFunction;
+};
+const TestBaseProtoCastDifferent = struct {
+    // should be TestBaseProtoCastDifferent or *TestBaseProtoCastDifferent
+    pub fn protoCast(_: anytype) bool {
+        return true;
+    }
+};
+const TestStructProtoCastDifferent = struct {
+    pub const prototype = *TestBaseProtoCastDifferent;
+};
 const TestStructProtoPointer = struct {
     proto: *TestBase,
     pub const prototype = *TestBase;
@@ -966,10 +1049,7 @@ const TestFuncGetterMultiArg = struct {
 const TestFuncSetterFirstArgNotSelfPtr = struct {
     pub fn set_example(_: TestFuncSetterFirstArgNotSelfPtr) void {}
 };
-const TestFuncGetterFirstArgNotSelf = struct {
-    pub fn get_example(_: *TestFuncGetterFirstArgNotSelf) void {}
-};
-const TestFuncMethodFirstArgNotSelfOrSelfPtr = struct {
+const TestFuncGetterMethodFirstArgNotSelfOrSelfPtr = struct {
     pub fn _example(_: bool) void {}
 };
 const TestFuncVoidArg = struct {
@@ -1022,6 +1102,18 @@ pub fn tests() !void {
         error.StructWithoutProto,
     );
     try ensureErr(
+        .{TestStructProtoCastNotFunction},
+        error.StructProtoCastNotFunction,
+    );
+    try ensureErr(
+        .{TestStructProtoCastWrongFunction},
+        error.StructProtoCastWrongFunction,
+    );
+    try ensureErr(
+        .{TestStructProtoCastDifferent},
+        error.StructProtoDifferent,
+    );
+    try ensureErr(
         .{TestStructProtoPointer},
         error.StructProtoPointer,
     );
@@ -1048,12 +1140,8 @@ pub fn tests() !void {
         error.FuncSetterFirstArgNotSelfPtr,
     );
     try ensureErr(
-        .{TestFuncGetterFirstArgNotSelf},
-        error.FuncGetterFirstArgNotSelf,
-    );
-    try ensureErr(
-        .{TestFuncMethodFirstArgNotSelfOrSelfPtr},
-        error.FuncMethodFirstArgNotSelfOrSelfPtr,
+        .{TestFuncGetterMethodFirstArgNotSelfOrSelfPtr},
+        error.FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     );
     try ensureErr(
         .{TestFuncVoidArg},
