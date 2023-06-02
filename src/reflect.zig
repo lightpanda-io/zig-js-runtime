@@ -447,9 +447,11 @@ pub const StructNested = struct {
             return false;
         }
 
-        // exclude Self special keyword
+        // special keywords
+        // TODO: and "prototype"?
         if (std.mem.eql(u8, decl.name, "Self")) {
-            // TODO: and "prototype"?
+            return false;
+        } else if (std.mem.eql(u8, decl.name, "mem_guarantied")) {
             return false;
         }
 
@@ -486,7 +488,7 @@ pub const Struct = struct {
     T: type,
     self_T: ?type,
     value: Type,
-    mem_layout: std.builtin.Type.ContainerLayout,
+    mem_guarantied: bool,
 
     // index on the types list
     index: usize,
@@ -518,7 +520,7 @@ pub const Struct = struct {
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
         comptime {
-            if (self.mem_layout != .Auto) {
+            if (self.mem_guarantied) {
                 return true;
             }
             return self.hasProtoCast();
@@ -601,6 +603,8 @@ pub const Struct = struct {
             real_T = T;
         }
 
+        var mem_guarantied = @hasDecl(T, "mem_guarantied");
+
         // protoype
         var proto_T: ?type = null;
         if (@hasDecl(T, "prototype")) {
@@ -631,9 +635,12 @@ pub const Struct = struct {
 
                     // for layout where fields memory order is guarantied,
                     // check the 'proto' field is the first one
-                    if (obj.Struct.layout != .Auto and i != 0) {
-                        fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
-                        return error.StructProtoLayout;
+                    if (obj.Struct.layout != .Auto) {
+                        if (i != 0) {
+                            fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
+                            return error.StructProtoLayout;
+                        }
+                        mem_guarantied = true;
                     }
 
                     proto_res = field.field_type;
@@ -658,6 +665,7 @@ pub const Struct = struct {
                     }
                 }
                 const ret_T = proto_func.Fn.return_type.?;
+
                 // can be a pointer or a value
                 const ret_T_info = @typeInfo(ret_T);
                 if (ret_T_info == .Pointer) {
@@ -680,7 +688,7 @@ pub const Struct = struct {
                     fmtErr("struct {s} 'proto' field is different than 'prototype' declaration", .{@typeName(T)});
                     return error.StructProtoDifferent;
                 }
-            } else {
+            } else if (!@hasDecl(proto_T.?, "mem_guarantied")) {
                 fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field", .{@typeName(T)});
                 return error.StructWithoutProto;
             }
@@ -800,7 +808,7 @@ pub const Struct = struct {
             .T = T,
             .self_T = self_T,
             .value = try Type.reflect(real_T, null),
-            .mem_layout = obj.Struct.layout,
+            .mem_guarantied = mem_guarantied,
 
             // index in types list
             .index = index,
@@ -837,8 +845,9 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
                 continue;
             }
             // is proto
-            if (s.mem_layout != proto.mem_layout) {
+            if (s.mem_guarantied != proto.mem_guarantied) {
                 // compiler error, should not happen
+                // TODO: check mem_guarantied
                 @panic("struct and proto struct should have the same memory layout");
             }
             s.proto_index = proto_index;
