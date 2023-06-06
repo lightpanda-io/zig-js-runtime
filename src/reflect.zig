@@ -107,21 +107,25 @@ pub const Type = struct {
         }
     }
 
+    fn reflectUnion(comptime T: type, comptime info: std.builtin.Type) Error![]Type {
+        if (info.Union.tag_type == null) {
+            fmtErr("type {s} union should be a tagged", .{@typeName(T)});
+            return error.TypeTaggedUnion;
+        }
+        var union_types: [info.Union.fields.len]Type = undefined;
+        inline for (info.Union.fields) |field, i| {
+            union_types[i] = try Type.reflect(field.field_type, field.name);
+        }
+        return &union_types;
+    }
+
     fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
         const info = @typeInfo(T);
 
         // union T
         var union_T: ?[]Type = null;
         if (info == .Union) {
-            if (info.Union.tag_type == null) {
-                fmtErr("type {s} union should be a tagged", .{@typeName(T)});
-                return error.TypeTaggedUnion;
-            }
-            var union_types: [info.Union.fields.len]Type = undefined;
-            inline for (info.Union.fields) |field, i| {
-                union_types[i] = try Type.reflect(field.field_type, field.name);
-            }
-            union_T = &union_types;
+            union_T = try reflectUnion(T, info);
         }
 
         // underlying T
@@ -137,6 +141,8 @@ pub const Type = struct {
             const child_info = @typeInfo(info.Optional.child);
             if (child_info == .Pointer) {
                 under_ptr = child_info.Pointer.child;
+            } else if (child_info == .Union) {
+                union_T = try reflectUnion(info.Optional.child, child_info);
             }
         } else if (info == .Pointer and info.Pointer.size != .Slice) {
             // NOTE: slice are pointers but we handle them as single value
