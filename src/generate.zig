@@ -131,7 +131,7 @@ pub fn setNativeObject(
 
     // if the object is an empty struct (ie. a kind of container)
     // no need to keep it's reference
-    if (T_refl.size == 0) {
+    if (T_refl.isEmpty()) {
         return;
     }
 
@@ -255,7 +255,7 @@ fn getNativeObject(
     const T = T_refl.Self();
 
     var obj_ptr: *T = undefined;
-    if (T_refl.size == 0) {
+    if (comptime T_refl.isEmpty()) {
         // if the object is an empty struct (ie. kind of a container)
         // there is no reference from it's constructor, we can just re-create it
         obj_ptr.* = T{};
@@ -561,7 +561,7 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             // get the v8 InstanceTemplate attached to the constructor
             // and set 1 internal field to bind the counterpart zig object
             const obj_tpl = cstr_tpl.getInstanceTemplate();
-            if (T_refl.size != 0) {
+            if (!T_refl.isEmpty()) {
                 // if the object is an empty struct (ie. a kind of container)
                 // no need to keep it's reference
                 obj_tpl.setInternalFieldCount(1);

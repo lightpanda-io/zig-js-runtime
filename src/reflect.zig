@@ -513,15 +513,13 @@ pub const Struct = struct {
     // nested types
     nested: []StructNested,
 
-    // TODO: is it necessary?
-    alignment: u29,
-    size: usize,
-
     pub fn Self(comptime self: Struct) type {
-        if (self.self_T) |T| {
-            return T;
+        comptime {
+            if (self.self_T) |T| {
+                return T;
+            }
+            return self.T;
         }
-        return self.T;
     }
 
     pub fn is_mem_guarantied(comptime self: Struct) bool {
@@ -545,6 +543,13 @@ pub const Struct = struct {
             }
             return false;
         }
+    }
+
+    pub inline fn isEmpty(comptime self: Struct) bool {
+        if (@typeInfo(self.Self()) == .Opaque) {
+            return false;
+        }
+        return @sizeOf(self.Self()) == 0;
     }
 
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
@@ -817,8 +822,6 @@ pub const Struct = struct {
             }
         }
 
-        const ptr_info = @typeInfo(*real_T).Pointer;
-
         return Struct{
             // struct info
             .name = struct_name,
@@ -843,9 +846,6 @@ pub const Struct = struct {
 
             // nested types
             .nested = nested[0..],
-
-            .alignment = ptr_info.alignment,
-            .size = @sizeOf(ptr_info.child),
         };
     }
 };

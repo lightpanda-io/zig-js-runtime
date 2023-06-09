@@ -28,7 +28,7 @@ pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) 
     // TODO: more efficient sorting?
     inline for (types) |T_refl| {
         if (T_refl.index == T_index.?) {
-            if (T_refl.size != 0) { // stage1: condition is needed for empty structs
+            if (!T_refl.isEmpty()) { // stage1: condition is needed for empty structs
                 // go through the "proto" object chain
                 // to retrieve the good object corresponding to T
                 const target_ptr = @intToPtr(*T_refl.Self(), key.*);
