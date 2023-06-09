@@ -596,7 +596,7 @@ pub const Struct = struct {
         proto_T = proto_info.Pointer.child;
 
         if (@hasDecl(T, "mem_guarantied")) {
-            return .{ .T = proto_T, .mem_guarantied = true };
+            return proto_T;
         }
 
         var proto_res: type = undefined;
