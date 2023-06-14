@@ -156,9 +156,15 @@ pub const Type = struct {
             .under_ptr = under_ptr,
             .union_T = union_T,
         };
+        const under = t.under_T();
+
+        // opaque not allowed
+        if (@typeInfo(under) == .Opaque) {
+            fmtErr("type {s} Opaque not allowed", .{@typeName(under)});
+            return error.TypeOpaque;
+        }
 
         // builtin
-        const under = t.under_T();
         for (builtin_types) |builtin_T| {
             if (builtin_T == under) {
                 t.is_builtin = true;
@@ -546,9 +552,6 @@ pub const Struct = struct {
     }
 
     pub inline fn isEmpty(comptime self: Struct) bool {
-        if (@typeInfo(self.Self()) == .Opaque) {
-            return false;
-        }
         return @sizeOf(self.Self()) == 0;
     }
 
@@ -692,9 +695,6 @@ pub const Struct = struct {
             return error.StructPacked;
         }
 
-        // struct name
-        const struct_name = shortName(T);
-
         // self type
         var self_T: ?type = null;
         var real_T: type = undefined;
@@ -708,6 +708,13 @@ pub const Struct = struct {
         } else {
             real_T = T;
         }
+        if (@typeInfo(real_T) != .Struct) {
+            fmtErr("type {s} is not a struct", .{@typeName(T)});
+            return error.StructNotStruct;
+        }
+
+        // struct name
+        const struct_name = shortName(T);
 
         // protoype
         const proto_T = try Struct.reflectProto(T, real_T);
@@ -986,6 +993,7 @@ const Error = error{
     FuncMultiCbk,
 
     // type errors
+    TypeOpaque,
     TypeTaggedUnion,
     TypeNestedPtr,
     TypeLookup,
@@ -1079,6 +1087,10 @@ const TestFuncMultiCbk = struct {
 };
 
 // types tests
+const TestOpaque = opaque {};
+const TestTypeOpaque = struct {
+    pub fn _example(_: TestTypeOpaque, _: *TestOpaque) void {}
+};
 const TestTaggedUnion = union {
     a: bool,
     b: bool,
@@ -1172,6 +1184,10 @@ pub fn tests() !void {
     );
 
     // types checks
+    try ensureErr(
+        .{TestTypeOpaque},
+        error.TypeOpaque,
+    );
     try ensureErr(
         .{TestTypeTaggedUnion},
         error.TypeTaggedUnion,
