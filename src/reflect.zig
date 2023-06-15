@@ -88,7 +88,8 @@ pub const Type = struct {
             inline for (s.nested) |nested, i| {
                 if (self.under_T() == nested.T) {
                     if (self.under_ptr != null) {
-                        fmtErr("type {s} pointer on nested struct is not allowed, choose a type struct for this use case", .{@typeName(self.T)});
+                        const msg = "pointer on nested struct is not allowed, choose a type struct for this use case";
+                        fmtErr(msg.len, msg, self.T);
                         return error.TypeNestedPtr;
                     }
                     self.T_refl_index = s.index;
@@ -102,14 +103,16 @@ pub const Type = struct {
         }
 
         if (self.T_refl_index == null and self.nested_index == null) {
-            fmtErr("type {s} lookup should be either builtin or defined", .{@typeName(self.T)});
+            const msg = "lookup should be either builtin or defined";
+            fmtErr(msg.len, msg, self.T);
             return error.TypeLookup;
         }
     }
 
     fn reflectUnion(comptime T: type, comptime info: std.builtin.Type) Error![]Type {
         if (info.Union.tag_type == null) {
-            fmtErr("type {s} union should be a tagged", .{@typeName(T)});
+            const msg = "union should be a tagged";
+            fmtErr(msg.len, msg, T);
             return error.TypeTaggedUnion;
         }
         var union_types: [info.Union.fields.len]Type = undefined;
@@ -160,7 +163,8 @@ pub const Type = struct {
 
         // opaque not allowed
         if (@typeInfo(under) == .Opaque) {
-            fmtErr("type {s} Opaque not allowed", .{@typeName(under)});
+            const msg = "type Opaque not allowed";
+            fmtErr(msg.len, msg, under);
             return error.TypeOpaque;
         }
 
@@ -320,11 +324,13 @@ pub const Func = struct {
         var args = func.Fn.args;
         if (kind != .constructor and args.len == 0) {
             // TODO: handle "class methods"
-            fmtErr("getter/setter/methods {s} should have at least 1 argument, self", .{@typeName(T)});
+            const msg = "getter/setter/methods should have at least 1 argument, self";
+            fmtErr(msg.len, msg, T);
             return error.FuncNoSelf;
         }
         if (kind == .getter and args.len > 1) {
-            fmtErr("getter {s} should have only 1 argument: self", .{@typeName(T)});
+            const msg = "getter should have only 1 argument: self";
+            fmtErr(msg.len, msg, T);
             return error.FuncGetterMultiArg;
         }
 
@@ -338,11 +344,13 @@ pub const Func = struct {
                 self_T = args[0].arg_type.?;
             }
             if (kind == .setter and self_T.? != *struct_T.?) {
-                fmtErr("setter {s} first argument should be *self", .{@typeName(T)});
+                const msg = "setter first argument should be *self";
+                fmtErr(msg.len, msg, T);
                 return error.FuncSetterFirstArgNotSelfPtr;
             } else if (kind == .method or kind == .getter) {
                 if (self_T.? != struct_T.? and self_T.? != *struct_T.?) {
-                    fmtErr("getter/method {s} first argument should be self or *self", .{@typeName(T)});
+                    const msg = "getter/method first argument should be self or *self";
+                    fmtErr(msg.len, msg, T);
                     return error.FuncGetterMethodFirstArgNotSelfOrSelfPtr;
                 }
             }
@@ -357,7 +365,8 @@ pub const Func = struct {
         for (args) |arg, i| {
             if (arg.arg_type.? == void) {
                 // TODO: there is a bug with void paramater => avoid for now
-                fmtErr("func {s} void parameters are not allowed for now", .{@typeName(T)});
+                const msg = "func void parameters are not allowed for now";
+                fmtErr(msg.len, msg, T);
                 return error.FuncVoidArg;
             }
 
@@ -385,7 +394,8 @@ pub const Func = struct {
             // TODO: is this necessary?
             if (args_types[i].T == cbk.Func or args_types[i].T == cbk.FuncSync) {
                 if (callback_index != null) {
-                    fmtErr("func {s} has already 1 callback", .{@typeName(T)});
+                    const msg = "func has already 1 callback";
+                    fmtErr(msg.len, msg, T);
                     return error.FuncMultiCbk;
                 }
                 callback_index = x;
@@ -593,7 +603,8 @@ pub const Struct = struct {
         // check the 'protoype' declaration is a pointer
         const proto_info = @typeInfo(@field(T, "prototype"));
         if (proto_info != .Pointer) {
-            fmtErr("struct {s} 'prototype' declared must be a Pointer", .{@typeName(T)});
+            const msg = "struct 'prototype' declared must be a Pointer";
+            fmtErr(msg.len, msg, T);
             return error.StructPrototypeNotPointer;
         }
         proto_T = proto_info.Pointer.child;
@@ -614,7 +625,8 @@ pub const Struct = struct {
 
                 // check the 'proto' field is not a pointer
                 if (@typeInfo(field.field_type) == .Pointer) {
-                    fmtErr("struct {s} 'proto' field should not be a Pointer", .{@typeName(T)});
+                    const msg = "struct {s} 'proto' field should not be a Pointer";
+                    fmtErr(msg.len, msg, T);
                     return error.StructProtoPointer;
                 }
 
@@ -622,7 +634,8 @@ pub const Struct = struct {
                 // check the 'proto' field is the first one
                 if (@typeInfo(T).Struct.layout != .Auto) {
                     if (i != 0) {
-                        fmtErr("struct {s} 'proto' field should be the first one if memory layout is guarantied (extern)", .{@typeName(T)});
+                        const msg = "'proto' field should be the first one if memory layout is guarantied (extern)";
+                        fmtErr(msg.len, msg, T);
                         return error.StructProtoLayout;
                     }
                 }
@@ -658,7 +671,8 @@ pub const Struct = struct {
                 proto_res = ret_T;
             }
         } else {
-            fmtErr("struct {s} declares a 'prototype' but does not have a 'proto' field neither prototype has 'protoCast' function", .{@typeName(T)});
+            const msg = "struct declares a 'prototype' but does not have a 'proto' field neither prototype has 'protoCast' function";
+            fmtErr(msg.len, msg, T);
             return error.StructWithoutProto;
         }
 
@@ -670,7 +684,8 @@ pub const Struct = struct {
             compare_T = proto_T.?;
         }
         if (proto_res != compare_T) {
-            fmtErr("struct {s} 'proto' field is different than 'prototype' declaration", .{@typeName(T)});
+            const msg = "struct 'proto' field is different than 'prototype' declaration";
+            fmtErr(msg.len, msg, T);
             return error.StructProtoDifferent;
         }
         return proto_T;
@@ -681,7 +696,8 @@ pub const Struct = struct {
         // T should be a struct
         const obj = @typeInfo(T);
         if (obj != .Struct) {
-            fmtErr("type {s} is not a struct", .{@typeName(T)});
+            const msg = "type is not a struct";
+            fmtErr(msg.len, msg, T);
             return error.StructNotStruct;
         }
 
@@ -691,7 +707,8 @@ pub const Struct = struct {
         // see: https://github.com/ziglang/zig/issues/2201
         // and https://github.com/ziglang/zig/issues/3133
         if (obj.Struct.layout == .Packed) {
-            fmtErr("type {s} packed struct are not supported", .{@typeName(T)});
+            const msg = "type packed struct are not supported";
+            fmtErr(msg.len, msg, T);
             return error.StructPacked;
         }
 
@@ -702,14 +719,16 @@ pub const Struct = struct {
             self_T = @field(T, "Self");
             real_T = self_T.?;
             if (@typeInfo(real_T) == .Pointer) {
-                fmtErr("type {s} Self type should not be a pointer", .{@typeName(T)});
+                const msg = "type Self type should not be a pointer";
+                fmtErr(msg.len, msg, T);
                 return error.StructSelfPointer;
             }
         } else {
             real_T = T;
         }
         if (@typeInfo(real_T) != .Struct) {
-            fmtErr("type {s} is not a struct", .{@typeName(T)});
+            const msg = "type is not a struct";
+            fmtErr(msg.len, msg, T);
             return error.StructNotStruct;
         }
 
@@ -880,7 +899,8 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
             break;
         }
         if (s.proto_index == null) {
-            fmtErr("struct {s} lookup search of protototype failed", .{@typeName(s.T)});
+            const msg = "struct lookup search of protototype failed";
+            fmtErr(msg.len, msg, s.T);
             return error.StructLookup;
         }
     }
@@ -893,7 +913,8 @@ pub fn do(comptime types: anytype) Error![]Struct {
         const types_T = @TypeOf(types);
         const types_info = @typeInfo(types_T);
         if (types_info != .Struct or !types_info.Struct.is_tuple) {
-            fmtErr("arg 'types' should be a tuple of types", .{});
+            const msg = "arg 'types' should be a tuple of types";
+            fmtErr(msg.len, msg, types_T);
             return error.TypesNotTuple;
         }
         const types_fields = types_info.Struct.fields;
@@ -957,11 +978,9 @@ fn itoa(comptime i: u8) ![]u8 {
     }
 }
 
-fn fmtErr(comptime fmt: []const u8, args: anytype) void {
+fn fmtErr(comptime n: usize, comptime msg: *const [n:0]u8, comptime T: type) void {
     if (!builtin.is_test) {
-        var buf_msg: [200]u8 = undefined;
-        const msg = try std.fmt.bufPrint(&buf_msg, fmt, args);
-        std.debug.print("reflect error: {s}\n", .{msg});
+        @compileLog(msg, T);
     }
 }
 
