@@ -85,6 +85,15 @@ const Primitives = struct {
     pub fn _checkNonOptional(_: Self, v: u8) u8 {
         return v;
     }
+    pub fn _checkOptionalReturn(_: Self) ?bool {
+        return true;
+    }
+    pub fn _checkOptionalReturnNull(_: Self) ?bool {
+        return null;
+    }
+    pub fn _checkOptionalReturnString(_: Self) ?[]const u8 {
+        return "ok";
+    }
 };
 
 // generate API, comptime
@@ -172,6 +181,9 @@ pub fn exec(
         // Optional
         .{ .src = "p.checkOptional(null, 3);", .ex = "3" },
         .{ .src = "p.checkNonOptional();", .ex = "TypeError" },
+        .{ .src = "p.checkOptionalReturn() === true;", .ex = "true" },
+        .{ .src = "p.checkOptionalReturnNull() === null;", .ex = "true" },
+        .{ .src = "p.checkOptionalReturnString() === 'ok';", .ex = "true" },
     };
     try tests.checkCases(js_env, &cases);
 }
