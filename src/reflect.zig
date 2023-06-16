@@ -425,12 +425,10 @@ pub const Func = struct {
 
         // generate javascript name
         var field_name: []const u8 = undefined;
-        if (kind == .getter) {
-            field_name = std.mem.trimLeft(u8, name, "get_");
-        } else if (kind == .setter) {
-            field_name = std.mem.trimLeft(u8, name, "set_");
+        if (kind == .getter or kind == .setter) {
+            field_name = name[4..name.len]; // remove get_ and set_
         } else if (kind == .method) {
-            field_name = std.mem.trimLeft(u8, name, "_");
+            field_name = name[1..name.len]; // remove _
         } else {
             field_name = name;
         }
