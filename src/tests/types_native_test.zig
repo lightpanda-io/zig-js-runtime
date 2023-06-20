@@ -10,6 +10,10 @@ const tests = jsruntime.test_utils;
 const Brand = struct {
     name: []const u8,
 
+    pub fn constructor(name: []const u8) Brand {
+        return .{ .name = name };
+    }
+
     pub fn get_name(self: Brand) []const u8 {
         return self.name;
     }
@@ -29,6 +33,43 @@ const Car = struct {
         var brand_ptr = alloc.create(Brand) catch unreachable;
         brand_ptr.* = Brand{ .name = brand_name };
         return .{ .brand = brand, .brand_ptr = brand_ptr };
+    }
+
+    // As argument
+    // -----------
+
+    // accept <Struct> in setter
+    pub fn set_brand(self: *Car, brand: Brand) void {
+        self.brand = brand;
+    }
+
+    // accept *<Struct> in setter
+    pub fn set_brandPtr(self: *Car, brand_ptr: *Brand) void {
+        self.brand_ptr = brand_ptr;
+    }
+
+    // accept <Struct> in method
+    pub fn _changeBrand(self: *Car, brand: Brand) void {
+        self.brand = brand;
+    }
+
+    // accept *<Struct> in method
+    pub fn _changeBrandPtr(self: *Car, brand_ptr: *Brand) void {
+        self.brand_ptr = brand_ptr;
+    }
+
+    // accept ?<Struct> in method
+    pub fn _changeBrandOpt(self: *Car, brand: ?Brand) void {
+        if (brand != null) {
+            self.brand = brand.?;
+        }
+    }
+
+    // accept ?*<Struct> in method
+    pub fn _changeBrandOptPtr(self: *Car, brand_ptr: ?*Brand) void {
+        if (brand_ptr != null) {
+            self.brand_ptr = brand_ptr.?;
+        }
     }
 
     // As return value
@@ -199,6 +240,32 @@ pub fn exec(
         .{ .src = "brand_ptr_opt.name", .ex = "Citroën" },
         .{ .src = "car.brandOptNull", .ex = "null" },
         .{ .src = "car.brandPtrOptNull", .ex = "null" },
+
+        // as argumemnt for setter
+        .{ .src = "let brand3 = new Brand('Audi')", .ex = "undefined" },
+        .{ .src = "var _ = (car.brand = brand3)", .ex = "undefined" },
+        .{ .src = "car.brand.name === 'Audi'", .ex = "true" },
+        .{ .src = "var _ = (car.brandPtr = brand3)", .ex = "undefined" },
+        .{ .src = "car.brandPtr.name === 'Audi'", .ex = "true" },
+
+        // as argumemnt for methods
+        .{ .src = "let brand4 = new Brand('Tesla')", .ex = "undefined" },
+        .{ .src = "car.changeBrand(brand4)", .ex = "undefined" },
+        .{ .src = "car.brand.name === 'Tesla'", .ex = "true" },
+        .{ .src = "car.changeBrandPtr(brand4)", .ex = "undefined" },
+        .{ .src = "car.brandPtr.name === 'Tesla'", .ex = "true" },
+
+        .{ .src = "let brand5 = new Brand('Audi')", .ex = "undefined" },
+        .{ .src = "car.changeBrandOpt(brand5)", .ex = "undefined" },
+        .{ .src = "car.brand.name === 'Audi'", .ex = "true" },
+        .{ .src = "car.changeBrandOpt(null)", .ex = "undefined" },
+        .{ .src = "car.brand.name === 'Audi'", .ex = "true" },
+
+        .{ .src = "let brand6 = new Brand('Ford')", .ex = "undefined" },
+        .{ .src = "car.changeBrandOptPtr(brand6)", .ex = "undefined" },
+        .{ .src = "car.brandPtr.name === 'Ford'", .ex = "true" },
+        .{ .src = "car.changeBrandOptPtr(null)", .ex = "undefined" },
+        .{ .src = "car.brandPtr.name === 'Ford'", .ex = "true" },
     };
     try tests.checkCases(js_env, &separate_cases);
 }

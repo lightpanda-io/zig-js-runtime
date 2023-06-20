@@ -52,7 +52,13 @@ pub const Type = struct {
 
     union_T: ?[]Type,
 
-    pub fn under_T(comptime self: Type) type {
+    pub inline fn isNative(comptime self: Type) bool {
+        comptime {
+            return self.T_refl_index != null and self.nested_index == null;
+        }
+    }
+
+    pub inline fn under_T(comptime self: Type) type {
         comptime {
             if (self.under_ptr) |T| {
                 return T;
