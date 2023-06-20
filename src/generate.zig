@@ -75,7 +75,7 @@ fn getNativeArg(
             if (arg_T.under_opt != null) {
                 return null;
             }
-            // TODO: else return error.JSTypeUnhandled
+            // TODO: else return error "Argument x is not an object"
         }
     }
 
