@@ -10,11 +10,11 @@ const u64Num = @import("types.zig").u64Num;
 
 /// Convert a Native value to a JS value
 pub fn nativeToJS(
-    comptime zig_T: refl.Type,
-    val: zig_T.under_T(),
+    comptime T: type,
+    val: T,
     isolate: v8.Isolate,
 ) !v8.Value {
-    const js_val = switch (zig_T.under_T()) {
+    const js_val = switch (T) {
 
         // undefined
         void => v8.initUndefined(isolate),
@@ -23,6 +23,7 @@ pub fn nativeToJS(
         []u8, []const u8 => v8.String.initUtf8(isolate, val),
 
         // floats
+        // TODO: what about precision, ie. 1.82 (native) -> 1.8200000524520874 (js)
         f32 => v8.Number.init(isolate, @floatCast(f32, val)),
         f64 => v8.Number.init(isolate, val),
 

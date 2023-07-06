@@ -18,6 +18,10 @@ const Person = struct {
     last_name: []u8,
     age: u32,
 
+    // static attributes
+    pub const _AGE_MIN = 18;
+    pub const _NATIONALITY = "French";
+
     pub fn constructor(_: std.mem.Allocator, first_name: []u8, last_name: []u8, age: u32) Person {
         return .{
             .first_name = first_name,
@@ -234,4 +238,10 @@ pub fn exec(
         .{ .src = "upc.name === 'Francis'", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesProtoCast);
+
+    var casesStatic = [_]tests.Case{
+        .{ .src = "Person.AGE_MIN === 18", .ex = "true" },
+        .{ .src = "Person.NATIONALITY === 'French'", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &casesStatic);
 }

@@ -293,7 +293,7 @@ fn setReturnType(
     // return is a builtin type
 
     const js_val = nativeToJS(
-        ret,
+        ret.under_T(),
         val,
         isolate,
     ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
@@ -608,6 +608,17 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             const cstr_tpl = v8.FunctionTemplate.initCallback(isolate, cstr_func);
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
+
+            // static attributes
+            if (T_refl.static_attrs_T) |attrs_T| {
+                const attrs = comptime T_refl.staticAttrs(attrs_T);
+                inline for (@typeInfo(attrs_T).Struct.fields) |field| {
+                    const static_key = v8.String.initUtf8(isolate, field.name).toName();
+                    const value = @field(attrs, field.name);
+                    const static_value = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
+                    cstr_tpl.set(static_key, static_value, 0);
+                }
+            }
 
             // set the optional prototype of the constructor
             if (comptime T_refl.proto_index != null) {

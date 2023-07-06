@@ -26,8 +26,9 @@ const builtin_types = [_]type{
     u64,
     u64Num,
     bool,
+};
 
-    // internal types
+const internal_types = [_]type{
     std.mem.Allocator,
     Loop,
     cbk.Func,
@@ -42,11 +43,7 @@ pub const Type = struct {
     under_opt: ?type,
     under_ptr: ?type,
 
-    // is this type a builtin or a custom struct?
-    // those fields are mutually exclusing
-    // ie. if is_bultin => T_refl_index is not null
-    // and if T_refl_index == null => is_builtin is true
-    is_builtin: bool = false,
+    // is this a custom struct (native or nested)?
     T_refl_index: ?usize = null,
     nested_index: ?usize = null, // T_refl_index is mandatory in this case
 
@@ -72,9 +69,16 @@ pub const Type = struct {
 
     fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
 
-        // if builtin, lookup is not necessary
-        if (self.is_builtin) {
-            return;
+        // lookup unecessary
+        for (builtin_types) |builtin_T| {
+            if (builtin_T == self.under_T()) {
+                return;
+            }
+        }
+        for (internal_types) |internal_T| {
+            if (internal_T == self.under_T()) {
+                return;
+            }
         }
 
         // if union, lookup each possible type
@@ -179,14 +183,6 @@ pub const Type = struct {
             const msg = "type Opaque not allowed";
             fmtErr(msg.len, msg, under);
             return error.TypeOpaque;
-        }
-
-        // builtin
-        for (builtin_types) |builtin_T| {
-            if (builtin_T == under) {
-                t.is_builtin = true;
-                break;
-            }
         }
 
         return t;
@@ -530,6 +526,9 @@ pub const Struct = struct {
     proto_index: ?usize = null,
     proto_T: ?type,
 
+    // static attributes
+    static_attrs_T: ?type,
+
     // struct functions
     constructor: ?Func,
 
@@ -600,6 +599,118 @@ pub const Struct = struct {
             return a.proto_index.? < b.proto_index.?;
         }
         return a.proto_index == null;
+    }
+
+    fn AttrT(comptime T: type, comptime decl: std.builtin.Type.Declaration) ?type {
+        // exclude private declarations
+        if (!decl.is_pub) {
+            return null;
+        }
+        // exclude declarations not starting with _
+        if (decl.name[0] != '_') {
+            return null;
+        }
+        // exclude declarations of wrong type
+        const attr_T = @TypeOf(@field(T, decl.name));
+        const attr_info = @typeInfo(attr_T);
+        if (attr_info == .Fn) { // functions
+            return null;
+        }
+        for (builtin_types) |builtin_T| {
+            if (builtin_T == attr_T) {
+                return attr_T;
+            }
+        }
+        // string literal
+        if (isStringLiteral(attr_T)) {
+            return []const u8;
+        }
+        const value = @field(T, decl.name);
+        // comptime_int
+        if (attr_T == comptime_int) {
+            if (value > 0) {
+                if (value <= 255) {
+                    return u8;
+                } else if (value <= 65_535) {
+                    return u16;
+                } else if (value <= 4_294_967_295) {
+                    return u32;
+                } else {
+                    return u64;
+                }
+            } else {
+                if (value >= -128) {
+                    return i8;
+                } else if (value >= -32_768) {
+                    return i16;
+                } else if (value >= -2_147_483_648) {
+                    return i32;
+                } else {
+                    return i64;
+                }
+            }
+        }
+        // TODO: comptime_float
+        @compileLog(attr_T);
+        @compileError("static attribute type not handled");
+    }
+
+    fn reflectAttrs(comptime T: type) ?type {
+        const decls = @typeInfo(T).Struct.decls;
+
+        // first pass for attrs nb
+        var attrs_nb = 0;
+        for (decls) |decl| {
+            if (AttrT(T, decl) == null) {
+                continue;
+            }
+            attrs_nb += 1;
+        }
+        if (attrs_nb == 0) {
+            return null;
+        }
+
+        // second pass to build attrs type
+        var fields: [attrs_nb]std.builtin.Type.StructField = undefined;
+        var attrs_done = 0;
+        for (decls) |decl| {
+            const attr_T = AttrT(T, decl);
+            if (attr_T == null) {
+                continue;
+            }
+            fields[attrs_done] = std.builtin.Type.StructField{
+                .name = decl.name[1..decl.name.len], // remove _
+                .field_type = attr_T.?,
+                .default_value = null,
+                .is_comptime = false, // TODO: should be true here?
+                .alignment = if (@sizeOf(attr_T.?) > 0) @alignOf(attr_T.?) else 0,
+            };
+            attrs_done += 1;
+        }
+        return @Type(.{
+            .Struct = .{
+                .layout = .Auto,
+                .fields = &fields,
+                .decls = &.{},
+                .is_tuple = false,
+            },
+        });
+    }
+
+    pub fn staticAttrs(comptime self: Struct, comptime attrs_T: type) attrs_T {
+        var attrs: attrs_T = undefined;
+        var done = 0;
+        for (@typeInfo(self.T).Struct.decls) |decl| {
+            const attr_T = AttrT(self.T, decl);
+            if (attr_T == null) {
+                continue;
+            }
+            const name = decl.name[1..decl.name.len]; // remove _
+            const value = @as(attr_T.?, @field(self.T, decl.name));
+            @field(attrs, name) = value;
+            done += 1;
+        }
+        return attrs;
     }
 
     fn reflectProto(comptime T: type, comptime real_T: type) Error!?type {
@@ -867,6 +978,7 @@ pub const Struct = struct {
             .T = T,
             .self_T = self_T,
             .value = try Type.reflect(real_T, null),
+            .static_attrs_T = Struct.reflectAttrs(T),
             .mem_guarantied = mem_guarantied,
 
             // index in types list
@@ -987,6 +1099,23 @@ fn itoa(comptime i: u8) ![]u8 {
         var buf: [1]u8 = undefined;
         return try std.fmt.bufPrint(buf[0..], "{d}", .{i});
     }
+}
+
+fn isStringLiteral(comptime T: type) bool {
+    // string literals are const pointers to null-terminated arrays of u8
+    if (@typeInfo(T) != .Pointer) {
+        return false;
+    }
+    const elem = std.meta.Elem(T);
+    if (elem != u8) {
+        return false;
+    }
+    if (std.meta.sentinel(T)) |sentinel| {
+        if (sentinel == 0) {
+            return true;
+        }
+    }
+    return false;
 }
 
 fn fmtErr(comptime n: usize, comptime msg: *const [n:0]u8, comptime T: type) void {
