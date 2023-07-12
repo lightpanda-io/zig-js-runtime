@@ -160,11 +160,11 @@ pub fn generate() []jsruntime.API {
 pub fn exec(
     _: std.mem.Allocator,
     js_env: *jsruntime.Env,
-    comptime _: []jsruntime.API,
+    comptime apis: []jsruntime.API,
 ) !void {
 
     // start JS env
-    js_env.start();
+    js_env.start(apis);
     defer js_env.stop();
 
     // 1. constructor
@@ -201,6 +201,7 @@ pub fn exec(
 
     // prototype chain
     var cases_proto = [_]tests.Case{
+        .{ .src = "User.__proto__ === Person;", .ex = "true" },
         .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
         .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
         .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },

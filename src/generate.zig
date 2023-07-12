@@ -587,6 +587,51 @@ pub const ProtoTpl = struct {
     index: usize,
 };
 
+fn staticAttrsKeys(
+    comptime T_refl: refl.Struct,
+    keys: []v8.Name,
+    isolate: v8.Isolate,
+) void {
+    if (T_refl.static_attrs_T == null) {
+        return;
+    }
+    const attrs_T = T_refl.static_attrs_T.?;
+    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+        keys[i] = v8.String.initUtf8(isolate, field.name).toName();
+    }
+}
+
+fn staticAttrsValues(
+    comptime T_refl: refl.Struct,
+    values: []v8.Value,
+    isolate: v8.Isolate,
+) void {
+    if (T_refl.static_attrs_T == null) {
+        return;
+    }
+    const attrs_T = T_refl.static_attrs_T.?;
+    const attrs = comptime T_refl.staticAttrs(attrs_T);
+    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+        const value = comptime @field(attrs, field.name);
+        values[i] = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
+    }
+}
+
+fn setStaticAttrs(
+    comptime T_refl: refl.Struct,
+    template: anytype,
+    keys: []v8.Name,
+    values: []v8.Value,
+) void {
+    if (T_refl.static_attrs_T == null) {
+        return;
+    }
+    const attrs_T = T_refl.static_attrs_T.?;
+    inline for (@typeInfo(attrs_T).Struct.fields) |_, i| {
+        template.set(keys[i], values[i], v8.PropertyAttribute.ReadOnly + v8.PropertyAttribute.DontDelete);
+    }
+}
+
 const LoadFunc = (fn (v8.Isolate, v8.ObjectTemplate, ?ProtoTpl) anyerror!ProtoTpl);
 
 fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFunc {
@@ -609,16 +654,20 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
-            // static attributes
-            if (T_refl.static_attrs_T) |attrs_T| {
-                const attrs = comptime T_refl.staticAttrs(attrs_T);
-                inline for (@typeInfo(attrs_T).Struct.fields) |field| {
-                    const static_key = v8.String.initUtf8(isolate, field.name).toName();
-                    const value = @field(attrs, field.name);
-                    const static_value = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
-                    cstr_tpl.set(static_key, static_value, 0);
-                }
+            // static attributes keys and values
+            comptime var static_nb: usize = undefined;
+            if (T_refl.static_attrs_T) |attr_T| {
+                static_nb = @typeInfo(attr_T).Struct.fields.len;
+            } else {
+                static_nb = 0;
             }
+            var static_keys: [static_nb]v8.Name = undefined;
+            var static_values: [static_nb]v8.Value = undefined;
+            staticAttrsKeys(T_refl, &static_keys, isolate);
+            staticAttrsValues(T_refl, &static_values, isolate);
+
+            // set static attributes on the v8 FunctionTemplate
+            setStaticAttrs(T_refl, cstr_tpl, &static_keys, &static_values);
 
             // set the optional prototype of the constructor
             if (comptime T_refl.proto_index != null) {
@@ -674,6 +723,11 @@ fn loadFunc(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFun
                     prototype.setGetterAndSetter(key, getter_func, setter_func);
                 }
             }
+
+            // set static attributes on the v8 ObjectTemplate
+            // so each instance will get them
+            setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
+
             // add string tag if not provided
             if (!T_refl.string_tag) {
                 const key = v8.Symbol.getToStringTag(isolate).toName();

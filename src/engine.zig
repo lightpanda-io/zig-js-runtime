@@ -179,11 +179,25 @@ pub const Env = struct {
     }
 
     // start a Javascript context
-    pub fn start(self: *Env) void {
+    pub fn start(self: *Env, comptime apis: []API) void {
 
         // context
         self.context = v8.Context.init(self.isolate, self.globals, null);
-        self.context.?.enter();
+        const ctx = self.context.?;
+        ctx.enter();
+
+        // APIs prototype
+        // set the prototype of each corresponding Function
+        // TODO: is there a better way to do it at the Template level?
+        inline for (apis) |api, i| {
+            if (api.T_refl.proto_index) |proto_index| {
+                const cstr_tpl = gen.getTpl(i).tpl;
+                const proto_tpl = gen.getTpl(proto_index).tpl;
+                const cstr_obj = cstr_tpl.getFunction(ctx).toObject();
+                const proto_obj = proto_tpl.getFunction(ctx).toObject();
+                _ = cstr_obj.setPrototype(ctx, proto_obj);
+            }
+        }
     }
 
     // stop a Javascript context

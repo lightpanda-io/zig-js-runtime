@@ -53,11 +53,11 @@ pub fn generate() []jsruntime.API {
 pub fn exec(
     _: std.mem.Allocator,
     js_env: *jsruntime.Env,
-    comptime _: []jsruntime.API,
+    comptime apis: []jsruntime.API,
 ) !void {
 
     // start JS env
-    js_env.start();
+    js_env.start(apis);
     defer js_env.stop();
 
     // constructor
