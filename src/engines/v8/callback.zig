@@ -2,9 +2,7 @@ const std = @import("std");
 
 const v8 = @import("v8"); // TODO: remove
 
-const refl = @import("reflect.zig");
-const utils = @import("utils.zig");
-const Loop = @import("loop.zig").SingleThreaded;
+const refl = @import("../../internal_api.zig").refl;
 
 // TODO: Make this JS engine agnostic
 // by providing a common interface
@@ -13,7 +11,7 @@ pub const Arg = struct {
     // TODO: it's required to have a non-empty struct
     // otherwise LLVM emits a warning
     // "stack frame size (x) exceeds limit (y)"
-    foo: bool = false,
+    // foo: bool = false,
 };
 
 // TODO: set the correct "this" on Func object
@@ -68,7 +66,7 @@ pub const FuncSync = struct {
         };
     }
 
-    pub fn call(self: FuncSync, alloc: std.mem.Allocator) void {
+    pub fn call(self: FuncSync, alloc: std.mem.Allocator) anyerror!void {
 
         // retrieve context
         // NOTE: match the Func.call implementation
@@ -162,7 +160,7 @@ pub const Func = struct {
         alloc.destroy(self.js_func_pers);
     }
 
-    pub fn call(self: Func, alloc: std.mem.Allocator) !void {
+    pub fn call(self: Func, alloc: std.mem.Allocator) anyerror!void {
         defer self.deinit(alloc);
 
         // retrieve context

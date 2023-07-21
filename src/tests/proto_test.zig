@@ -1,8 +1,7 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
-
-const tests = jsruntime.test_utils;
+const public = @import("../api.zig");
+const tests = public.test_utils;
 
 // TODO: handle memory allocation in the data struct itself.
 // Each struct should have a deinit method to free internal memory and destroy object itself.
@@ -144,8 +143,8 @@ const UserProtoCast = struct {
 };
 
 // generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{
+pub fn generate() []public.API {
+    return public.compile(.{
         User,
         Person,
         PersonPtr,
@@ -159,8 +158,8 @@ pub fn generate() []jsruntime.API {
 // exec tests
 pub fn exec(
     _: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env

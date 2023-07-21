@@ -6,6 +6,11 @@ pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
+    // build options
+    const engine = b.option([]const u8, "engine", "JS engine (v8)");
+    const options = b.addOptions();
+    options.addOption(?[]const u8, "engine", engine);
+
     // TODO: install only bench or shell with zig build <cmd>
 
     // bench
@@ -13,7 +18,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // compile and install
     const bench = b.addExecutable("jsruntime-bench", "src/main_bench.zig");
-    try common(bench, mode, target);
+    try common(bench, mode, target, options);
     bench.single_threaded = true;
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -38,7 +43,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // compile and install
     const shell = b.addExecutable("jsruntime-shell", "src/main_shell.zig");
-    try common(shell, mode, target);
+    try common(shell, mode, target, options);
     try pkgs.add_shell(shell, mode);
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -64,7 +69,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // compile
     const test_exe = b.addTest("src/run_tests.zig");
-    try common(test_exe, mode, target);
+    try common(test_exe, mode, target, options);
     test_exe.single_threaded = true;
 
     // step
@@ -76,9 +81,11 @@ fn common(
     step: *std.build.LibExeObjStep,
     mode: std.builtin.Mode,
     target: std.zig.CrossTarget,
+    options: *std.build.OptionsStep,
 ) !void {
     step.setTarget(target);
     step.setBuildMode(mode);
+    step.addOptions("jsruntime_build_options", options);
     step.addPackage(try pkgs.tigerbeetle_io(step));
     step.addPackage(try pkgs.zig_v8(step));
     try pkgs.v8(step, mode);

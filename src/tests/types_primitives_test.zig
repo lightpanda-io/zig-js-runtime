@@ -1,8 +1,7 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
-
-const tests = jsruntime.test_utils;
+const public = @import("../api.zig");
+const tests = public.test_utils;
 
 // TODO: use functions instead of "fake" struct once we handle function API generation
 const Primitives = struct {
@@ -97,15 +96,15 @@ const Primitives = struct {
 };
 
 // generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{Primitives});
+pub fn generate() []public.API {
+    return public.compile(.{Primitives});
 }
 
 // exec tests
 pub fn exec(
     _: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env

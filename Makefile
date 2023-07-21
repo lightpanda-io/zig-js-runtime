@@ -46,6 +46,10 @@ git_clean := git diff --quiet; echo $$?
 git_current_branch := git branch --show-current
 git_last_commit_full := git log --pretty=format:'%cd_%h' -n 1 --date=format:'%Y-%m-%d_%H-%M'
 
+# List files
+tree:
+	@tree -I zig-cache -I zig-out -I vendor -I questions -I benchmarks -I build -I "*~"
+
 
 # Dependancies
 # ------------
@@ -91,12 +95,12 @@ endif
 ## Build in debug mode
 build:
 	@printf "\e[36mBuilding (debug)...\e[0m\n"
-	@zig build bench || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@zig build bench -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 build-release:
 	@printf "\e[36mBuilding (release safe)...\e[0m\n"
-	@zig build -Drelease-safe || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@zig build -Drelease-safe -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 ## Run the benchmark in release-safe mode
@@ -108,12 +112,12 @@ run: build-release
 ## Run a JS shell in release-safe mode
 shell:
 	@printf "\e[36mBuilding shell (release safe)...\e[0m\n"
-	@zig build shell -Drelease-safe || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@zig build shell -Drelease-safe -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 
 ## Test
 test:
 	@printf "\e[36mTesting...\e[0m\n"
-	@zig build test || (printf "\e[33mTest ERROR\e[0m\n"; exit 1;)
+	@zig build test -Dengine=v8 || (printf "\e[33mTest ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mTest OK\e[0m\n"
 
 ## run + save results in benchmarks dir

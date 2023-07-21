@@ -1,7 +1,6 @@
 const std = @import("std");
 
-const jsruntime = @import("jsruntime.zig");
-const eng = @import("engine.zig");
+const public = @import("api.zig");
 
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
@@ -14,13 +13,13 @@ const us = std.time.ns_per_us;
 fn benchWithIsolate(
     bench_alloc: *bench.Allocator,
     arena_alloc: *std.heap.ArenaAllocator,
-    comptime ctxExecFn: jsruntime.ContextExecFn,
-    comptime apis: []jsruntime.API,
+    comptime ctxExecFn: public.ContextExecFn,
+    comptime apis: []public.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     const duration = try bench.call(
-        jsruntime.loadEnv,
+        public.loadEnv,
         .{ arena_alloc, ctxExecFn, apis },
         iter,
         warmup,
@@ -39,16 +38,16 @@ var duration_global: u64 = undefined;
 fn benchWithoutIsolate(
     bench_alloc: *bench.Allocator,
     arena_alloc: *std.heap.ArenaAllocator,
-    comptime ctxExecFn: jsruntime.ContextExecFn,
-    comptime apis: []jsruntime.API,
+    comptime ctxExecFn: public.ContextExecFn,
+    comptime apis: []public.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     const s = struct {
         fn do(
             alloc_func: std.mem.Allocator,
-            js_env: *jsruntime.Env,
-            comptime apis_func: []jsruntime.API,
+            js_env: *public.Env,
+            comptime apis_func: []public.API,
         ) !void {
             const duration = try bench.call(
                 ctxExecFn,
@@ -59,7 +58,7 @@ fn benchWithoutIsolate(
             duration_global = duration;
         }
     };
-    try eng.loadEnv(arena_alloc, s.do, apis);
+    try public.loadEnv(arena_alloc, s.do, apis);
     const alloc_stats = bench_alloc.stats();
     return bench.Result{
         .duration = duration_global,
@@ -75,7 +74,7 @@ pub fn main() !void {
     const apis = comptime proto.generate(); // stage1: we need comptime
 
     // create JS vm
-    const vm = jsruntime.VM.init();
+    const vm = public.VM.init();
     defer vm.deinit();
 
     // allocators

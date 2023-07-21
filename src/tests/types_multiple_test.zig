@@ -1,8 +1,7 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
-
-const tests = jsruntime.test_utils;
+const public = @import("../api.zig");
+const tests = public.test_utils;
 
 const Windows = struct {
     const manufacturer = "Microsoft";
@@ -61,15 +60,15 @@ const Computer = struct {
 };
 
 // generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ Windows, MacOS, Linux, Computer });
+pub fn generate() []public.API {
+    return public.compile(.{ Windows, MacOS, Linux, Computer });
 }
 
 // exec tests
 pub fn exec(
     _: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env

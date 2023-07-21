@@ -6,6 +6,10 @@ const ref = @import("reflect.zig");
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
 
+const public = @import("api.zig");
+const VM = public.VM;
+
+// tests
 const proto = @import("tests/proto_test.zig");
 const primitive_types = @import("tests/types_primitives_test.zig");
 const native_types = @import("tests/types_native_test.zig");
@@ -33,7 +37,7 @@ test {
     }
 
     // create JS vm
-    const vm = eng.VM.init();
+    const vm = VM.init();
     defer vm.deinit();
 
     // base and prototype tests
