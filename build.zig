@@ -6,12 +6,9 @@ pub fn build(b: *std.build.Builder) !void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
 
-    // build options
-    const engine = b.option([]const u8, "engine", "JS engine (v8)");
-    const options = b.addOptions();
-    options.addOption(?[]const u8, "engine", engine);
-
     // TODO: install only bench or shell with zig build <cmd>
+
+    const options = buildOptions(b);
 
     // bench
     // -----
@@ -75,6 +72,13 @@ pub fn build(b: *std.build.Builder) !void {
     // step
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&test_exe.step);
+}
+
+pub fn buildOptions(b: *std.build.Builder) *std.build.OptionsStep {
+    const options = b.addOptions();
+    const engine = b.option([]const u8, "engine", "JS engine (v8)");
+    options.addOption(?[]const u8, "engine", engine);
+    return options;
 }
 
 fn common(
@@ -180,14 +184,18 @@ pub fn packages(comptime vendor_path: []const u8) type {
             step.linkLibrary(lib);
         }
 
-        pub fn add(step: *std.build.LibExeObjStep, mode: std.builtin.Mode) !void {
+        pub fn add(
+            step: *std.build.LibExeObjStep,
+            mode: std.builtin.Mode,
+            options: *std.build.OptionsStep,
+        ) !void {
             const tigerbeetle_io_pkg = try Self.tigerbeetle_io(step);
             const zig_v8_pkg = try Self.zig_v8(step);
             try Self.v8(step, mode);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}src/jsruntime.zig",
+                "{s}src/api.zig",
                 .{vendor_path},
             );
             const lib = std.build.Pkg{
@@ -196,6 +204,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 .dependencies = &[_]std.build.Pkg{
                     tigerbeetle_io_pkg,
                     zig_v8_pkg,
+                    options.getPackage("jsruntime_build_options"),
                 },
             };
             step.addPackage(lib);
