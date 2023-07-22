@@ -211,7 +211,7 @@ pub const Env = struct {
         }
 
         var res = JSResult.init();
-        try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch.try_catch);
+        try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch.try_catch.*);
         return res;
     }
 
@@ -341,12 +341,12 @@ fn createJSObject(
 }
 
 pub const TryCatch = struct {
-    try_catch: v8.TryCatch,
+    try_catch: *v8.TryCatch,
 
     pub inline fn init(env: Env) TryCatch {
         var try_catch: v8.TryCatch = undefined;
         try_catch.init(env.isolate);
-        return .{ .try_catch = try_catch };
+        return .{ .try_catch = &try_catch };
     }
 
     pub inline fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {

@@ -112,7 +112,7 @@ run: build-release
 ## Run a JS shell in release-safe mode
 shell:
 	@printf "\e[36mBuilding shell (release safe)...\e[0m\n"
-	@zig build shell -Drelease-safe -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@zig build shell -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 
 ## Test
 test:
