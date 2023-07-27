@@ -8,7 +8,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // TODO: install only bench or shell with zig build <cmd>
 
-    const options = buildOptions(b);
+    const options = try buildOptions(b);
 
     // bench
     // -----
@@ -74,30 +74,59 @@ pub fn build(b: *std.build.Builder) !void {
     test_step.dependOn(&test_exe.step);
 }
 
-pub fn buildOptions(b: *std.build.Builder) *std.build.OptionsStep {
+const Engine = enum {
+    quickjs,
+    v8,
+};
+
+pub const Options = struct {
+    engine: Engine,
+    opts: *std.build.OptionsStep,
+};
+
+pub fn buildOptions(b: *std.build.Builder) !Options {
     const options = b.addOptions();
-    const engine = b.option([]const u8, "engine", "JS engine (v8)");
+    const engine = b.option([]const u8, "engine", "JS engine (quickjs, v8)");
+    var eng: Engine = undefined;
+    if (engine == null) {
+        // default
+        eng = .quickjs;
+    } else {
+        if (std.mem.eql(u8, engine.?, "quickjs")) {
+            eng = .quickjs;
+        } else if (std.mem.eql(u8, engine.?, "v8")) {
+            eng = .v8;
+        } else {
+            return error.EngineUnknown;
+        }
+    }
     options.addOption(?[]const u8, "engine", engine);
-    return options;
+    return .{ .engine = eng, .opts = options };
 }
 
 fn common(
     step: *std.build.LibExeObjStep,
     mode: std.builtin.Mode,
     target: std.zig.CrossTarget,
-    options: *std.build.OptionsStep,
+    options: Options,
 ) !void {
     step.setTarget(target);
     step.setBuildMode(mode);
-    step.addOptions("jsruntime_build_options", options);
+    step.addOptions("jsruntime_build_options", options.opts);
     step.addPackage(try pkgs.tigerbeetle_io(step));
-    step.addPackage(try pkgs.zig_v8(step));
-    try pkgs.v8(step, mode);
+    if (options.engine == .quickjs) {
+        try pkgs.quickjs(step, mode);
+    } else if (options.engine == .v8) {
+        try pkgs.v8(step, mode);
+        step.addPackage(try pkgs.zig_v8(step));
+    }
 }
 
 pub fn packages(comptime vendor_path: []const u8) type {
     return struct {
         const Self = @This();
+
+        const vendor = vendor_path ++ "vendor/";
 
         fn tigerbeetle_io(step: *std.build.LibExeObjStep) !std.build.Pkg {
             const lib_path = try std.fmt.allocPrint(
@@ -109,6 +138,62 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 .name = "tigerbeetle-io",
                 .source = .{ .path = lib_path },
             };
+        }
+
+        const QuickJS_VERSION = "2021-03-27";
+
+        // build QuickJS from source and link it
+        fn quickjs(step: *std.build.LibExeObjStep, mode: std.builtin.Mode) !void {
+
+            // define library
+            const lib = step.builder.addStaticLibrary("quickjs", null);
+            // lib.linkLibC(); // TODO: do we need to link libc?
+
+            // common defines
+            lib.defineCMacro("_GNU_SOURCE", null);
+            lib.defineCMacro("CONFIG_BIGNUM", null);
+            lib.defineCMacro("CONFIG_VERSION", "\"" ++ Self.QuickJS_VERSION ++ "\"");
+
+            // common compiler flags
+            var cflags_common = [_][]const u8{};
+            // NOTE: QuickJS Makefile uses thoses flags for Clang, not sure if it matters
+            //     "-Wall",
+            //     "-Wextra",
+            //     "-Wno-sign-compare",
+            //     "-Wno-missing-field-initializers",
+            //     "-Wunused",
+            //     "-Wno-unused-parameter",
+            //     "-Wwrite-strings",
+            //     "-Wno-unused-variable",
+            //     "-Wchar-subscripts",
+            //     "-funsigned-char",
+
+            // use mode to add debug/release defines and flags
+            var cflags: [][]const u8 = undefined;
+            if (mode == .Debug) {
+                lib.defineCMacro("DUMP_LEAKS", null);
+                cflags = &cflags_common;
+            } else {
+                var cflags_release: [cflags_common.len + 1][]const u8 = undefined;
+                for (cflags_common) |flag, i| {
+                    cflags_release[i] = flag;
+                }
+                cflags_release[cflags_common.len] = "-O2";
+                cflags = &cflags_release;
+            }
+
+            // source files
+            const cfiles = [_][]const u8{
+                Self.vendor ++ "quickjs/cutils.c",
+                Self.vendor ++ "quickjs/libbf.c", // CONFIG_BIGNUM
+                Self.vendor ++ "quickjs/libregexp.c",
+                Self.vendor ++ "quickjs/libunicode.c",
+                Self.vendor ++ "quickjs/quickjs.c",
+            };
+            lib.addCSourceFiles(&cfiles, cflags);
+
+            step.linkLibrary(lib);
+            step.addIncludePath(Self.vendor ++ "quickjs");
         }
 
         fn zig_v8(step: *std.build.LibExeObjStep) !std.build.Pkg {
@@ -187,7 +272,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
         pub fn add(
             step: *std.build.LibExeObjStep,
             mode: std.builtin.Mode,
-            options: *std.build.OptionsStep,
+            options: Options,
         ) !void {
             const tigerbeetle_io_pkg = try Self.tigerbeetle_io(step);
             const zig_v8_pkg = try Self.zig_v8(step);
@@ -204,7 +289,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 .dependencies = &[_]std.build.Pkg{
                     tigerbeetle_io_pkg,
                     zig_v8_pkg,
-                    options.getPackage("jsruntime_build_options"),
+                    options.opts.getPackage("jsruntime_build_options"),
                 },
             };
             step.addPackage(lib);

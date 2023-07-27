@@ -7,3 +7,6 @@
 [submodule "vendor/linenoise-mob"]
 	path = vendor/linenoise-mob
 	url = https://github.com/rain-1/linenoise-mob.git
+[submodule "vendor/quickjs"]
+	path = vendor/quickjs
+	url = git@github.com:bellard/quickjs.git
