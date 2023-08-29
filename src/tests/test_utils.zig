@@ -1,9 +1,6 @@
 const std = @import("std");
 
-const v8 = @import("v8");
-
-const jsruntime = @import("../jsruntime.zig");
-const utils = @import("../utils.zig");
+const public = @import("../api.zig");
 
 const js_response_size = 200;
 
@@ -42,7 +39,7 @@ fn caseError(src: []const u8, exp: []const u8, res: []const u8, stack: ?[]const 
 }
 
 pub fn checkCases(
-    js_env: *jsruntime.Env,
+    js_env: *public.Env,
     cases: []Case,
 ) !void {
     var has_error = false;
@@ -59,8 +56,8 @@ pub fn checkCases(
         // prepare script execution
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
-        var res = jsruntime.JSResult{};
-        var cbk_res = jsruntime.JSResult{
+        var res = public.JSResult{};
+        var cbk_res = public.JSResult{
             .success = true,
             // assume that the return value of the successfull callback is "undefined"
             .result = "undefined",

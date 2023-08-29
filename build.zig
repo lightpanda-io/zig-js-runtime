@@ -8,12 +8,14 @@ pub fn build(b: *std.build.Builder) !void {
 
     // TODO: install only bench or shell with zig build <cmd>
 
+    const options = try buildOptions(b);
+
     // bench
     // -----
 
     // compile and install
     const bench = b.addExecutable("jsruntime-bench", "src/main_bench.zig");
-    try common(bench, mode, target);
+    try common(bench, mode, target, options);
     bench.single_threaded = true;
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -38,7 +40,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // compile and install
     const shell = b.addExecutable("jsruntime-shell", "src/main_shell.zig");
-    try common(shell, mode, target);
+    try common(shell, mode, target, options);
     try pkgs.add_shell(shell, mode);
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -64,7 +66,7 @@ pub fn build(b: *std.build.Builder) !void {
 
     // compile
     const test_exe = b.addTest("src/run_tests.zig");
-    try common(test_exe, mode, target);
+    try common(test_exe, mode, target, options);
     test_exe.single_threaded = true;
 
     // step
@@ -72,21 +74,54 @@ pub fn build(b: *std.build.Builder) !void {
     test_step.dependOn(&test_exe.step);
 }
 
+const Engine = enum {
+    v8,
+};
+
+pub const Options = struct {
+    engine: Engine,
+    opts: *std.build.OptionsStep,
+};
+
+pub fn buildOptions(b: *std.build.Builder) !Options {
+    const options = b.addOptions();
+    const engine = b.option([]const u8, "engine", "JS engine (v8)");
+    var eng: Engine = undefined;
+    if (engine == null) {
+        // default
+        eng = .v8;
+    } else {
+        if (std.mem.eql(u8, engine.?, "v8")) {
+            eng = .v8;
+        } else {
+            return error.EngineUnknown;
+        }
+    }
+    options.addOption(?[]const u8, "engine", engine);
+    return .{ .engine = eng, .opts = options };
+}
+
 fn common(
     step: *std.build.LibExeObjStep,
     mode: std.builtin.Mode,
     target: std.zig.CrossTarget,
+    options: Options,
 ) !void {
     step.setTarget(target);
     step.setBuildMode(mode);
+    step.addOptions("jsruntime_build_options", options.opts);
     step.addPackage(try pkgs.tigerbeetle_io(step));
-    step.addPackage(try pkgs.zig_v8(step));
-    try pkgs.v8(step, mode);
+    if (options.engine == .v8) {
+        try pkgs.v8(step, mode);
+        step.addPackage(try pkgs.zig_v8(step));
+    }
 }
 
 pub fn packages(comptime vendor_path: []const u8) type {
     return struct {
         const Self = @This();
+
+        const vendor = vendor_path ++ "vendor/";
 
         fn tigerbeetle_io(step: *std.build.LibExeObjStep) !std.build.Pkg {
             const lib_path = try std.fmt.allocPrint(
@@ -173,14 +208,18 @@ pub fn packages(comptime vendor_path: []const u8) type {
             step.linkLibrary(lib);
         }
 
-        pub fn add(step: *std.build.LibExeObjStep, mode: std.builtin.Mode) !void {
+        pub fn add(
+            step: *std.build.LibExeObjStep,
+            mode: std.builtin.Mode,
+            options: Options,
+        ) !void {
             const tigerbeetle_io_pkg = try Self.tigerbeetle_io(step);
             const zig_v8_pkg = try Self.zig_v8(step);
             try Self.v8(step, mode);
 
             const lib_path = try std.fmt.allocPrint(
                 step.builder.allocator,
-                "{s}src/jsruntime.zig",
+                "{s}src/api.zig",
                 .{vendor_path},
             );
             const lib = std.build.Pkg{
@@ -189,6 +228,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
                 .dependencies = &[_]std.build.Pkg{
                     tigerbeetle_io_pkg,
                     zig_v8_pkg,
+                    options.opts.getPackage("jsruntime_build_options"),
                 },
             };
             step.addPackage(lib);

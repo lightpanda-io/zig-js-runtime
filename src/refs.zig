@@ -1,6 +1,7 @@
 const std = @import("std");
 
-const refl = @import("reflect.zig");
+const internal = @import("internal_api.zig");
+const refl = internal.refl;
 
 // Map references all objects created in both JS and Native world
 // either from JS through a constructor template call

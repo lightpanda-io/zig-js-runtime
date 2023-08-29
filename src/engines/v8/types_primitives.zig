@@ -1,12 +1,13 @@
 const std = @import("std");
+
 const v8 = @import("v8");
 
-const refl = @import("reflect.zig");
-const utils = @import("utils.zig");
-const engine = @import("engine.zig");
+const internal = @import("../../internal_api.zig");
+const refl = internal.refl;
 
-const i64Num = @import("types.zig").i64Num;
-const u64Num = @import("types.zig").u64Num;
+const public = @import("../../api.zig");
+const i64Num = public.i64Num;
+const u64Num = public.u64Num;
 
 /// Convert a Native value to a JS value
 pub fn nativeToJS(
@@ -133,7 +134,7 @@ pub fn jsToNative(
 
         // list of bytes (including strings)
         []u8, ?[]u8, []const u8, ?[]const u8 => {
-            return try utils.valueToUtf8(alloc, js_val, isolate, ctx);
+            return try valueToUtf8(alloc, js_val, isolate, ctx);
         },
 
         // floats
@@ -187,4 +188,17 @@ pub fn jsToNative(
 
         else => return error.JSTypeUnhandled,
     }
+}
+
+pub fn valueToUtf8(
+    alloc: std.mem.Allocator,
+    value: v8.Value,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) ![]u8 {
+    const str = try value.toString(ctx);
+    const len = str.lenUtf8(isolate);
+    const buf = try alloc.alloc(u8, len);
+    _ = str.writeUtf8(isolate, buf);
+    return buf;
 }

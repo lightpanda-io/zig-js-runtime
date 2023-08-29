@@ -1,10 +1,8 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
-
-const tests = jsruntime.test_utils;
-
-const MyIterable = jsruntime.Iterable(u8);
+const public = @import("../api.zig");
+const tests = public.test_utils;
+const MyIterable = public.Iterable(u8);
 
 const MyList = struct {
     items: []u8,
@@ -27,15 +25,15 @@ const MyList = struct {
 };
 
 // generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ MyList, MyIterable });
+pub fn generate() []public.API {
+    return public.compile(.{ MyList, MyIterable });
 }
 
 // exec tests
 pub fn exec(
     _: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env

@@ -1,13 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const v8 = @import("v8");
 const c = @cImport({
     @cInclude("linenoise.h");
 });
 
-const utils = @import("utils.zig");
-const jsruntime = @import("jsruntime.zig");
+const public = @import("api.zig");
 
 const IO = @import("loop.zig").IO;
 
@@ -88,12 +86,12 @@ fn connCallback(
 // I/O input command context
 const CmdContext = struct {
     alloc: std.mem.Allocator,
-    js_env: *jsruntime.Env,
+    js_env: *public.Env,
     socket: std.os.socket_t,
     buf: []u8,
     close: bool = false,
 
-    try_catch: *v8.TryCatch,
+    try_catch: public.TryCatch,
 };
 
 // I/O input command callback
@@ -121,7 +119,7 @@ fn cmdCallback(
         ctx.alloc,
         input,
         "shell.js",
-        ctx.try_catch.*,
+        ctx.try_catch,
     ) catch |err| {
         ctx.close = true;
         std.debug.print("JS exec error: {s}\n", .{@errorName(err)});
@@ -156,8 +154,8 @@ fn cmdCallback(
 
 fn exec(
     alloc: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env
@@ -169,17 +167,16 @@ fn exec(
 
 pub fn shellExec(
     alloc: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // add console object
-    const console = jsruntime.Console{};
+    const console = public.Console{};
     try js_env.addObject(apis, console, "console");
 
     // JS try cache
-    var try_catch: v8.TryCatch = undefined;
-    try_catch.init(js_env.isolate);
+    var try_catch = public.TryCatch.init(js_env.*);
     defer try_catch.deinit();
 
     // create I/O contexts and callbacks
@@ -190,7 +187,7 @@ pub fn shellExec(
         .js_env = js_env,
         .socket = undefined,
         .buf = &input,
-        .try_catch = &try_catch,
+        .try_catch = try_catch,
     };
     var conn_ctx = ConnContext{
         .socket = socket_fd,
@@ -214,15 +211,9 @@ pub fn shellExec(
     while (true) {
         try loop.io.tick();
         if (loop.cbk_error) {
-            if (try_catch.getException()) |msg| {
-                const except = try utils.valueToUtf8(
-                    alloc,
-                    msg,
-                    js_env.isolate,
-                    js_env.context.?,
-                );
-                printStdout("\n\rUncaught {s}\n\r", .{except});
-                alloc.free(except);
+            if (try try_catch.exception(alloc, js_env.*)) |msg| {
+                printStdout("\n\rUncaught {s}\n\r", .{msg});
+                alloc.free(msg);
             }
             loop.cbk_error = false;
         }
@@ -234,8 +225,8 @@ pub fn shellExec(
 
 pub fn shell(
     arena_alloc: *std.heap.ArenaAllocator,
-    comptime apis: []jsruntime.API,
-    comptime ctxExecFn: ?jsruntime.ContextExecFn,
+    comptime apis: []public.API,
+    comptime ctxExecFn: ?public.ContextExecFn,
     comptime config: Config,
 ) !void {
 
@@ -268,11 +259,11 @@ pub fn shell(
     repl_thread.detach();
 
     // load JS environement
-    comptime var do_fn: jsruntime.ContextExecFn = exec;
+    comptime var do_fn: public.ContextExecFn = exec;
     if (ctxExecFn) |func| {
         do_fn = func;
     }
-    try jsruntime.loadEnv(arena_alloc, do_fn, apis);
+    try public.loadEnv(arena_alloc, do_fn, apis);
 }
 
 fn repl() !void {

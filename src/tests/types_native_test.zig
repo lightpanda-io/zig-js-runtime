@@ -1,8 +1,8 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
+const public = @import("../api.zig");
 
-const tests = jsruntime.test_utils;
+const tests = public.test_utils;
 
 // Native types with separate APIs
 // -------------------------------
@@ -177,15 +177,15 @@ const Country = struct {
 };
 
 // generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{ Brand, Car, Country });
+pub fn generate() []public.API {
+    return public.compile(.{ Brand, Car, Country });
 }
 
 // exec tests
 pub fn exec(
     _: std.mem.Allocator,
-    js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
+    js_env: *public.Env,
+    comptime apis: []public.API,
 ) !void {
 
     // start JS env

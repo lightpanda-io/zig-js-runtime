@@ -1,16 +1,16 @@
 const std = @import("std");
 
-const jsruntime = @import("jsruntime.zig");
+const public = @import("api.zig");
 
 const Window = @import("tests/cbk_test.zig").Window;
 
 pub fn main() !void {
 
     // generate APIs
-    const apis = jsruntime.compile(.{ jsruntime.Console, Window });
+    const apis = public.compile(.{ public.Console, Window });
 
     // create JS vm
-    const vm = jsruntime.VM.init();
+    const vm = public.VM.init();
     defer vm.deinit();
 
     // alloc
@@ -20,5 +20,5 @@ pub fn main() !void {
     defer arena.deinit();
 
     // launch shell
-    try jsruntime.shell(&arena, apis, null, .{ .app_name = "jsruntime-shell" });
+    try public.shell(&arena, apis, null, .{ .app_name = "jsruntime-shell" });
 }

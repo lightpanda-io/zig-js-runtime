@@ -1,11 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const Loop = @import("loop.zig").SingleThreaded;
-const cbk = @import("callback.zig");
+const public = @import("api.zig");
+const Loop = public.Loop;
+const Callback = public.Callback;
+const CallbackSync = public.CallbackSync;
+const CallbackArg = public.CallbackArg;
 
-const i64Num = @import("types.zig").i64Num;
-const u64Num = @import("types.zig").u64Num;
+const i64Num = public.i64Num;
+const u64Num = public.u64Num;
 
 // NOTE: all the code in this file should be run comptime.
 
@@ -31,9 +34,9 @@ const builtin_types = [_]type{
 const internal_types = [_]type{
     std.mem.Allocator,
     Loop,
-    cbk.Func,
-    cbk.FuncSync,
-    cbk.Arg,
+    Callback,
+    CallbackSync,
+    CallbackArg,
 };
 
 pub const Type = struct {
@@ -401,7 +404,7 @@ pub const Func = struct {
             // callback
             // ensure function has only 1 callback as argument
             // TODO: is this necessary?
-            if (args_types[i].T == cbk.Func or args_types[i].T == cbk.FuncSync) {
+            if (args_types[i].T == Callback or args_types[i].T == CallbackSync) {
                 if (callback_index != null) {
                     const msg = "func has already 1 callback";
                     fmtErr(msg.len, msg, T);
@@ -409,7 +412,7 @@ pub const Func = struct {
                 }
                 callback_index = x;
             }
-            if (args_types[i].T == cbk.Arg) {
+            if (args_types[i].T == CallbackArg) {
                 args_callback_nb += 1;
             }
         }
@@ -1242,7 +1245,7 @@ const TestFuncVoidArg = struct {
     pub fn _example(_: TestFuncVoidArg, _: void) void {}
 };
 const TestFuncMultiCbk = struct {
-    pub fn _example(_: TestFuncMultiCbk, _: cbk.Func, _: cbk.Func) void {}
+    pub fn _example(_: TestFuncMultiCbk, _: Callback, _: Callback) void {}
 };
 
 // types tests

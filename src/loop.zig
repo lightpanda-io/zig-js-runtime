@@ -1,10 +1,10 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const v8 = @import("v8");
 pub const IO = @import("tigerbeetle-io").IO;
 
-const JSCallback = @import("callback.zig").Func;
+const public = @import("api.zig");
+const JSCallback = public.Callback;
 
 fn report(comptime fmt: []const u8, args: anytype) void {
     const max_len = 200;

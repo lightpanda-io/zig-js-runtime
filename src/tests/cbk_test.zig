@@ -1,9 +1,11 @@
 const std = @import("std");
 
-const jsruntime = @import("../jsruntime.zig");
+const jsruntime = @import("../api.zig");
 
-const u64Num = @import("../types.zig").u64Num;
-const cbk = @import("../callback.zig");
+const u64Num = jsruntime.u64Num;
+const Callback = jsruntime.Callback;
+const CallbackSync = jsruntime.CallbackSync;
+const CallbackArg = jsruntime.CallbackArg;
 
 const tests = jsruntime.test_utils;
 
@@ -12,18 +14,18 @@ pub const Window = struct {
         return Window{};
     }
 
-    pub fn _cbkSyncWithoutArg(_: Window, _: cbk.FuncSync) void {
+    pub fn _cbkSyncWithoutArg(_: Window, _: CallbackSync) void {
         tests.sleep(1 * std.time.ns_per_ms);
     }
 
-    pub fn _cbkSyncWithArg(_: Window, _: cbk.FuncSync, _: cbk.Arg) void {
+    pub fn _cbkSyncWithArg(_: Window, _: CallbackSync, _: CallbackArg) void {
         tests.sleep(1 * std.time.ns_per_ms);
     }
 
     pub fn _cbkAsync(
         _: Window,
         loop: *jsruntime.Loop,
-        callback: cbk.Func,
+        callback: Callback,
         milliseconds: u32,
     ) void {
         const n = @intCast(u63, milliseconds);
@@ -34,9 +36,9 @@ pub const Window = struct {
     pub fn _cbkAsyncWithArg(
         _: Window,
         loop: *jsruntime.Loop,
-        callback: cbk.Func,
+        callback: Callback,
         milliseconds: u32,
-        _: cbk.Arg,
+        _: CallbackArg,
     ) void {
         const n = @intCast(u63, milliseconds);
         // TODO: check this value can be holded in u63
