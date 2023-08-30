@@ -51,16 +51,16 @@ tree:
 	@tree -I zig-cache -I zig-out -I vendor -I questions -I benchmarks -I build -I "*~"
 
 
-# Dependancies
+# Dependencies
 # ------------
 .PHONY: vendor build-v8 build-v8-linux build-v8-macos
 
 V8_VERSION := 11.1.134
 V8_IMAGE := v8-$(V8_VERSION):$(ARCH)-$(OS)
 
-## Fetch dependancies (op access required)
+## Fetch dependencies (op access required)
 vendor:
-	@printf "\e[36mUpdating git submodules dependancies ...\e[0m\n" && \
+	@printf "\e[36mUpdating git submodules dependencies ...\e[0m\n" && \
 	git submodule update --init --recursive && \
 	git pull --recurse-submodules && \
 	printf "=> Done\n" && \

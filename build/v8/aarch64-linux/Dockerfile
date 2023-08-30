@@ -18,7 +18,7 @@ ARG AWS_SECRET_ACCESS_KEY
 ARG TZ=Europe/Paris
 RUN ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime && echo ${TZ} > /etc/timezone
 
-# dependancies
+# dependencies
 RUN apt-get install -y awscli
 RUN apt-get install -y xz-utils # zig
 RUN apt-get install -y lsb-release wget software-properties-common gnupg # clang 16
