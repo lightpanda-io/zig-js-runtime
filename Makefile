@@ -53,10 +53,15 @@ tree:
 
 # Dependencies
 # ------------
-.PHONY: vendor build-v8 build-v8-linux build-v8-macos
+.PHONY: vendor submodule build-v8 build-v8-linux build-v8-macos
 
 V8_VERSION := 11.1.134
 V8_IMAGE := v8-$(V8_VERSION):$(ARCH)-$(OS)
+
+## Init and update git submodule
+submodule:
+	@git submodule init && \
+	git submodule update
 
 ## Fetch dependencies (op access required)
 vendor:
