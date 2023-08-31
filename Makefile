@@ -12,7 +12,7 @@ else
 endif
 UNAME_M := $(shell uname -m)
 ifeq ($(UNAME_M),x86_64)
-	ARCH := X86_64
+	ARCH := x86_64
 else ifeq ($(UNAME_M),aarch64)
 	ARCH := aarch64
 else ifeq ($(UNAME_M),arm64)
@@ -20,7 +20,7 @@ else ifeq ($(UNAME_M),arm64)
 else
 	$(error "CPU not supported")
 endif
-ifeq ($(OS), macos && ($(ARCH), X86_64))
+ifeq ($(OS), macos && ($(ARCH), x86_64))
 	$(error "OS/CPU not supported")
 endif
 
