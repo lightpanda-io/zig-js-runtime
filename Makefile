@@ -58,11 +58,6 @@ tree:
 V8_VERSION := 11.1.134
 V8_IMAGE := v8-$(V8_VERSION):$(ARCH)-$(OS)
 
-## Init and update git submodule
-submodule:
-	@git submodule init && \
-	git submodule update
-
 ## Fetch dependencies (op access required)
 vendor:
 	@printf "\e[36mUpdating git submodules dependencies ...\e[0m\n" && \
@@ -92,6 +87,39 @@ else ifeq ($(OS), linux)
 build-v8: build-v8-linux
 endif
 
+# Install and build required dependencies commands
+# ------------
+.PHONY: install-submodule
+.PHONY: _install-v8 install-v8-dev install-dev install-v8 install
+
+## Install and build dependencies for release
+install: install-submodule install-v8
+
+## Install and build dependencies for dev
+install-dev: install-submodule install-v8-dev
+
+## Install and build v8 engine for release
+install-v8: _install-v8
+install-v8: mode=release
+install-v8: zig_opts=-Drelease-safe
+
+## Install and build v8 engine for dev
+install-v8-dev: _install-v8
+install-v8-dev: mode=debug
+
+_install-v8:
+	@mkdir -p vendor/v8/$(ARCH)-$(OS)/$(mode)
+	@cd vendor/zig-v8 && \
+	zig build get-tools && \
+	zig build get-v8 && \
+	zig build $(zig_opts) && \
+	cd ../../ && \
+	mv vendor/zig-v8/v8-build/$(ARCH)-$(OS)/$(mode)/ninja/obj/zig/libc_v8.a vendor/v8/$(ARCH)-$(OS)/$(mode)/
+
+## Init and update git submodule
+install-submodule:
+	@git submodule init && \
+	git submodule update
 
 # Zig commands
 # ------------

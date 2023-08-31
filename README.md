@@ -107,32 +107,32 @@ sudo apt install xz-utils \
 
 For MacOS, you only need Python 3.
 
-### Dependencies
+### Install and build dependencies
 
 The project uses git submodule for dependencies.
-The `make submodule` will init and update the submodules in the `vendor/`
+The `make install-submodule` will init and update the submodules in the `vendor/`
 directory.
 
 ```
-make submodule
+make install-submodule
 ```
 
 ### Build v8
 
-Use `zig-v8` deps to build v8 engine from sources.
-The final `zig build` command can take a long time.
+The command `make install-v8-dev` uses `zig-v8` dependency to build v8 engine lib.
+Be aware the build task is very long and cpu consuming.
+
+Build v8 engine for debug/dev version, it creates
+`vendor/v8/$ARCH/debug/libc_v8.a` file.
 
 ```
-cd vendor/zig-v8 && \
-zig build get-tools && \
-zig build get-v8 && \
-zig build # for debug version. Use `zig build -Drelease-safe` for release.
+make install-v8-dev
 ```
 
-Once build, you can copy the lib from `vendor/zig-v8` to `vendor/v8`.
+You should also build a release vesion of v8 with:
+
 ```
-mkdir -p vendor/v8/x86_64-linux/debug
-cp vendor/zig-v8/v8-build/x86_64-linux/debug/ninja/obj/zig/libc_v8.a vendor/v8/x86_64-linux/debug/
+make install-v8
 ```
 
 ## Test
