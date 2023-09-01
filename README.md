@@ -89,6 +89,59 @@ console.log(p.age); // => 41
 console.log(p.name()); // 'Doe'
 ```
 
+## Build
+
+### Prerequisites
+
+jsruntime-lib is written with [Zig](https://ziglang.org/) `0.10.1`. You have to
+install it with the right version in order to build the project.
+
+To be able to build the v8 engine, you have to install some libs:
+
+For Debian/Ubuntu based Linux:
+```
+sudo apt install xz-utils \
+    python3 ca-certificates git \
+    pkg-config libglib2.0-dev
+```
+
+For MacOS, you only need Python 3.
+
+### Install and build dependencies
+
+The project uses git submodule for dependencies.
+The `make install-submodule` will init and update the submodules in the `vendor/`
+directory.
+
+```
+make install-submodule
+```
+
+### Build v8
+
+The command `make install-v8-dev` uses `zig-v8` dependency to build v8 engine lib.
+Be aware the build task is very long and cpu consuming.
+
+Build v8 engine for debug/dev version, it creates
+`vendor/v8/$ARCH/debug/libc_v8.a` file.
+
+```
+make install-v8-dev
+```
+
+You should also build a release vesion of v8 with:
+
+```
+make install-v8
+```
+
+### All in one build
+
+You can run `make intall` and `make install-dev` to install deps all in one.
+
+## Test
+
+You can test the jsruntime-lib by running `make test`.
 
 ## Credits
 
