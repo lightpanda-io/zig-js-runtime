@@ -114,7 +114,7 @@ _install-v8:
 	zig build get-v8 && \
 	zig build $(zig_opts) && \
 	cd ../../ && \
-	mv vendor/zig-v8/v8-build/$(ARCH)-$(OS)/$(mode)/ninja/obj/zig/libc_v8.a vendor/v8/$(ARCH)-$(OS)/$(mode)/
+	cp vendor/zig-v8/v8-build/$(ARCH)-$(OS)/$(mode)/ninja/obj/zig/libc_v8.a vendor/v8/$(ARCH)-$(OS)/$(mode)/
 
 ## Init and update git submodule
 install-submodule:
