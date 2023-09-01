@@ -135,6 +135,10 @@ You should also build a release vesion of v8 with:
 make install-v8
 ```
 
+### All in one build
+
+You can run `make intall` and `make install-dev` to install deps all in one.
+
 ## Test
 
 You can test the jsruntime-lib by running `make test`.
