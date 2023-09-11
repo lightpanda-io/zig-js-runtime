@@ -50,7 +50,7 @@ pub fn checkCases(
     const fba_alloc = fba.allocator();
 
     // cases
-    for (cases) |case, i| {
+    for (cases, 0..) |case, i| {
         test_case += 1;
 
         // prepare script execution

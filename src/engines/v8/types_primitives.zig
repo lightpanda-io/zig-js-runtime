@@ -25,17 +25,17 @@ pub fn nativeToJS(
 
         // floats
         // TODO: what about precision, ie. 1.82 (native) -> 1.8200000524520874 (js)
-        f32 => v8.Number.init(isolate, @floatCast(f32, val)),
+        f32 => v8.Number.init(isolate, @as(f32, @floatCast(val))),
         f64 => v8.Number.init(isolate, val),
 
         // integers signed
-        i8, i16 => v8.Integer.initI32(isolate, @intCast(i32, val)),
+        i8, i16 => v8.Integer.initI32(isolate, @as(i32, @intCast(val))),
         i32 => v8.Integer.initI32(isolate, val),
         i64Num => v8.Number.initBitCastedI64(isolate, val.get()),
         i64 => v8.BigInt.initI64(isolate, val),
 
         // integers unsigned
-        u8, u16 => v8.Integer.initU32(isolate, @intCast(u32, val)),
+        u8, u16 => v8.Integer.initU32(isolate, @as(u32, @intCast(val))),
         u32 => v8.Integer.initU32(isolate, val),
         u64Num => v8.Number.initBitCastedU64(isolate, val.get()),
         u64 => v8.BigInt.initU64(isolate, val),
@@ -145,9 +145,9 @@ pub fn jsToNative(
         i8, ?i8, i16, ?i16 => {
             const v = try js_val.toI32(ctx);
             if (zig_T.is_opt) {
-                return @intCast(zig_T.under_T, v);
+                return @as(zig_T.under_T, @intCast(v));
             }
-            return @intCast(zig_T.T, v);
+            return @as(zig_T.T, @intCast(v));
         },
         i32, ?i32 => return try js_val.toI32(ctx),
         i64Num => {
@@ -166,9 +166,9 @@ pub fn jsToNative(
         u8, ?u8, u16, ?u16 => {
             const v = try js_val.toU32(ctx);
             if (zig_T.under_opt) |under_opt| {
-                return @intCast(under_opt, v);
+                return @as(under_opt, @intCast(v));
             }
-            return @intCast(zig_T.T, v);
+            return @as(zig_T.T, @intCast(v));
         },
         u32, ?u32 => return try js_val.toU32(ctx),
         u64Num, ?u64Num => {

@@ -37,7 +37,7 @@ pub const FuncSync = struct {
         // TODO: Should we do that at reflection?
         comptime var js_args_indexes: [func.args_callback_nb]usize = undefined;
         comptime var x: usize = 0;
-        inline for (func.args) |arg, i| {
+        inline for (func.args, 0..) |arg, i| {
             if (arg.T == Arg) {
                 js_args_indexes[x] = i;
                 x += 1;
@@ -47,8 +47,8 @@ pub const FuncSync = struct {
         // retrieve callback arguments
         // var js_args: [func.args_callback_nb]v8.Value = undefined;
         var js_args = try alloc.alloc(v8.Value, func.args_callback_nb);
-        for (js_args_indexes) |index, i| {
-            js_args[i] = info.getArg(@intCast(u32, index - func.index_offset));
+        for (js_args_indexes, 0..) |index, i| {
+            js_args[i] = info.getArg(@as(u32, @intCast(index - func.index_offset)));
         }
 
         // retrieve callback function
@@ -111,7 +111,7 @@ pub const Func = struct {
         // TODO: Should we do that at reflection?
         comptime var js_args_indexes: [func.args_callback_nb]usize = undefined;
         comptime var x: usize = 0;
-        inline for (func.args) |arg, i| {
+        inline for (func.args, 0..) |arg, i| {
             if (arg.T == Arg) {
                 js_args_indexes[x] = i;
                 x += 1;
@@ -120,8 +120,8 @@ pub const Func = struct {
 
         // retrieve callback arguments
         var js_args_pers = try alloc.alloc(PersistentValue, func.args_callback_nb);
-        for (js_args_indexes) |index, i| {
-            const js_arg = info.getArg(@intCast(u32, index - func.index_offset));
+        for (js_args_indexes, 0..) |index, i| {
+            const js_arg = info.getArg(@as(u32, @intCast(index - func.index_offset)));
             const js_arg_pers = PersistentValue.init(isolate, js_arg);
             js_args_pers[i] = js_arg_pers;
         }
@@ -174,7 +174,7 @@ pub const Func = struct {
         // retrieve JS arguments from persistent handle
         const js_args = try alloc.alloc(v8.Value, self.js_args_pers.len);
         defer alloc.free(js_args);
-        for (self.js_args_pers) |arg, i| {
+        for (self.js_args_pers, 0..) |arg, i| {
             js_args[i] = arg.toValue();
         }
 

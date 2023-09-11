@@ -98,7 +98,7 @@ pub const Type = struct {
                 self.T_refl_index = s.index;
                 break;
             }
-            inline for (s.nested) |nested, i| {
+            inline for (s.nested, 0..) |nested, i| {
                 if (self.under_T() == nested.T) {
                     if (self.under_ptr != null) {
                         const msg = "pointer on nested struct is not allowed, choose a type struct for this use case";
@@ -129,7 +129,7 @@ pub const Type = struct {
             return error.TypeTaggedUnion;
         }
         var union_types: [info.Union.fields.len]Type = undefined;
-        inline for (info.Union.fields) |field, i| {
+        inline for (info.Union.fields, 0..) |field, i| {
             union_types[i] = try Type.reflect(field.field_type, field.name);
         }
         return &union_types;
@@ -209,7 +209,7 @@ const Args = struct {
                 .alignment = @alignOf(self_T.?),
             };
         }
-        inline for (args) |arg, i| {
+        inline for (args, 0..) |arg, i| {
             var x = i;
             if (self_T != null) {
                 x += 1;
@@ -374,7 +374,7 @@ pub const Func = struct {
         var index_offset: usize = 0;
         var callback_index: ?usize = null;
         var args_callback_nb = 0;
-        for (args) |arg, i| {
+        for (args, 0..) |arg, i| {
             if (arg.arg_type.? == void) {
                 // TODO: there is a bug with void paramater => avoid for now
                 const msg = "func void parameters are not allowed for now";
@@ -505,7 +505,7 @@ pub const StructNested = struct {
         const info = @typeInfo(T);
 
         var fields: [info.Struct.fields.len]Type = undefined;
-        inline for (info.Struct.fields) |field, i| {
+        inline for (info.Struct.fields, 0..) |field, i| {
             fields[i] = try Type.reflect(field.field_type, field.name);
         }
         return .{ .T = T, .fields = &fields };
@@ -743,7 +743,7 @@ pub const Struct = struct {
         if (@hasField(real_T, "proto")) {
 
             // check the 'proto' field
-            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
+            inline for (@typeInfo(real_T).Struct.fields, 0..) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
                     continue;
                 }
@@ -951,7 +951,7 @@ pub const Struct = struct {
 
         for (getters) |*getter| {
             var setter_index: ?u8 = null;
-            for (setters) |setter, i| {
+            for (setters, 0..) |setter, i| {
                 if (std.mem.eql(u8, getter.js_name, setter.js_name)) {
                     setter_index = i;
                     break;
@@ -1003,14 +1003,14 @@ pub const Struct = struct {
 };
 
 fn lookupPrototype(comptime all: []Struct) Error!void {
-    inline for (all) |*s, index| {
+    inline for (all, 0..) |*s, index| {
         s.index = index;
         if (s.proto_T == null) {
             // does not have a prototype
             continue;
         }
         // loop over all structs to find proto
-        inline for (all) |proto, proto_index| {
+        inline for (all, 0..) |proto, proto_index| {
             if (proto.T != s.proto_T.?) {
                 // type is not equal to prototype type
                 continue;
@@ -1047,7 +1047,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // reflect each type
         var all: [types_fields.len]Struct = undefined;
-        inline for (types_fields) |field, i| {
+        inline for (types_fields, 0..) |field, i| {
             const T = @field(types, field.name);
             all[i] = try Struct.reflect(T, i);
         }
@@ -1082,7 +1082,7 @@ fn jsName(comptime name: []const u8) []u8 {
     comptime {
         var js_name: [name.len]u8 = undefined;
         js_name[0] = std.ascii.toLower(name[0]);
-        for (name) |char, i| {
+        for (name, 0..) |char, i| {
             if (i == 0) {
                 continue;
             }

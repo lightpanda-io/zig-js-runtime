@@ -35,7 +35,7 @@ pub fn GenerateTable(
     }
 
     var fields: [columns_nb]std.builtin.Type.StructField = undefined;
-    inline for (row_shape) |T, i| {
+    inline for (row_shape, 0..) |T, i| {
         if (@TypeOf(T) != type) {
             @compileError("columns elements should be of type 'type'");
         }
@@ -105,10 +105,10 @@ pub fn GenerateTable(
             // calc max size for each column
             // looking for size value in header and each row
             var max_sizes: [columns_nb]usize = undefined;
-            for (self.head) |header, i| {
+            for (self.head, 0..) |header, i| {
                 max_sizes[i] = try utf8Size(header);
             }
-            for (self.rows) |_, row_i| {
+            for (self.rows, 0..) |_, row_i| {
                 comptime var col_i: usize = 0;
                 inline while (col_i < columns_nb) {
                     const arg = self.rows[row_i][col_i];

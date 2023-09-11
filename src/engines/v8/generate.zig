@@ -112,7 +112,7 @@ fn getArgs(
     var args: func.args_T = undefined;
 
     // iter on function expected arguments
-    inline for (func.args) |arg, i| {
+    inline for (func.args, 0..) |arg, i| {
         var value: arg.T = undefined;
 
         if (arg.isNative()) {
@@ -202,7 +202,7 @@ pub fn setNativeObject(
     } else {
         // use the refs mechanism
         var int_ptr = try alloc.create(usize);
-        int_ptr.* = @ptrToInt(obj_ptr);
+        int_ptr.* = @intFromPtr(obj_ptr);
         ext = v8.External.init(isolate, int_ptr);
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
@@ -333,7 +333,7 @@ fn getNativeObject(
                 // memory layout is fixed through prototype chain of T_refl
                 // with the proto Type at the begining of the address of the high level Type
                 // so we can safely use @ptrCast
-                obj_ptr = @ptrCast(*T, ptr);
+                obj_ptr = @as(*T, @ptrCast(ptr));
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
@@ -574,7 +574,7 @@ fn staticAttrsKeys(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
         keys[i] = v8.String.initUtf8(isolate, field.name).toName();
     }
 }
@@ -589,7 +589,7 @@ fn staticAttrsValues(
     }
     const attrs_T = T_refl.static_attrs_T.?;
     const attrs = comptime T_refl.staticAttrs(attrs_T);
-    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
         const value = comptime @field(attrs, field.name);
         values[i] = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
     }
@@ -605,7 +605,7 @@ fn setStaticAttrs(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields) |_, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |_, i| {
         template.set(keys[i], values[i], v8.PropertyAttribute.ReadOnly + v8.PropertyAttribute.DontDelete);
     }
 }

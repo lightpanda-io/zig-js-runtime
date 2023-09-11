@@ -160,7 +160,7 @@ pub const Env = struct {
         // APIs prototype
         // set the prototype of each corresponding Function
         // TODO: is there a better way to do it at the Template level?
-        inline for (apis) |api, i| {
+        inline for (apis, 0..) |api, i| {
             if (api.T_refl.proto_index) |proto_index| {
                 const cstr_tpl = gen.getTpl(i).tpl;
                 const proto_tpl = gen.getTpl(proto_index).tpl;
