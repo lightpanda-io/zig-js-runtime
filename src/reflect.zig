@@ -256,12 +256,6 @@ const FuncKind = enum {
     method,
 
     fn reflect(comptime T: type, decl: std.builtin.Type.Declaration) FuncKind {
-
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return FuncKind.ignore;
-        }
-
         // exclude declarations who are not functions
         if (@typeInfo(@TypeOf(@field(T, decl.name))) != .Fn) {
             return FuncKind.ignore;
@@ -473,12 +467,6 @@ pub const StructNested = struct {
     fields: []Type,
 
     fn isNested(comptime T: type, comptime decl: std.builtin.Type.Declaration) bool {
-
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return false;
-        }
-
         // special keywords
         // TODO: and "prototype"?
         if (std.mem.eql(u8, decl.name, "Self")) {
@@ -605,10 +593,6 @@ pub const Struct = struct {
     }
 
     fn AttrT(comptime T: type, comptime decl: std.builtin.Type.Declaration) ?type {
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return null;
-        }
         // exclude declarations not starting with _
         if (decl.name[0] != '_') {
             return null;
