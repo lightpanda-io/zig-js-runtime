@@ -933,7 +933,7 @@ pub const Struct = struct {
             }
         }
 
-        for (getters) |*getter| {
+        for (&getters) |*getter| {
             var setter_index: ?u8 = null;
             for (setters, 0..) |setter, i| {
                 if (std.mem.eql(u8, getter.js_name, setter.js_name)) {
