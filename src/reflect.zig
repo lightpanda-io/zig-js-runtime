@@ -327,7 +327,7 @@ pub const Func = struct {
         }
 
         // check args length
-        var args = func.Fn.args;
+        var args = func.Fn.params;
         if (kind != .constructor and args.len == 0) {
             // TODO: handle "class methods"
             const msg = "getter/setter/methods should have at least 1 argument, self";
@@ -347,7 +347,7 @@ pub const Func = struct {
             if (kind != .constructor) {
                 // ignore self arg
                 args_start = 1;
-                self_T = args[0].arg_type.?;
+                self_T = args[0].type.?;
             }
             if (kind == .setter and self_T.? != *struct_T.?) {
                 const msg = "setter first argument should be *self";
@@ -369,7 +369,7 @@ pub const Func = struct {
         var callback_index: ?usize = null;
         var args_callback_nb = 0;
         for (args, 0..) |arg, i| {
-            if (arg.arg_type.? == void) {
+            if (arg.type.? == void) {
                 // TODO: there is a bug with void paramater => avoid for now
                 const msg = "func void parameters are not allowed for now";
                 fmtErr(msg.len, msg, T);
@@ -383,7 +383,7 @@ pub const Func = struct {
             }
             const arg_name = try itoa(x);
 
-            args_types[i] = try Type.reflect(arg.arg_type.?, arg_name);
+            args_types[i] = try Type.reflect(arg.type.?, arg_name);
 
             // allocator
             if (args_types[i].T == std.mem.Allocator) {
@@ -759,7 +759,7 @@ pub const Struct = struct {
             if (proto_func != .Fn) {
                 return error.StructProtoCastNotFunction;
             } else {
-                const proto_args = proto_func.Fn.args;
+                const proto_args = proto_func.Fn.params;
                 if (proto_args.len != 1) {
                     return error.StructProtoCastWrongFunction;
                 }
