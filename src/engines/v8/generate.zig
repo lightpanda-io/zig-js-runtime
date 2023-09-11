@@ -325,7 +325,7 @@ fn getNativeObject(
             // memory is fixed
             // ensure the pointer is aligned (no-op at runtime)
             // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr = @alignCast(@alignOf(T_refl.Self()), ext);
+            const ptr = @as(@alignOf(T_refl.Self()), @alignCast(ext));
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
                 obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ptr});
