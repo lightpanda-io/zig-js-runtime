@@ -130,7 +130,7 @@ pub const Type = struct {
         }
         var union_types: [info.Union.fields.len]Type = undefined;
         inline for (info.Union.fields, 0..) |field, i| {
-            union_types[i] = try Type.reflect(field.field_type, field.name);
+            union_types[i] = try Type.reflect(field.type, field.name);
         }
         return &union_types;
     }
@@ -203,7 +203,7 @@ const Args = struct {
             const name = try itoa(0);
             fields[0] = std.builtin.Type.StructField{
                 .name = name,
-                .field_type = self_T.?,
+                .type = self_T.?,
                 .default_value = null,
                 .is_comptime = false,
                 .alignment = @alignOf(self_T.?),
@@ -216,7 +216,7 @@ const Args = struct {
             }
             fields[x] = std.builtin.Type.StructField{
                 .name = arg.name.?,
-                .field_type = arg.T,
+                .type = arg.T,
                 .default_value = null,
                 .is_comptime = false,
                 .alignment = @alignOf(arg.T),
@@ -494,7 +494,7 @@ pub const StructNested = struct {
 
         var fields: [info.Struct.fields.len]Type = undefined;
         inline for (info.Struct.fields, 0..) |field, i| {
-            fields[i] = try Type.reflect(field.field_type, field.name);
+            fields[i] = try Type.reflect(field.type, field.name);
         }
         return .{ .T = T, .fields = &fields };
     }
@@ -667,7 +667,7 @@ pub const Struct = struct {
             }
             fields[attrs_done] = std.builtin.Type.StructField{
                 .name = decl.name[1..decl.name.len], // remove _
-                .field_type = attr_T.?,
+                .type = attr_T.?,
                 .default_value = null,
                 .is_comptime = false, // TODO: should be true here?
                 .alignment = if (@sizeOf(attr_T.?) > 0) @alignOf(attr_T.?) else 0,
@@ -733,7 +733,7 @@ pub const Struct = struct {
                 }
 
                 // check the 'proto' field is not a pointer
-                if (@typeInfo(field.field_type) == .Pointer) {
+                if (@typeInfo(field.type) == .Pointer) {
                     const msg = "struct {s} 'proto' field should not be a Pointer";
                     fmtErr(msg.len, msg, T);
                     return error.StructProtoPointer;
@@ -749,7 +749,7 @@ pub const Struct = struct {
                     }
                 }
 
-                proto_res = field.field_type;
+                proto_res = field.type;
                 break;
             }
         } else if (@hasDecl(proto_T.?, "protoCast")) {

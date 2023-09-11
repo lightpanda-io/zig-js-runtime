@@ -43,7 +43,7 @@ pub fn GenerateTable(
         const name = try std.fmt.bufPrint(buf[0..], "{d}", .{i});
         fields[i] = std.builtin.Type.StructField{
             .name = name,
-            .field_type = T,
+            .type = T,
             .default_value = null,
             .is_comptime = false,
             .alignment = @alignOf(T),
