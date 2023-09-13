@@ -1051,7 +1051,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
         try lookupPrototype(&all);
 
         // look Types for corresponding Struct
-        inline for (all) |*s| {
+        inline for (&all) |*s| {
             try s.lookupTypes(&all);
         }
 
