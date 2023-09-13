@@ -618,11 +618,16 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
 
+        const LoadError = error{
+            NoPrototypeTemplateProvided,
+            WrongPrototypeTemplateProvided,
+        };
+
         pub fn load(
             isolate: v8.Isolate,
             globals: v8.ObjectTemplate,
             proto_tpl: ?TPL,
-        ) !TPL {
+        ) LoadError!TPL {
 
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
@@ -650,10 +655,10 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
             // set the optional prototype of the constructor
             if (comptime T_refl.proto_index != null) {
                 if (proto_tpl == null) {
-                    return error.NoPrototypeTemplateProvided;
+                    return LoadError.NoPrototypeTemplateProvided;
                 }
                 if (T_refl.proto_index.? != proto_tpl.?.index) {
-                    return error.WrongPrototypeTemplateProvided;
+                    return LoadError.WrongPrototypeTemplateProvided;
                 }
                 cstr_tpl.inherit(proto_tpl.?.tpl);
             }
