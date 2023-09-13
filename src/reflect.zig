@@ -1044,7 +1044,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // sort to follow prototype chain order
         // ie. parents will be listed before children
-        std.sort.sort(Struct, &all, {}, Struct.lessThan);
+        std.mem.sort(Struct, &all, {}, Struct.lessThan);
 
         // look for prototype chain
         // second pass, as sort as modified the index reference
