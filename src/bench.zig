@@ -24,7 +24,7 @@ pub fn call(
             start = try std.time.Instant.now();
         }
 
-        const res = @call(.{}, func, args);
+        const res = @call(.auto, func, args);
         if (i == 0) {
             // TODO: handle more return cases
             const info = @typeInfo(@TypeOf(res));

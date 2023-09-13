@@ -1147,7 +1147,7 @@ const Error = error{
 
 // ensure reflection fails with an error from Error set
 fn ensureErr(arg: anytype, err: Error) !void {
-    if (@call(.{}, do, .{arg})) |_| {
+    if (@call(.auto, do, .{arg})) |_| {
         std.debug.print("reflect error: {any}\n", .{arg});
         return error.Reflect;
     } else |e| {

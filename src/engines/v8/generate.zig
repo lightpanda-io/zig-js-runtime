@@ -328,7 +328,7 @@ fn getNativeObject(
             const ptr = @as(@alignOf(T_refl.Self()), @alignCast(ext));
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
-                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ptr});
+                obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
             } else {
                 // memory layout is fixed through prototype chain of T_refl
                 // with the proto Type at the begining of the address of the high level Type
@@ -375,7 +375,7 @@ fn generateConstructor(
 
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
-            const obj = @call(.{}, cstr_func, args);
+            const obj = @call(.auto, cstr_func, args);
 
             // bind native object to JS new object
             setNativeObject(
@@ -419,7 +419,7 @@ fn generateGetter(
 
             // call the corresponding zig object method
             const getter_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, getter_func, args);
+            const res = @call(.auto, getter_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(
@@ -486,7 +486,7 @@ fn generateSetter(
 
             // call the corresponding zig object method
             const setter_func = @field(T_refl.T, func.name);
-            _ = @call(.{}, setter_func, .{ obj_ptr, zig_value }); // return should be void
+            _ = @call(.auto, setter_func, .{ obj_ptr, zig_value }); // return should be void
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
@@ -526,7 +526,7 @@ fn generateMethod(
 
             // call native func
             const method_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, method_func, args);
+            const res = @call(.auto, method_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(
