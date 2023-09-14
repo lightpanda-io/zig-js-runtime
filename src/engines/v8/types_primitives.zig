@@ -74,12 +74,9 @@ pub fn jsToNative(
 
     // JS Null or Undefined value
     if (js_val.isNull() or js_val.isUndefined()) {
-        // distinct comptime condition, otherwise compile error
-        comptime {
-            // if Native optional type return null
-            if (zig_T.under_opt != null) {
-                return null;
-            }
+        // if Native optional type return null
+        if (comptime zig_T.under_opt != null) {
+            return null;
         }
         // Here we should normally return an error
         // ie. a JS Null/Undefined value has been used for a non-optional Native type.

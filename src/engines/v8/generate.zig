@@ -76,13 +76,11 @@ fn getNativeArg(
 
     // JS Null or Undefined value
     if (js_value.isNull() or js_value.isUndefined()) {
-        comptime {
-            // if Native optional type return null
-            if (arg_T.under_opt != null) {
-                return null;
-            }
-            // TODO: else return error "Argument x is not an object"
+        // if Native optional type return null
+        if (comptime arg_T.under_opt != null) {
+            return null;
         }
+        // TODO: else return error "Argument x is not an object"
     }
 
     // JS object
