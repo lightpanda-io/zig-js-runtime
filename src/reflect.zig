@@ -1,4 +1,5 @@
 const std = @import("std");
+const sort = @import("block.zig");
 const builtin = @import("builtin");
 
 const public = @import("api.zig");
@@ -1044,7 +1045,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // sort to follow prototype chain order
         // ie. parents will be listed before children
-        std.mem.sort(Struct, &all, {}, Struct.lessThan);
+        sort.block(Struct, &all, {}, Struct.lessThan);
 
         // look for prototype chain
         // second pass, as sort as modified the index reference
