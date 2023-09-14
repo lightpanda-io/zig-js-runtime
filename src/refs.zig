@@ -19,7 +19,8 @@ pub fn addObject(alloc: std.mem.Allocator, key: usize, value: usize) !void {
 pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
 
     // use the object pointer (key) to retrieve the API index (value) in the map
-    const key: *usize = @ptrCast(@as(8, @alignCast(ptr)));
+    const ptr_aligned: *align(8) anyopaque = @alignCast(ptr);
+    const key: *usize = @ptrCast(ptr_aligned);
     const T_index = map.get(key.*);
     if (T_index == null) {
         return error.NullReference;
