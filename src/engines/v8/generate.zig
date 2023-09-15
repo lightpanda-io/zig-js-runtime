@@ -404,13 +404,16 @@ fn generateGetter(
             // TODO: check func params length
 
             // retrieve the zig object
-            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
             var args: func.args_T = undefined;
-            const self_T = @TypeOf(@field(args, "0"));
-            if (self_T == T_refl.Self()) {
-                @field(args, "0") = obj_ptr.*;
-            } else if (self_T == *T_refl.Self()) {
-                @field(args, "0") = obj_ptr;
+
+            if (!comptime T_refl.isEmpty()) {
+                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+                const self_T = @TypeOf(@field(args, "0"));
+                if (self_T == T_refl.Self()) {
+                    @field(args, "0") = obj_ptr.*;
+                } else if (self_T == *T_refl.Self()) {
+                    @field(args, "0") = obj_ptr;
+                }
             }
 
             // call the corresponding zig object method
@@ -512,12 +515,14 @@ fn generateMethod(
             var args = getArgs(T_refl, all_T, func, info, isolate, ctx);
 
             // retrieve the zig object
-            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
-            const self_T = @TypeOf(@field(args, "0"));
-            if (self_T == T_refl.Self()) {
-                @field(args, "0") = obj_ptr.*;
-            } else if (self_T == *T_refl.Self()) {
-                @field(args, "0") = obj_ptr;
+            if (!comptime T_refl.isEmpty()) {
+                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+                const self_T = @TypeOf(@field(args, "0"));
+                if (self_T == T_refl.Self()) {
+                    @field(args, "0") = obj_ptr.*;
+                } else if (self_T == *T_refl.Self()) {
+                    @field(args, "0") = obj_ptr;
+                }
             }
 
             // call native func
