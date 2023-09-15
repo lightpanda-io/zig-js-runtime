@@ -97,7 +97,7 @@ fn getNativeArg(
     return value;
 }
 
-// This function can only be used by function callbacks (ie. construcotr and methods)
+// This function can only be used by function callbacks (ie. constructor and methods)
 // as it takes a v8.FunctionCallbackInfo (with a getArg method).
 fn getArgs(
     comptime T_refl: refl.Struct,
