@@ -111,6 +111,12 @@ fn getArgs(
 
     // iter on function expected arguments
     inline for (func.args, 0..) |arg, i| {
+
+        // do not set empty arg
+        if (@sizeOf(arg.T) == 0) {
+            continue;
+        }
+
         var value: arg.T = undefined;
 
         if (arg.isNative()) {

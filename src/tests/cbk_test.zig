@@ -72,7 +72,7 @@ pub fn exec(
     var cases_cbk_sync_without_arg = [_]tests.Case{
         // traditional anonymous function
         .{
-            .src =
+            .src = 
             \\let n = 1;
             \\function f() {n++};
             \\window.cbkSyncWithoutArg(f);
@@ -82,7 +82,7 @@ pub fn exec(
         .{ .src = "n;", .ex = "2" },
         // arrow function
         .{
-            .src =
+            .src = 
             \\let m = 1;
             \\window.cbkSyncWithoutArg(() => m++);
             ,
@@ -96,7 +96,7 @@ pub fn exec(
     var cases_cbk_sync_with_arg = [_]tests.Case{
         // traditional anonymous function
         .{
-            .src =
+            .src = 
             \\let x = 1;
             \\function f(a) {x = x + a};
             \\window.cbkSyncWithArg(f, 2);
@@ -106,7 +106,7 @@ pub fn exec(
         .{ .src = "x;", .ex = "3" },
         // arrow function
         .{
-            .src =
+            .src = 
             \\let y = 1;
             \\window.cbkSyncWithArg((a) => y = y + a, 2);
             ,
@@ -120,7 +120,7 @@ pub fn exec(
     var cases_cbk_async = [_]tests.Case{
         // traditional anonymous function
         .{
-            .src =
+            .src = 
             \\let o = 1;
             \\function f() {
             \\o++;
@@ -132,7 +132,7 @@ pub fn exec(
         },
         // arrow functional
         .{
-            .src =
+            .src = 
             \\let p = 1;
             \\window.cbkAsync(() => {
             \\p++;
@@ -148,7 +148,7 @@ pub fn exec(
     var cases_cbk_async_with_arg = [_]tests.Case{
         // traditional anonymous function
         .{
-            .src =
+            .src = 
             \\let i = 1;
             \\function f(a) {
             \\i = i + a;
@@ -160,7 +160,7 @@ pub fn exec(
         },
         // arrow functional
         .{
-            .src =
+            .src = 
             \\let j = 1;
             \\window.cbkAsyncWithArg((a) => {
             \\j = j + a;
