@@ -522,7 +522,8 @@ pub const Struct = struct {
     static_attrs_T: ?type,
 
     // struct functions
-    constructor: ?Func,
+    has_constructor: bool,
+    constructor: Func,
 
     getters: []Func,
     setters: []Func,
@@ -568,8 +569,8 @@ pub const Struct = struct {
     }
 
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
-        if (self.constructor) |*constructor| {
-            try constructor.lookupTypes(structs);
+        if (self.has_constructor) {
+            try self.constructor.lookupTypes(structs);
         }
         inline for (self.getters) |*getter| {
             try getter.lookupTypes(structs);
@@ -893,7 +894,8 @@ pub const Struct = struct {
             }
         }
 
-        var constructor: ?Func = null;
+        var constructor: Func = undefined;
+        var has_constructor = false;
         var getters: [getters_nb]Func = undefined;
         var setters: [setters_nb]Func = undefined;
         var methods: [methods_nb]Func = undefined;
@@ -917,6 +919,7 @@ pub const Struct = struct {
             switch (kind) {
                 .constructor => {
                     constructor = func_reflected;
+                    has_constructor = true;
                 },
                 .getter => {
                     getters[getters_done] = func_reflected;
@@ -976,6 +979,7 @@ pub const Struct = struct {
             .proto_T = proto_T,
 
             // struct functions
+            .has_constructor = has_constructor,
             .constructor = constructor,
             .getters = getters[0..],
             .setters = setters[0..],

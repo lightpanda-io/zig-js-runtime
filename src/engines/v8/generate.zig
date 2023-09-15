@@ -323,7 +323,7 @@ fn getNativeObject(
             // memory is fixed
             // ensure the pointer is aligned (no-op at runtime)
             // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr = @as(@alignOf(T_refl.Self()), @alignCast(ext));
+            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(ext);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
                 obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
@@ -347,7 +347,7 @@ fn getNativeObject(
 fn generateConstructor(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
-    comptime func_cstr: ?refl.Func,
+    comptime func: refl.Func,
 ) v8.FunctionCallback {
     return struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
@@ -357,11 +357,9 @@ fn generateConstructor(
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
 
-            // check illegal constructor
-            if (func_cstr == null) {
+            if (!comptime T_refl.has_constructor) {
                 return throwTypeError("Illegal constructor", info.getReturnValue(), isolate);
             }
-            const func = func_cstr.?;
 
             // check func params length
             if (!checkArgsLen(T_refl.name, func, info, isolate)) {
