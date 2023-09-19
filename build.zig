@@ -196,5 +196,22 @@ pub fn packages(comptime vendor_path: []const u8) type {
             });
             step.linkLibrary(lib);
         }
+
+        pub fn add(
+            step: *std.build.CompileStep,
+            options: Options,
+        ) !void {
+            const jsruntime_mod = step.step.owner.createModule(.{
+                .source_file = .{ .path = vendor_path ++ "/src/api.zig" },
+                .dependencies = &[_]std.build.ModuleDependency{
+                    .{ .name = "jsruntime_build_options", .module = options.opts.createModule() },
+                    .{ .name = "tigerbeetle-io", .module = Self.tigerbeetle_io(step) },
+                    .{ .name = "v8", .module = Self.zig_v8(step) },
+                },
+            });
+            try Self.v8(step, step.optimize);
+
+            step.addModule("jsruntime", jsruntime_mod);
+        }
     };
 }
