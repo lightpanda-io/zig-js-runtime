@@ -76,13 +76,11 @@ fn getNativeArg(
 
     // JS Null or Undefined value
     if (js_value.isNull() or js_value.isUndefined()) {
-        comptime {
-            // if Native optional type return null
-            if (arg_T.under_opt != null) {
-                return null;
-            }
-            // TODO: else return error "Argument x is not an object"
+        // if Native optional type return null
+        if (comptime arg_T.under_opt != null) {
+            return null;
         }
+        // TODO: else return error "Argument x is not an object"
     }
 
     // JS object
@@ -99,7 +97,7 @@ fn getNativeArg(
     return value;
 }
 
-// This function can only be used by function callbacks (ie. construcotr and methods)
+// This function can only be used by function callbacks (ie. constructor and methods)
 // as it takes a v8.FunctionCallbackInfo (with a getArg method).
 fn getArgs(
     comptime T_refl: refl.Struct,
@@ -112,7 +110,13 @@ fn getArgs(
     var args: func.args_T = undefined;
 
     // iter on function expected arguments
-    inline for (func.args) |arg, i| {
+    inline for (func.args, 0..) |arg, i| {
+
+        // do not set empty arg
+        if (@sizeOf(arg.T) == 0) {
+            continue;
+        }
+
         var value: arg.T = undefined;
 
         if (arg.isNative()) {
@@ -202,7 +206,7 @@ pub fn setNativeObject(
     } else {
         // use the refs mechanism
         var int_ptr = try alloc.create(usize);
-        int_ptr.* = @ptrToInt(obj_ptr);
+        int_ptr.* = @intFromPtr(obj_ptr);
         ext = v8.External.init(isolate, int_ptr);
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
@@ -325,15 +329,15 @@ fn getNativeObject(
             // memory is fixed
             // ensure the pointer is aligned (no-op at runtime)
             // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr = @alignCast(@alignOf(T_refl.Self()), ext);
+            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(ext);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
-                obj_ptr = @call(.{}, @field(T_refl.T, "protoCast"), .{ptr});
+                obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
             } else {
                 // memory layout is fixed through prototype chain of T_refl
                 // with the proto Type at the begining of the address of the high level Type
                 // so we can safely use @ptrCast
-                obj_ptr = @ptrCast(*T, ptr);
+                obj_ptr = @as(*T, @ptrCast(ptr));
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
@@ -349,7 +353,7 @@ fn getNativeObject(
 fn generateConstructor(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
-    comptime func_cstr: ?refl.Func,
+    comptime func: refl.Func,
 ) v8.FunctionCallback {
     return struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
@@ -359,11 +363,9 @@ fn generateConstructor(
             const isolate = info.getIsolate();
             const ctx = isolate.getCurrentContext();
 
-            // check illegal constructor
-            if (func_cstr == null) {
+            if (!comptime T_refl.has_constructor) {
                 return throwTypeError("Illegal constructor", info.getReturnValue(), isolate);
             }
-            const func = func_cstr.?;
 
             // check func params length
             if (!checkArgsLen(T_refl.name, func, info, isolate)) {
@@ -375,7 +377,7 @@ fn generateConstructor(
 
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
-            const obj = @call(.{}, cstr_func, args);
+            const obj = @call(.auto, cstr_func, args);
 
             // bind native object to JS new object
             setNativeObject(
@@ -408,18 +410,21 @@ fn generateGetter(
             // TODO: check func params length
 
             // retrieve the zig object
-            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
             var args: func.args_T = undefined;
-            const self_T = @TypeOf(@field(args, "0"));
-            if (self_T == T_refl.Self()) {
-                @field(args, "0") = obj_ptr.*;
-            } else if (self_T == *T_refl.Self()) {
-                @field(args, "0") = obj_ptr;
+
+            if (!comptime T_refl.isEmpty()) {
+                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+                const self_T = @TypeOf(@field(args, "0"));
+                if (self_T == T_refl.Self()) {
+                    @field(args, "0") = obj_ptr.*;
+                } else if (self_T == *T_refl.Self()) {
+                    @field(args, "0") = obj_ptr;
+                }
             }
 
             // call the corresponding zig object method
             const getter_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, getter_func, args);
+            const res = @call(.auto, getter_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(
@@ -486,7 +491,7 @@ fn generateSetter(
 
             // call the corresponding zig object method
             const setter_func = @field(T_refl.T, func.name);
-            _ = @call(.{}, setter_func, .{ obj_ptr, zig_value }); // return should be void
+            _ = @call(.auto, setter_func, .{ obj_ptr, zig_value }); // return should be void
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
@@ -516,17 +521,19 @@ fn generateMethod(
             var args = getArgs(T_refl, all_T, func, info, isolate, ctx);
 
             // retrieve the zig object
-            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
-            const self_T = @TypeOf(@field(args, "0"));
-            if (self_T == T_refl.Self()) {
-                @field(args, "0") = obj_ptr.*;
-            } else if (self_T == *T_refl.Self()) {
-                @field(args, "0") = obj_ptr;
+            if (!comptime T_refl.isEmpty()) {
+                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+                const self_T = @TypeOf(@field(args, "0"));
+                if (self_T == T_refl.Self()) {
+                    @field(args, "0") = obj_ptr.*;
+                } else if (self_T == *T_refl.Self()) {
+                    @field(args, "0") = obj_ptr;
+                }
             }
 
             // call native func
             const method_func = @field(T_refl.T, func.name);
-            const res = @call(.{}, method_func, args);
+            const res = @call(.auto, method_func, args);
 
             // return to javascript the result
             const js_val = setReturnType(
@@ -574,7 +581,7 @@ fn staticAttrsKeys(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
         keys[i] = v8.String.initUtf8(isolate, field.name).toName();
     }
 }
@@ -589,7 +596,7 @@ fn staticAttrsValues(
     }
     const attrs_T = T_refl.static_attrs_T.?;
     const attrs = comptime T_refl.staticAttrs(attrs_T);
-    inline for (@typeInfo(attrs_T).Struct.fields) |field, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
         const value = comptime @field(attrs, field.name);
         values[i] = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
     }
@@ -605,7 +612,7 @@ fn setStaticAttrs(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields) |_, i| {
+    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |_, i| {
         template.set(keys[i], values[i], v8.PropertyAttribute.ReadOnly + v8.PropertyAttribute.DontDelete);
     }
 }
@@ -618,11 +625,16 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
 
+        const LoadError = error{
+            NoPrototypeTemplateProvided,
+            WrongPrototypeTemplateProvided,
+        };
+
         pub fn load(
             isolate: v8.Isolate,
             globals: v8.ObjectTemplate,
             proto_tpl: ?TPL,
-        ) !TPL {
+        ) LoadError!TPL {
 
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
@@ -650,10 +662,10 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
             // set the optional prototype of the constructor
             if (comptime T_refl.proto_index != null) {
                 if (proto_tpl == null) {
-                    return error.NoPrototypeTemplateProvided;
+                    return LoadError.NoPrototypeTemplateProvided;
                 }
                 if (T_refl.proto_index.? != proto_tpl.?.index) {
-                    return error.WrongPrototypeTemplateProvided;
+                    return LoadError.WrongPrototypeTemplateProvided;
                 }
                 cstr_tpl.inherit(proto_tpl.?.tpl);
             }

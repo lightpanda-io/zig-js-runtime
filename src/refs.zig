@@ -19,7 +19,8 @@ pub fn addObject(alloc: std.mem.Allocator, key: usize, value: usize) !void {
 pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
 
     // use the object pointer (key) to retrieve the API index (value) in the map
-    const key = @ptrCast(*usize, @alignCast(8, ptr));
+    const ptr_aligned: *align(@alignOf(usize)) anyopaque = @alignCast(ptr);
+    const key: *usize = @ptrCast(ptr_aligned);
     const T_index = map.get(key.*);
     if (T_index == null) {
         return error.NullReference;
@@ -32,7 +33,7 @@ pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) 
             if (!T_refl.isEmpty()) { // stage1: condition is needed for empty structs
                 // go through the "proto" object chain
                 // to retrieve the good object corresponding to T
-                const target_ptr = @intToPtr(*T_refl.Self(), key.*);
+                const target_ptr: *T_refl.Self() = @ptrFromInt(key.*);
                 return try getRealObject(T, target_ptr);
             }
         }

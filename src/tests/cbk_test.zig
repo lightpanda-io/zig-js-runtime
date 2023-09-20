@@ -28,7 +28,7 @@ pub const Window = struct {
         callback: Callback,
         milliseconds: u32,
     ) void {
-        const n = @intCast(u63, milliseconds);
+        const n: u63 = @intCast(milliseconds);
         // TODO: check this value can be holded in u63
         loop.timeout(n * std.time.ns_per_ms, callback);
     }
@@ -40,7 +40,7 @@ pub const Window = struct {
         milliseconds: u32,
         _: CallbackArg,
     ) void {
-        const n = @intCast(u63, milliseconds);
+        const n: u63 = @intCast(milliseconds);
         // TODO: check this value can be holded in u63
         loop.timeout(n * std.time.ns_per_ms, callback);
     }

@@ -38,7 +38,7 @@ pub fn compile(comptime types: anytype) []API {
 
         // generate APIs
         var apis: [all_T.len]API = undefined;
-        inline for (all_T) |T_refl, i| {
+        inline for (all_T, 0..) |T_refl, i| {
             const loader = loadFn(T_refl, all_T);
             apis[i] = API{ .T_refl = T_refl, .load = loader };
         }
@@ -66,7 +66,7 @@ pub fn load(
     comptime apis: []API,
     tpls: []TPL,
 ) !void {
-    inline for (apis) |api, i| {
+    inline for (apis, 0..) |api, i| {
         if (api.T_refl.proto_index == null) {
             tpls[i] = try api.load(isolate, globals, null);
         } else {

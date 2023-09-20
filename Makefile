@@ -1,6 +1,8 @@
 # Variables
 # ---------
 
+ZIG := zig
+
 # OS and ARCH
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
@@ -101,7 +103,7 @@ install-dev: install-submodule install-v8-dev
 ## Install and build v8 engine for release
 install-v8: _install-v8
 install-v8: mode=release
-install-v8: zig_opts=-Drelease-safe
+install-v8: zig_opts=--Doptimize=ReleaseSafe
 
 ## Install and build v8 engine for dev
 install-v8-dev: _install-v8
@@ -110,9 +112,9 @@ install-v8-dev: mode=debug
 _install-v8:
 	@mkdir -p vendor/v8/$(ARCH)-$(OS)/$(mode)
 	@cd vendor/zig-v8 && \
-	zig build get-tools && \
-	zig build get-v8 && \
-	zig build $(zig_opts) && \
+	$(ZIG) build get-tools && \
+	$(ZIG) build get-v8 && \
+	$(ZIG) build $(zig_opts) && \
 	cd ../../ && \
 	cp vendor/zig-v8/v8-build/$(ARCH)-$(OS)/$(mode)/ninja/obj/zig/libc_v8.a vendor/v8/$(ARCH)-$(OS)/$(mode)/
 
@@ -128,12 +130,12 @@ install-submodule:
 ## Build in debug mode
 build:
 	@printf "\e[36mBuilding (debug)...\e[0m\n"
-	@zig build bench -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@$(ZIG) build bench -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 build-release:
 	@printf "\e[36mBuilding (release safe)...\e[0m\n"
-	@zig build -Drelease-safe -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@$(ZIG) build -Doptimize=ReleaseSafe -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mBuild OK\e[0m\n"
 
 ## Run the benchmark in release-safe mode
@@ -145,12 +147,12 @@ run: build-release
 ## Run a JS shell in release-safe mode
 shell:
 	@printf "\e[36mBuilding shell (release safe)...\e[0m\n"
-	@zig build shell -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
+	@$(ZIG) build shell -Dengine=v8 || (printf "\e[33mBuild ERROR\e[0m\n"; exit 1;)
 
 ## Test
 test:
 	@printf "\e[36mTesting...\e[0m\n"
-	@zig build test -Dengine=v8 || (printf "\e[33mTest ERROR\e[0m\n"; exit 1;)
+	@$(ZIG) build test -Dengine=v8 || (printf "\e[33mTest ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mTest OK\e[0m\n"
 
 ## run + save results in benchmarks dir

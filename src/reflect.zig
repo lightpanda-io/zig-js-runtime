@@ -1,4 +1,5 @@
 const std = @import("std");
+const sort = @import("block.zig");
 const builtin = @import("builtin");
 
 const public = @import("api.zig");
@@ -98,7 +99,7 @@ pub const Type = struct {
                 self.T_refl_index = s.index;
                 break;
             }
-            inline for (s.nested) |nested, i| {
+            inline for (s.nested, 0..) |nested, i| {
                 if (self.under_T() == nested.T) {
                     if (self.under_ptr != null) {
                         const msg = "pointer on nested struct is not allowed, choose a type struct for this use case";
@@ -129,8 +130,8 @@ pub const Type = struct {
             return error.TypeTaggedUnion;
         }
         var union_types: [info.Union.fields.len]Type = undefined;
-        inline for (info.Union.fields) |field, i| {
-            union_types[i] = try Type.reflect(field.field_type, field.name);
+        inline for (info.Union.fields, 0..) |field, i| {
+            union_types[i] = try Type.reflect(field.type, field.name);
         }
         return &union_types;
     }
@@ -203,20 +204,20 @@ const Args = struct {
             const name = try itoa(0);
             fields[0] = std.builtin.Type.StructField{
                 .name = name,
-                .field_type = self_T.?,
+                .type = self_T.?,
                 .default_value = null,
                 .is_comptime = false,
                 .alignment = @alignOf(self_T.?),
             };
         }
-        inline for (args) |arg, i| {
+        inline for (args, 0..) |arg, i| {
             var x = i;
             if (self_T != null) {
                 x += 1;
             }
             fields[x] = std.builtin.Type.StructField{
                 .name = arg.name.?,
-                .field_type = arg.T,
+                .type = arg.T,
                 .default_value = null,
                 .is_comptime = false,
                 .alignment = @alignOf(arg.T),
@@ -256,12 +257,6 @@ const FuncKind = enum {
     method,
 
     fn reflect(comptime T: type, decl: std.builtin.Type.Declaration) FuncKind {
-
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return FuncKind.ignore;
-        }
-
         // exclude declarations who are not functions
         if (@typeInfo(@TypeOf(@field(T, decl.name))) != .Fn) {
             return FuncKind.ignore;
@@ -333,7 +328,7 @@ pub const Func = struct {
         }
 
         // check args length
-        var args = func.Fn.args;
+        var args = func.Fn.params;
         if (kind != .constructor and args.len == 0) {
             // TODO: handle "class methods"
             const msg = "getter/setter/methods should have at least 1 argument, self";
@@ -353,7 +348,7 @@ pub const Func = struct {
             if (kind != .constructor) {
                 // ignore self arg
                 args_start = 1;
-                self_T = args[0].arg_type.?;
+                self_T = args[0].type.?;
             }
             if (kind == .setter and self_T.? != *struct_T.?) {
                 const msg = "setter first argument should be *self";
@@ -374,8 +369,8 @@ pub const Func = struct {
         var index_offset: usize = 0;
         var callback_index: ?usize = null;
         var args_callback_nb = 0;
-        for (args) |arg, i| {
-            if (arg.arg_type.? == void) {
+        for (args, 0..) |arg, i| {
+            if (arg.type.? == void) {
                 // TODO: there is a bug with void paramater => avoid for now
                 const msg = "func void parameters are not allowed for now";
                 fmtErr(msg.len, msg, T);
@@ -389,7 +384,7 @@ pub const Func = struct {
             }
             const arg_name = try itoa(x);
 
-            args_types[i] = try Type.reflect(arg.arg_type.?, arg_name);
+            args_types[i] = try Type.reflect(arg.type.?, arg_name);
 
             // allocator
             if (args_types[i].T == std.mem.Allocator) {
@@ -473,12 +468,6 @@ pub const StructNested = struct {
     fields: []Type,
 
     fn isNested(comptime T: type, comptime decl: std.builtin.Type.Declaration) bool {
-
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return false;
-        }
-
         // special keywords
         // TODO: and "prototype"?
         if (std.mem.eql(u8, decl.name, "Self")) {
@@ -505,8 +494,8 @@ pub const StructNested = struct {
         const info = @typeInfo(T);
 
         var fields: [info.Struct.fields.len]Type = undefined;
-        inline for (info.Struct.fields) |field, i| {
-            fields[i] = try Type.reflect(field.field_type, field.name);
+        inline for (info.Struct.fields, 0..) |field, i| {
+            fields[i] = try Type.reflect(field.type, field.name);
         }
         return .{ .T = T, .fields = &fields };
     }
@@ -533,7 +522,8 @@ pub const Struct = struct {
     static_attrs_T: ?type,
 
     // struct functions
-    constructor: ?Func,
+    has_constructor: bool,
+    constructor: Func,
 
     getters: []Func,
     setters: []Func,
@@ -579,8 +569,8 @@ pub const Struct = struct {
     }
 
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
-        if (self.constructor) |*constructor| {
-            try constructor.lookupTypes(structs);
+        if (self.has_constructor) {
+            try self.constructor.lookupTypes(structs);
         }
         inline for (self.getters) |*getter| {
             try getter.lookupTypes(structs);
@@ -605,10 +595,6 @@ pub const Struct = struct {
     }
 
     fn AttrT(comptime T: type, comptime decl: std.builtin.Type.Declaration) ?type {
-        // exclude private declarations
-        if (!decl.is_pub) {
-            return null;
-        }
         // exclude declarations not starting with _
         if (decl.name[0] != '_') {
             return null;
@@ -683,7 +669,7 @@ pub const Struct = struct {
             }
             fields[attrs_done] = std.builtin.Type.StructField{
                 .name = decl.name[1..decl.name.len], // remove _
-                .field_type = attr_T.?,
+                .type = attr_T.?,
                 .default_value = null,
                 .is_comptime = false, // TODO: should be true here?
                 .alignment = if (@sizeOf(attr_T.?) > 0) @alignOf(attr_T.?) else 0,
@@ -743,13 +729,13 @@ pub const Struct = struct {
         if (@hasField(real_T, "proto")) {
 
             // check the 'proto' field
-            inline for (@typeInfo(real_T).Struct.fields) |field, i| {
+            inline for (@typeInfo(real_T).Struct.fields, 0..) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
                     continue;
                 }
 
                 // check the 'proto' field is not a pointer
-                if (@typeInfo(field.field_type) == .Pointer) {
+                if (@typeInfo(field.type) == .Pointer) {
                     const msg = "struct {s} 'proto' field should not be a Pointer";
                     fmtErr(msg.len, msg, T);
                     return error.StructProtoPointer;
@@ -765,7 +751,7 @@ pub const Struct = struct {
                     }
                 }
 
-                proto_res = field.field_type;
+                proto_res = field.type;
                 break;
             }
         } else if (@hasDecl(proto_T.?, "protoCast")) {
@@ -775,7 +761,7 @@ pub const Struct = struct {
             if (proto_func != .Fn) {
                 return error.StructProtoCastNotFunction;
             } else {
-                const proto_args = proto_func.Fn.args;
+                const proto_args = proto_func.Fn.params;
                 if (proto_args.len != 1) {
                     return error.StructProtoCastWrongFunction;
                 }
@@ -908,7 +894,8 @@ pub const Struct = struct {
             }
         }
 
-        var constructor: ?Func = null;
+        var constructor: Func = undefined;
+        var has_constructor = false;
         var getters: [getters_nb]Func = undefined;
         var setters: [setters_nb]Func = undefined;
         var methods: [methods_nb]Func = undefined;
@@ -932,6 +919,7 @@ pub const Struct = struct {
             switch (kind) {
                 .constructor => {
                     constructor = func_reflected;
+                    has_constructor = true;
                 },
                 .getter => {
                     getters[getters_done] = func_reflected;
@@ -949,9 +937,9 @@ pub const Struct = struct {
             }
         }
 
-        for (getters) |*getter| {
+        for (&getters) |*getter| {
             var setter_index: ?u8 = null;
-            for (setters) |setter, i| {
+            for (setters, 0..) |setter, i| {
                 if (std.mem.eql(u8, getter.js_name, setter.js_name)) {
                     setter_index = i;
                     break;
@@ -991,6 +979,7 @@ pub const Struct = struct {
             .proto_T = proto_T,
 
             // struct functions
+            .has_constructor = has_constructor,
             .constructor = constructor,
             .getters = getters[0..],
             .setters = setters[0..],
@@ -1003,14 +992,14 @@ pub const Struct = struct {
 };
 
 fn lookupPrototype(comptime all: []Struct) Error!void {
-    inline for (all) |*s, index| {
+    inline for (all, 0..) |*s, index| {
         s.index = index;
         if (s.proto_T == null) {
             // does not have a prototype
             continue;
         }
         // loop over all structs to find proto
-        inline for (all) |proto, proto_index| {
+        inline for (all, 0..) |proto, proto_index| {
             if (proto.T != s.proto_T.?) {
                 // type is not equal to prototype type
                 continue;
@@ -1047,7 +1036,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // reflect each type
         var all: [types_fields.len]Struct = undefined;
-        inline for (types_fields) |field, i| {
+        inline for (types_fields, 0..) |field, i| {
             const T = @field(types, field.name);
             all[i] = try Struct.reflect(T, i);
         }
@@ -1060,14 +1049,14 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // sort to follow prototype chain order
         // ie. parents will be listed before children
-        std.sort.sort(Struct, &all, {}, Struct.lessThan);
+        sort.block(Struct, &all, {}, Struct.lessThan);
 
         // look for prototype chain
         // second pass, as sort as modified the index reference
         try lookupPrototype(&all);
 
         // look Types for corresponding Struct
-        inline for (all) |*s| {
+        inline for (&all) |*s| {
             try s.lookupTypes(&all);
         }
 
@@ -1082,7 +1071,7 @@ fn jsName(comptime name: []const u8) []u8 {
     comptime {
         var js_name: [name.len]u8 = undefined;
         js_name[0] = std.ascii.toLower(name[0]);
-        for (name) |char, i| {
+        for (name, 0..) |char, i| {
             if (i == 0) {
                 continue;
             }
@@ -1163,7 +1152,7 @@ const Error = error{
 
 // ensure reflection fails with an error from Error set
 fn ensureErr(arg: anytype, err: Error) !void {
-    if (@call(.{}, do, .{arg})) |_| {
+    if (@call(.auto, do, .{arg})) |_| {
         std.debug.print("reflect error: {any}\n", .{arg});
         return error.Reflect;
     } else |e| {

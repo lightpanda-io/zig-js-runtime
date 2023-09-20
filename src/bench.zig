@@ -24,7 +24,7 @@ pub fn call(
             start = try std.time.Instant.now();
         }
 
-        const res = @call(.{}, func, args);
+        const res = @call(.auto, func, args);
         if (i == 0) {
             // TODO: handle more return cases
             const info = @typeInfo(@TypeOf(res));
@@ -81,42 +81,47 @@ pub const Allocator = struct {
     }
 
     pub fn allocator(self: *Allocator) std.mem.Allocator {
-        return std.mem.Allocator.init(self, alloc, resize, free);
+        return std.mem.Allocator{ .ptr = self, .vtable = &.{
+            .alloc = alloc,
+            .resize = resize,
+            .free = free,
+        } };
     }
 
     fn alloc(
-        self: *Allocator,
+        ctx: *anyopaque,
         len: usize,
-        ptr_align: u29,
-        len_align: u29,
-        ra: usize,
-    ) error{OutOfMemory}![]u8 {
-        const result = try self.parent_allocator.rawAlloc(len, ptr_align, len_align, ra);
+        log2_ptr_align: u8,
+        return_address: usize,
+    ) ?[*]u8 {
+        const self: *Allocator = @ptrCast(@alignCast(ctx));
+        const result = self.parent_allocator.rawAlloc(len, log2_ptr_align, return_address);
         self.alloc_nb += 1;
         self.size += len;
         return result;
     }
 
     fn resize(
-        self: *Allocator,
-        buf: []u8,
-        buf_align: u29,
+        ctx: *anyopaque,
+        old_mem: []u8,
+        log2_old_align: u8,
         new_len: usize,
-        len_align: u29,
         ra: usize,
-    ) ?usize {
-        const result = self.parent_allocator.rawResize(buf, buf_align, new_len, len_align, ra);
+    ) bool {
+        const self: *Allocator = @ptrCast(@alignCast(ctx));
+        const result = self.parent_allocator.rawResize(old_mem, log2_old_align, new_len, ra);
         self.realloc_nb += 1; // TODO: only if result is not null?
         return result;
     }
 
     fn free(
-        self: *Allocator,
-        buf: []u8,
-        buf_align: u29,
+        ctx: *anyopaque,
+        old_mem: []u8,
+        log2_old_align: u8,
         ra: usize,
     ) void {
-        self.parent_allocator.rawFree(buf, buf_align, ra);
+        const self: *Allocator = @ptrCast(@alignCast(ctx));
+        self.parent_allocator.rawFree(old_mem, log2_old_align, ra);
         self.free_nb += 1;
     }
 };
