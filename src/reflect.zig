@@ -1025,10 +1025,8 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
 fn lookupDuplicates(comptime all: []Struct) Error!void {
     std.debug.assert(@inComptime());
     for (all, 0..) |s, i| {
-        for (all, 0..) |other_s, other_i| {
-            if (i == other_i) {
-                continue;
-            }
+        for (all[i + 1 ..]) |other_s| {
+
             // not only checking types but Self types
             // otherwise different Struct could refer to the same Self type
             // creating bugs in Type lookup (ie. Type.T_refl_index)
@@ -1037,6 +1035,7 @@ fn lookupDuplicates(comptime all: []Struct) Error!void {
                 fmtErr(msg.len, msg, s.Self());
                 return error.StructDuplicateType;
             }
+
             // in JS name the path of the type is removed, therefore duplicates are possibles
             if (std.mem.eql(u8, s.js_name, other_s.js_name)) {
                 const msg = "duplicate of JS name for " ++ @typeName(s.T) ++ " and " ++ @typeName(other_s.T);
