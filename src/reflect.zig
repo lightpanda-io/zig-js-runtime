@@ -181,15 +181,6 @@ pub const Type = struct {
             .under_ptr = under_ptr,
             .union_T = union_T,
         };
-        const under = t.under_T();
-
-        // opaque not allowed
-        if (@typeInfo(under) == .Opaque) {
-            const msg = "type Opaque not allowed";
-            fmtErr(msg.len, msg, under);
-            return error.TypeOpaque;
-        }
-
         return t;
     }
 };
@@ -566,6 +557,9 @@ pub const Struct = struct {
     }
 
     pub inline fn isEmpty(comptime self: Struct) bool {
+        if (@typeInfo(self.Self()) == .Opaque) {
+            return false;
+        }
         return @sizeOf(self.Self()) == 0;
     }
 
@@ -838,8 +832,8 @@ pub const Struct = struct {
         } else {
             real_T = T;
         }
-        if (@typeInfo(real_T) != .Struct) {
-            const msg = "type is not a struct";
+        if (@typeInfo(real_T) != .Struct and @typeInfo(real_T) != .Opaque) {
+            const msg = "type is not a struct or opaque";
             fmtErr(msg.len, msg, T);
             return error.StructNotStruct;
         }
@@ -1173,7 +1167,6 @@ const Error = error{
     FuncMultiCbk,
 
     // type errors
-    TypeOpaque,
     TypeTaggedUnion,
     TypeNestedPtr,
     TypeLookup,
@@ -1271,10 +1264,6 @@ const TestFuncMultiCbk = struct {
 };
 
 // types tests
-const TestOpaque = opaque {};
-const TestTypeOpaque = struct {
-    pub fn _example(_: TestTypeOpaque, _: *TestOpaque) void {}
-};
 const TestTaggedUnion = union {
     a: bool,
     b: bool,
@@ -1372,10 +1361,6 @@ pub fn tests() !void {
     );
 
     // types checks
-    try ensureErr(
-        .{TestTypeOpaque},
-        error.TypeOpaque,
-    );
     try ensureErr(
         .{TestTypeTaggedUnion},
         error.TypeTaggedUnion,
