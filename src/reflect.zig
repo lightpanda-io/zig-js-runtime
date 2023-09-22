@@ -71,6 +71,7 @@ pub const Type = struct {
         }
     }
 
+    // check that user-defined types have been provided as an API
     fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
 
         // lookup unecessary
@@ -1021,6 +1022,31 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
     }
 }
 
+fn lookupDuplicates(comptime all: []Struct) Error!void {
+    std.debug.assert(@inComptime());
+    for (all, 0..) |s, i| {
+        for (all[i + 1 ..]) |other_s| {
+
+            // not only checking types but Self types
+            // otherwise different Struct could refer to the same Self type
+            // creating bugs in Type lookup (ie. Type.T_refl_index)
+            if (s.Self() == other_s.Self()) {
+                const msg = "duplicate of type (or self type) for " ++ @typeName(s.T) ++ " and " ++ @typeName(other_s.T);
+                fmtErr(msg.len, msg, s.Self());
+                return error.StructDuplicateType;
+            }
+
+            // in JS name the path of the type is removed, therefore duplicates are possibles
+            if (std.mem.eql(u8, s.js_name, other_s.js_name)) {
+                const msg = "duplicate of JS name for " ++ @typeName(s.T) ++ " and " ++ @typeName(other_s.T);
+
+                fmtErr(msg.len, msg, s.Self());
+                return error.StructDuplicateName;
+            }
+        }
+    }
+}
+
 pub fn do(comptime types: anytype) Error![]Struct {
     comptime {
 
@@ -1041,7 +1067,8 @@ pub fn do(comptime types: anytype) Error![]Struct {
             all[i] = try Struct.reflect(T, i);
         }
 
-        // TODO: ensure no duplicates on Struct.name
+        // look for duplicates (on types and js names)
+        try lookupDuplicates(&all);
 
         // look for prototype chain
         // first pass to allow sort
@@ -1134,6 +1161,8 @@ const Error = error{
     StructProtoDifferent,
     StructProtoLayout,
     StructLookup,
+    StructDuplicateType,
+    StructDuplicateName,
 
     // func errors
     FuncNoSelf,
@@ -1215,6 +1244,10 @@ const TestStructProtoLayout = extern struct {
 const TestStructLookup = struct {
     proto: TestBase,
     pub const prototype = *TestBase;
+};
+const TestStructDuplicateTypeA = struct {};
+const TestStructDuplicateTypeB = struct {
+    pub const Self = *TestStructDuplicateTypeA;
 };
 
 // funcs tests
@@ -1306,6 +1339,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructProtoLayout},
         error.StructProtoLayout,
+    );
+    try ensureErr(
+        .{ TestStructDuplicateTypeA, TestStructDuplicateTypeB },
+        error.StructDuplicateType,
     );
 
     // funcs checks

@@ -89,8 +89,29 @@ const PersonPtr = struct {
     }
 };
 
+const UserForContainer = struct {
+    proto: Person,
+    role: u8,
+
+    pub const prototype = *Person;
+
+    pub fn constructor(
+        alloc: std.mem.Allocator,
+        first_name: []u8,
+        last_name: []u8,
+        age: u32,
+    ) UserForContainer {
+        const proto = Person.constructor(alloc, first_name, last_name, age);
+        return .{ .proto = proto, .role = 1 };
+    }
+
+    pub fn get_role(self: UserForContainer) u8 {
+        return self.role;
+    }
+};
+
 const UserContainer = struct {
-    pub const Self = User;
+    pub const Self = UserForContainer;
     pub const prototype = *Person;
 
     pub fn constructor(
@@ -103,15 +124,15 @@ const UserContainer = struct {
         return .{ .proto = proto, .role = 1 };
     }
 
-    pub fn get_role_container(self: User) u8 {
+    pub fn get_role_container(self: UserForContainer) u8 {
         return self.role;
     }
 
-    pub fn set_role_container(self: *User, role: u8) void {
+    pub fn set_role_container(self: *UserForContainer, role: u8) void {
         self.role = role;
     }
 
-    pub fn _roleVal(self: User) u8 {
+    pub fn _roleVal(self: UserForContainer) u8 {
         return self.role;
     }
 };
