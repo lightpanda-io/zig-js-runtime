@@ -76,15 +76,18 @@ pub fn build(b: *std.Build) !void {
     // ----
 
     // compile
-    const test_exe = b.addTest(.{
+    const tests = b.addTest(.{
         .root_source_file = .{ .path = "src/run_tests.zig" },
+        .target = target,
+        .optimize = mode,
     });
-    try common(test_exe, mode, options);
-    test_exe.single_threaded = true;
+    try common(tests, mode, options);
+    tests.single_threaded = true;
+    const run_tests = b.addRunArtifact(tests);
 
     // step
     const test_step = b.step("test", "Run unit tests");
-    test_step.dependOn(&test_exe.step);
+    test_step.dependOn(&run_tests.step);
 }
 
 const Engine = enum {
