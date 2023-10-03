@@ -21,7 +21,8 @@ test {
     std.debug.print("\n", .{});
 
     // reflect tests
-    try ref.tests();
+    try comptime ref.tests();
+    std.debug.print("Reflect tests: OK\n", .{});
 
     // test to do
     comptime var tests_nb: usize = 0;
