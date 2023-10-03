@@ -1181,7 +1181,7 @@ fn ensureErr(arg: anytype, err: Error) !void {
     } else |e| {
         if (e != err) {
             // wrong error type, it's an error
-            @compileLog("wrong error", @errorName(err), @errorName(e));
+            @compileLog("wrong error, expected, got", @errorName(err), @errorName(e));
             return error.Reflect;
         }
         // expected error, OK
@@ -1243,7 +1243,7 @@ const TestStructLookup = struct {
 };
 const TestStructDuplicateTypeA = struct {};
 const TestStructDuplicateTypeB = struct {
-    pub const Self = *TestStructDuplicateTypeA;
+    pub const Self = TestStructDuplicateTypeA;
 };
 
 // funcs tests
@@ -1284,6 +1284,8 @@ const TestTypeLookup = struct {
 };
 
 pub fn tests() !void {
+    std.debug.assert(@inComptime());
+    @setEvalBranchQuota(10000);
 
     // arg 'types' should be a tuple of types
     try ensureErr(TestBase, error.TypesNotTuple);
