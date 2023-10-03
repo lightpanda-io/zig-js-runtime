@@ -1175,13 +1175,16 @@ const Error = error{
 // ensure reflection fails with an error from Error set
 fn ensureErr(arg: anytype, err: Error) !void {
     if (@call(.auto, do, .{arg})) |_| {
-        std.debug.print("reflect error: {any}\n", .{arg});
+        // no error, so it's an error :)
+        @compileLog("no error", @errorName(err));
         return error.Reflect;
     } else |e| {
         if (e != err) {
+            // wrong error type, it's an error
+            @compileLog("wrong error", @errorName(err), @errorName(e));
             return error.Reflect;
         }
-        std.debug.print("reflect ok: {s}\n", .{@errorName(e)});
+        // expected error, OK
     }
 }
 
