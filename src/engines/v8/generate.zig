@@ -44,6 +44,7 @@ fn checkArgsLen(
     if (func.first_optional_arg) |args_mandatory| {
         func_args_len = args_mandatory;
     }
+    // TODO: check if variadic arguments can be empty?
     func_args_len -= func.index_offset;
 
     // OK
@@ -160,6 +161,8 @@ fn getArgs(
 ) func.args_T {
     var args: func.args_T = undefined;
 
+    const js_args_nb = info.length();
+
     // iter on function expected arguments
     inline for (func.args, 0..) |arg, i| {
 
@@ -168,16 +171,55 @@ fn getArgs(
             continue;
         }
 
-        const value = getArg(
-            T_refl,
-            all_T,
-            func,
-            arg,
-            i,
-            info,
-            isolate,
-            ctx,
-        );
+        comptime var arg_real: refl.Type = undefined;
+
+        comptime {
+            if (try refl.Type.variadic(arg.under_T())) |arg_v| {
+                arg_real = arg_v;
+            } else {
+                arg_real = arg;
+            }
+        }
+
+        var value: arg.T = undefined;
+
+        if (arg.T == arg_real.T) {
+
+            // non-variadic arg
+            value = getArg(
+                T_refl,
+                all_T,
+                func,
+                arg_real,
+                i,
+                info,
+                isolate,
+                ctx,
+            );
+        } else {
+
+            // variadic arg
+            // take all trailing JS arg as variadic members
+            const rest_nb = js_args_nb - i;
+            const slice = utils.allocator.alloc(arg_real.T, rest_nb) catch unreachable;
+            // TODO: alloc.free slice after func call
+            var iter: usize = 0;
+            while (iter < rest_nb) {
+                const slice_value = getArg(
+                    T_refl,
+                    all_T,
+                    func,
+                    arg_real,
+                    iter + i,
+                    info,
+                    isolate,
+                    ctx,
+                );
+                slice[iter] = slice_value;
+                iter += 1;
+            }
+            value = .{ .slice = slice };
+        }
 
         // set argument
         @field(args, arg.name.?) = value;

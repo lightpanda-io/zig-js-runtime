@@ -3,6 +3,7 @@ const sort = @import("block.zig");
 const builtin = @import("builtin");
 
 const public = @import("api.zig");
+const Variadic = public.Variadic;
 const Loop = public.Loop;
 const Callback = public.Callback;
 const CallbackSync = public.CallbackSync;
@@ -71,6 +72,54 @@ pub const Type = struct {
         }
     }
 
+    // find if T is a VariadicType
+    // and returns the type of the slice members
+    fn _variadic(comptime T: type) ?type {
+        std.debug.assert(@inComptime());
+        const info = @typeInfo(T);
+
+        // it's a struct
+        if (info != .Struct) {
+            return null;
+        }
+
+        // with only 1 field
+        if (info.Struct.fields.len != 1) {
+            return null;
+        }
+
+        // which is called "slice"
+        const slice_field = info.Struct.fields[0];
+        if (!std.mem.eql(u8, slice_field.name, "slice")) {
+            return null;
+        }
+
+        // and it's a slice
+        const slice_info = @typeInfo(slice_field.type);
+        if (slice_info == .Pointer and slice_info.Pointer.size == .Slice) {
+            return slice_info.Pointer.child;
+        }
+
+        return null;
+    }
+
+    // find if T is a VariadicType
+    // and returns it as a reflect.Type
+    pub fn variadic(comptime T: type) !?Type {
+        std.debug.assert(@inComptime());
+
+        if (Type._variadic(T)) |tt| {
+
+            // avoid infinite calls
+            if (Type._variadic(tt) != null) {
+                return error.TypeVariadicNested;
+            }
+
+            return try Type.reflect(tt, null);
+        }
+        return null;
+    }
+
     // check that user-defined types have been provided as an API
     fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
 
@@ -92,6 +141,12 @@ pub const Type = struct {
                 try tt.lookup(structs);
             }
             return;
+        }
+
+        // if variadic, lookup the concrete type
+        var variadic_type = try Type.variadic(self.under_T());
+        if (variadic_type) |*tt| {
+            return tt.lookup(structs);
         }
 
         // check under_T in all structs (and nested structs)
@@ -402,6 +457,13 @@ pub const Func = struct {
             if (args_types[i].T == CallbackArg) {
                 args_callback_nb += 1;
             }
+
+            // variadic
+            // ensure only 1 variadic argument
+            // and that it's the last one
+            if (Type._variadic(args_types[i].under_T()) != null and i < (args.len - 1)) {
+                return error.FuncVariadicNotLastOne;
+            }
         }
 
         // first optional arg
@@ -430,6 +492,12 @@ pub const Func = struct {
         const args_slice = args_types[0..];
         const args_T = comptime Args.reflect(self_T, args_slice);
 
+        // reflect return type
+        const return_type = try Type.reflect(func.Fn.return_type.?, null);
+        if (Type._variadic(return_type.under_T()) != null) {
+            return error.FuncReturnTypeVariadic;
+        }
+
         return Func{
             .js_name = js_name,
             .name = name,
@@ -441,7 +509,7 @@ pub const Func = struct {
 
             .index_offset = index_offset,
 
-            .return_type = try Type.reflect(func.Fn.return_type.?, null),
+            .return_type = return_type,
 
             // func callback
             .callback_index = callback_index,
@@ -1165,10 +1233,13 @@ const Error = error{
     FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     FuncVoidArg,
     FuncMultiCbk,
+    FuncVariadicNotLastOne,
+    FuncReturnTypeVariadic,
 
     // type errors
     TypeTaggedUnion,
     TypeNestedPtr,
+    TypeVariadicNested, // TODO: test
     TypeLookup,
 };
 
@@ -1264,6 +1335,13 @@ const TestFuncVoidArg = struct {
 };
 const TestFuncMultiCbk = struct {
     pub fn _example(_: TestFuncMultiCbk, _: Callback, _: Callback) void {}
+};
+const VariadicBool = Variadic(bool);
+const TestFuncVariadicNotLastOne = struct {
+    pub fn _example(_: TestFuncVariadicNotLastOne, _: VariadicBool, _: bool) void {}
+};
+const TestFuncReturnTypeVariadic = struct {
+    pub fn _example(_: TestFuncReturnTypeVariadic) VariadicBool {}
 };
 
 // types tests
@@ -1363,6 +1441,14 @@ pub fn tests() !void {
     try ensureErr(
         .{TestFuncMultiCbk},
         error.FuncMultiCbk,
+    );
+    try ensureErr(
+        .{TestFuncVariadicNotLastOne},
+        error.FuncVariadicNotLastOne,
+    );
+    try ensureErr(
+        .{TestFuncReturnTypeVariadic},
+        error.FuncReturnTypeVariadic,
     );
 
     // types checks

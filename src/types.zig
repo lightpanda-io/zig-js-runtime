@@ -52,3 +52,9 @@ pub fn Iterable(comptime T: type) type {
         }
     };
 }
+
+pub fn Variadic(comptime T: type) type {
+    return struct {
+        slice: []T,
+    };
+}
