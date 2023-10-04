@@ -97,6 +97,57 @@ fn getNativeArg(
     return value;
 }
 
+fn getArg(
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    comptime func: refl.Func,
+    comptime arg: refl.Type,
+    iter: usize,
+    info: v8.FunctionCallbackInfo,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) arg.T {
+    var value: arg.T = undefined;
+
+    if (arg.isNative()) {
+
+        // native types
+        const js_value = info.getArg(@intCast(iter - func.index_offset));
+        value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_value);
+    } else {
+
+        // builtin types
+        // and nested types (ie. JS anonymous objects)
+        value = switch (arg.T) {
+            std.mem.Allocator => utils.allocator,
+            *Loop => utils.loop,
+            cbk.Func => cbk.Func.init(
+                utils.allocator,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.FuncSync => cbk.FuncSync.init(
+                utils.allocator,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.Arg => cbk.Arg{}, // stage1: we need type
+            else => jsToNative(
+                utils.allocator,
+                T_refl,
+                arg,
+                info.getArg(@intCast(iter - func.index_offset)),
+                isolate,
+                ctx,
+            ) catch unreachable,
+        };
+    }
+
+    return value;
+}
+
 // This function can only be used by function callbacks (ie. constructor and methods)
 // as it takes a v8.FunctionCallbackInfo (with a getArg method).
 fn getArgs(
@@ -117,43 +168,16 @@ fn getArgs(
             continue;
         }
 
-        var value: arg.T = undefined;
-
-        if (arg.isNative()) {
-
-            // native types
-            const js_value = info.getArg(i - func.index_offset);
-            value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_value);
-        } else {
-
-            // builtin types
-            // and nested types (ie. JS anonymous objects)
-            value = switch (arg.T) {
-                std.mem.Allocator => utils.allocator,
-                *Loop => utils.loop,
-                cbk.Func => cbk.Func.init(
-                    utils.allocator,
-                    func,
-                    info,
-                    isolate,
-                ) catch unreachable,
-                cbk.FuncSync => cbk.FuncSync.init(
-                    utils.allocator,
-                    func,
-                    info,
-                    isolate,
-                ) catch unreachable,
-                cbk.Arg => cbk.Arg{}, // stage1: we need type
-                else => jsToNative(
-                    utils.allocator,
-                    T_refl,
-                    arg,
-                    info.getArg(i - func.index_offset),
-                    isolate,
-                    ctx,
-                ) catch unreachable,
-            };
-        }
+        const value = getArg(
+            T_refl,
+            all_T,
+            func,
+            arg,
+            i,
+            info,
+            isolate,
+            ctx,
+        );
 
         // set argument
         @field(args, arg.name.?) = value;
