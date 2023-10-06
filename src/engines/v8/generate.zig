@@ -44,7 +44,6 @@ fn checkArgsLen(
     if (func.first_optional_arg) |args_mandatory| {
         func_args_len = args_mandatory;
     }
-    // TODO: check if variadic arguments can be empty?
     func_args_len -= func.index_offset;
 
     // OK
