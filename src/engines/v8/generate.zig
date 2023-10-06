@@ -97,9 +97,62 @@ fn getNativeArg(
     return value;
 }
 
+fn getArg(
+    alloc: std.mem.Allocator,
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    comptime func: refl.Func,
+    comptime arg: refl.Type,
+    iter: usize,
+    info: v8.FunctionCallbackInfo,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) arg.T {
+    var value: arg.T = undefined;
+
+    if (arg.isNative()) {
+
+        // native types
+        const js_value = info.getArg(@intCast(iter - func.index_offset));
+        value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_value);
+    } else {
+
+        // builtin types
+        // and nested types (ie. JS anonymous objects)
+        value = switch (arg.T) {
+            std.mem.Allocator => alloc,
+            *Loop => utils.loop,
+            cbk.Func => cbk.Func.init(
+                alloc,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.FuncSync => cbk.FuncSync.init(
+                alloc,
+                func,
+                info,
+                isolate,
+            ) catch unreachable,
+            cbk.Arg => cbk.Arg{}, // stage1: we need type
+            else => jsToNative(
+                alloc,
+                T_refl,
+                arg,
+                info.getArg(@intCast(iter - func.index_offset)),
+                isolate,
+                ctx,
+            ) catch unreachable,
+        };
+    }
+
+    return value;
+}
+
 // This function can only be used by function callbacks (ie. constructor and methods)
 // as it takes a v8.FunctionCallbackInfo (with a getArg method).
 fn getArgs(
+    alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
@@ -109,6 +162,8 @@ fn getArgs(
 ) func.args_T {
     var args: func.args_T = undefined;
 
+    const js_args_nb = info.length();
+
     // iter on function expected arguments
     inline for (func.args, 0..) |arg, i| {
 
@@ -117,42 +172,56 @@ fn getArgs(
             continue;
         }
 
+        comptime var arg_real: refl.Type = undefined;
+
+        comptime {
+            if (try refl.Type.variadic(arg.under_T())) |arg_v| {
+                arg_real = arg_v;
+            } else {
+                arg_real = arg;
+            }
+        }
+
         var value: arg.T = undefined;
 
-        if (arg.isNative()) {
+        if (arg.T == arg_real.T) {
 
-            // native types
-            const js_value = info.getArg(i - func.index_offset);
-            value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_value);
+            // non-variadic arg
+            value = getArg(
+                alloc,
+                T_refl,
+                all_T,
+                func,
+                arg_real,
+                i,
+                info,
+                isolate,
+                ctx,
+            );
         } else {
 
-            // builtin types
-            // and nested types (ie. JS anonymous objects)
-            value = switch (arg.T) {
-                std.mem.Allocator => utils.allocator,
-                *Loop => utils.loop,
-                cbk.Func => cbk.Func.init(
-                    utils.allocator,
-                    func,
-                    info,
-                    isolate,
-                ) catch unreachable,
-                cbk.FuncSync => cbk.FuncSync.init(
-                    utils.allocator,
-                    func,
-                    info,
-                    isolate,
-                ) catch unreachable,
-                cbk.Arg => cbk.Arg{}, // stage1: we need type
-                else => jsToNative(
-                    utils.allocator,
+            // variadic arg
+            // take all trailing JS arg as variadic members
+            const rest_nb = js_args_nb - i;
+            const slice = alloc.alloc(arg_real.T, rest_nb) catch unreachable;
+            // TODO: alloc.free slice after func call
+            var iter: usize = 0;
+            while (iter < rest_nb) {
+                const slice_value = getArg(
+                    alloc,
                     T_refl,
-                    arg,
-                    info.getArg(i - func.index_offset),
+                    all_T,
+                    func,
+                    arg_real,
+                    iter + i,
+                    info,
                     isolate,
                     ctx,
-                ) catch unreachable,
-            };
+                );
+                slice[iter] = slice_value;
+                iter += 1;
+            }
+            value = .{ .slice = slice };
         }
 
         // set argument
@@ -373,7 +442,15 @@ fn generateConstructor(
             }
 
             // prepare args
-            const args = getArgs(T_refl, all_T, func, info, isolate, ctx);
+            const args = getArgs(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                info,
+                isolate,
+                ctx,
+            );
 
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
@@ -518,7 +595,15 @@ fn generateMethod(
             }
 
             // prepare args
-            var args = getArgs(T_refl, all_T, func, info, isolate, ctx);
+            var args = getArgs(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                info,
+                isolate,
+                ctx,
+            );
 
             // retrieve the zig object
             if (!comptime T_refl.isEmpty()) {
