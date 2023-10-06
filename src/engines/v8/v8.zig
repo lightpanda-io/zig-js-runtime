@@ -419,7 +419,7 @@ pub const JSResult = struct {
         self.result = try valueToUtf8(alloc, except, isolate, context);
 
         // stack
-        if (self.stack == null) {
+        if (self.stack != null) {
             return;
         }
         const stack = try_catch.getStackTrace(context).?;
