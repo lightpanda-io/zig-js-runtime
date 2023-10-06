@@ -103,6 +103,10 @@ pub const Type = struct {
         return null;
     }
 
+    fn _is_variadic(comptime T: type) bool {
+        return Type._variadic(T) != null;
+    }
+
     // find if T is a VariadicType
     // and returns it as a reflect.Type
     pub fn variadic(comptime T: type) !?Type {
@@ -111,9 +115,8 @@ pub const Type = struct {
         const tt = Type._variadic(T) orelse return null;
 
         // avoid infinite calls
-        if (Type._variadic(tt) != null) {
-            return error.TypeVariadicNested;
-        }
+        if (Type._is_variadic(tt)) return error.TypeVariadicNested;
+
         return try Type.reflect(tt, null);
     }
 
@@ -458,7 +461,7 @@ pub const Func = struct {
             // variadic
             // ensure only 1 variadic argument
             // and that it's the last one
-            if (Type._variadic(args_types[i].under_T()) != null and i < (args.len - 1)) {
+            if (Type._is_variadic(args_types[i].under_T()) and i < (args.len - 1)) {
                 return error.FuncVariadicNotLastOne;
             }
         }
@@ -491,9 +494,7 @@ pub const Func = struct {
 
         // reflect return type
         const return_type = try Type.reflect(func.Fn.return_type.?, null);
-        if (Type._variadic(return_type.under_T()) != null) {
-            return error.FuncReturnTypeVariadic;
-        }
+        if (Type._is_variadic(return_type.under_T())) return error.FuncReturnTypeVariadic;
 
         return Func{
             .js_name = js_name,
