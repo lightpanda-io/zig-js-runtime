@@ -229,6 +229,14 @@ pub const Type = struct {
             under_ptr = info.Pointer.child;
         }
 
+        // variadic types must be optional
+        if (under_opt == null) {
+            const under = under_ptr orelse T;
+            if (Type._is_variadic(under)) {
+                return error.TypeVariadicNotOptional;
+            }
+        }
+
         var t = Type{
             .T = T,
             .name = name,
@@ -1238,6 +1246,7 @@ const Error = error{
     TypeTaggedUnion,
     TypeNestedPtr,
     TypeVariadicNested, // TODO: test
+    TypeVariadicNotOptional,
     TypeLookup,
 };
 
@@ -1336,10 +1345,10 @@ const TestFuncMultiCbk = struct {
 };
 const VariadicBool = Variadic(bool);
 const TestFuncVariadicNotLastOne = struct {
-    pub fn _example(_: TestFuncVariadicNotLastOne, _: VariadicBool, _: bool) void {}
+    pub fn _example(_: TestFuncVariadicNotLastOne, _: ?VariadicBool, _: bool) void {}
 };
 const TestFuncReturnTypeVariadic = struct {
-    pub fn _example(_: TestFuncReturnTypeVariadic) VariadicBool {}
+    pub fn _example(_: TestFuncReturnTypeVariadic) ?VariadicBool {}
 };
 
 // types tests
@@ -1353,6 +1362,9 @@ const TestTypeTaggedUnion = struct {
 const TestTypeNestedPtr = struct {
     pub const TestTypeNestedBase = struct {};
     pub fn _example(_: TestTypeNestedPtr, _: *TestTypeNestedBase) void {}
+};
+const TestTypeVariadicNotOptional = struct {
+    pub fn _example(_: TestTypeVariadicNotOptional, _: VariadicBool) void {}
 };
 const TestType = struct {};
 const TestTypeLookup = struct {
@@ -1463,6 +1475,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestTypeNestedPtr},
         error.TypeNestedPtr,
+    );
+    try ensureErr(
+        .{TestTypeVariadicNotOptional},
+        error.TypeVariadicNotOptional,
     );
     try ensureErr(
         .{TestTypeLookup},

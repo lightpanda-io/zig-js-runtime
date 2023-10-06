@@ -34,16 +34,20 @@ const MyVariadic = struct {
         return .{ .member = 0 };
     }
 
-    pub fn _len(_: MyVariadic, variadic: VariadicBool) u64 {
-        return @as(u64, variadic.slice.len);
+    pub fn _len(_: MyVariadic, variadic: ?VariadicBool) u64 {
+        return @as(u64, variadic.?.slice.len);
     }
 
-    pub fn _first(_: MyVariadic, _: []const u8, variadic: VariadicBool) bool {
-        return variadic.slice[0];
+    pub fn _first(_: MyVariadic, _: []const u8, variadic: ?VariadicBool) bool {
+        return variadic.?.slice[0];
     }
 
-    pub fn _last(_: MyVariadic, variadic: VariadicBool) bool {
-        return variadic.slice[variadic.slice.len - 1];
+    pub fn _last(_: MyVariadic, variadic: ?VariadicBool) bool {
+        return variadic.?.slice[variadic.?.slice.len - 1];
+    }
+
+    pub fn _empty(_: MyVariadic, _: ?VariadicBool) bool {
+        return true;
     }
 };
 
@@ -82,6 +86,7 @@ pub fn exec(
         .{ .src = "myVariadic.len(true, false, true)", .ex = "3" },
         .{ .src = "myVariadic.first('a_str', true, false, true, false)", .ex = "true" },
         .{ .src = "myVariadic.last(true, false)", .ex = "false" },
+        .{ .src = "myVariadic.empty()", .ex = "true" },
     };
     try tests.checkCases(js_env, &variadic);
 }
