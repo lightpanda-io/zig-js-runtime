@@ -416,6 +416,7 @@ pub const JSResult = struct {
 
         // exception
         const except = try_catch.getException().?;
+        self.success = false;
         self.result = try valueToUtf8(alloc, except, isolate, context);
 
         // stack
