@@ -108,16 +108,13 @@ pub const Type = struct {
     pub fn variadic(comptime T: type) !?Type {
         std.debug.assert(@inComptime());
 
-        if (Type._variadic(T)) |tt| {
+        const tt = Type._variadic(T) orelse return null;
 
-            // avoid infinite calls
-            if (Type._variadic(tt) != null) {
-                return error.TypeVariadicNested;
-            }
-
-            return try Type.reflect(tt, null);
+        // avoid infinite calls
+        if (Type._variadic(tt) != null) {
+            return error.TypeVariadicNested;
         }
-        return null;
+        return try Type.reflect(tt, null);
     }
 
     // check that user-defined types have been provided as an API
