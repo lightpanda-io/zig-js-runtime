@@ -202,7 +202,7 @@ fn getArgs(
 
             // variadic arg
             // take all trailing JS arg as variadic members
-            const rest_nb = js_args_nb - i;
+            const rest_nb = js_args_nb - i + func.index_offset;
             const slice = alloc.alloc(arg_real.T, rest_nb) catch unreachable;
             // TODO: alloc.free slice after func call
             var iter: usize = 0;

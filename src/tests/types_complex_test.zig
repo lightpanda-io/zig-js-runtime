@@ -42,7 +42,7 @@ const MyVariadic = struct {
         return variadic.?.slice[0];
     }
 
-    pub fn _last(_: MyVariadic, variadic: ?VariadicBool) bool {
+    pub fn _last(_: MyVariadic, _: std.mem.Allocator, variadic: ?VariadicBool) bool {
         return variadic.?.slice[variadic.?.slice.len - 1];
     }
 
