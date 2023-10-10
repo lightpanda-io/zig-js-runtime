@@ -48,6 +48,8 @@ pub const TPL = struct {
     }
 };
 
+pub const Object = v8.Object;
+
 pub const VM = struct {
     platform: v8.Platform,
 
@@ -181,6 +183,12 @@ pub const Env = struct {
         self.context.?.exit();
         self.context = undefined;
     }
+    pub fn getGlobal(self: Env) anyerror!Object {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+        return self.context.?.getGlobal();
+    }
 
     // add a Native object in the Javascript context
     pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) anyerror!void {
@@ -195,6 +203,19 @@ pub const Env = struct {
             self.context.?,
             self.isolate,
         );
+    }
+
+    pub fn attachObject(self: Env, obj: Object, name: []const u8, to_obj: ?Object) anyerror!void {
+        if (self.context == null) {
+            return error.EnvNotStarted;
+        }
+        const key = v8.String.initUtf8(self.isolate, name);
+        // attach to globals if to_obj is not specified
+        const to = to_obj orelse try self.getGlobal();
+        const res = to.setValue(self.context.?, key, obj);
+        if (!res) {
+            return error.AttachObject;
+        }
     }
 
     // compile and run a Javascript script

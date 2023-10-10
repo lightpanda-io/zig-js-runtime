@@ -171,6 +171,9 @@ pub fn shellExec(
     comptime apis: []public.API,
 ) !void {
 
+    // alias global as self
+    try js_env.attachObject(try js_env.getGlobal(), "self", null);
+
     // add console object
     const console = public.Console{};
     try js_env.addObject(apis, console, "console");
