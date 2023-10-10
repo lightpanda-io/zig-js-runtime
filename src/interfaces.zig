@@ -38,6 +38,7 @@ pub fn Env(
     comptime API_T: type,
     comptime TPL_T: type,
     comptime JSResult_T: type,
+    comptime Object_T: type,
 ) void {
 
     // init()
@@ -65,12 +66,24 @@ pub fn Env(
     // stop()
     assertDecl(T, "stop", fn (self: *T) void);
 
+    // getGlobal() to retrieve global object from current JS context
+    assertDecl(T, "getGlobal", fn (self: T) anyerror!Object_T);
+
     // addObject() from native api into JS
     assertDecl(T, "addObject", fn (
         self: T,
         comptime apis: []API_T,
         obj: anytype,
         name: []const u8,
+    ) anyerror!void);
+
+    // attachObject() from JS to another JS object
+    // if to_obj is null, globals is implied
+    assertDecl(T, "attachObject", fn (
+        self: T,
+        obj: Object_T,
+        name: []const u8,
+        to_obj: ?Object_T,
     ) anyerror!void);
 
     // TODO: check exec, wait who have v8 specific params

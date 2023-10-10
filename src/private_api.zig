@@ -16,7 +16,13 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.TryCatch(engine.TryCatch, engine.Env);
 
     interfaces.VM(engine.VM);
-    interfaces.Env(engine.Env, engine.API, engine.TPL, engine.JSResult);
+    interfaces.Env(
+        engine.Env,
+        engine.API,
+        engine.TPL,
+        engine.JSResult,
+        engine.Object,
+    );
 
     // private api
 }
@@ -52,3 +58,5 @@ pub const Engine = blk: {
 // loadFn is a function which generates
 // the loading and binding of the native API into the JS engine
 pub const loadFn = Engine.loadFn;
+
+pub const Object = Engine.Object;

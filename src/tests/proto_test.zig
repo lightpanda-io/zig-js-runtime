@@ -187,6 +187,21 @@ pub fn exec(
     js_env.start(apis);
     defer js_env.stop();
 
+    // global
+    try js_env.attachObject(try js_env.getGlobal(), "self", null);
+
+    var global = [_]tests.Case{
+        .{ .src = "self.foo = function() {} !== undefined", .ex = "true" },
+        .{ .src = "foo !== undefined", .ex = "true" },
+        .{ .src = "self.foo === foo", .ex = "true" },
+        .{ .src = "var bar = function() {}", .ex = "undefined" },
+        .{ .src = "self.bar !== undefined", .ex = "true" },
+        .{ .src = "self.bar === bar", .ex = "true" },
+        .{ .src = "let not_self = 0", .ex = "undefined" },
+        .{ .src = "self.not_self === undefined", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &global);
+
     // 1. constructor
     var cases1 = [_]tests.Case{
         .{ .src = "let p = new Person('Francis', 'Bouvier', 40);", .ex = "undefined" },
