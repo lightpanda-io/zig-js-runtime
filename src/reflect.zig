@@ -658,6 +658,13 @@ pub const Struct = struct {
             return a.index < b.index;
         }
         if (a.proto_index != null and b.proto_index != null) {
+            if (a.proto_T.? == b.T) {
+                // NOTE: By definition, if we compare:
+                // - A which has a proto B
+                // - And B itself
+                // => A is after B as it requires B
+                return false;
+            }
             return a.proto_index.? < b.proto_index.?;
         }
         return a.proto_index == null;
