@@ -119,3 +119,30 @@ pub const Case = struct {
     ex: []const u8,
     cbk_ex: []const u8 = "undefined",
 };
+
+// a shorthand function to run a script within a JS env
+// without providing a JS result
+// - on success, do nothing
+// - on error, log error the JS result and JS stack if available
+pub fn runScript(
+    js_env: *public.Env,
+    alloc: std.mem.Allocator,
+    script: []const u8,
+    name: []const u8,
+) !void {
+
+    // init result
+    var res = public.JSResult{};
+    defer res.deinit(alloc);
+
+    try js_env.run(alloc, script, name, &res, null);
+
+    // check result
+    if (!res.success) {
+        std.log.err("script {s} error: {s}\n", .{ name, res.result });
+        if (res.stack) |stack| {
+            std.log.err("script {s} stack: {s}\n", .{ name, stack });
+        }
+        return error.Script;
+    }
+}
