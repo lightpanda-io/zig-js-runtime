@@ -52,8 +52,12 @@ const MyVariadic = struct {
 };
 
 // generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{ MyIterable, MyList, MyVariadic });
+pub fn generate() ![]public.API {
+    return try public.compile(.{
+        MyIterable,
+        MyList,
+        MyVariadic,
+    });
 }
 
 // exec tests

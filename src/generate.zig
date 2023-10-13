@@ -28,13 +28,11 @@ const loadFn = private.loadFn;
 // Compile native types to native APIs
 // which can be later loaded in JS.
 // This function is called at comptime.
-pub fn compile(comptime types: anytype) []API {
+pub fn compile(comptime types: anytype) ![]API {
     comptime {
 
         // call types reflection
-        const all_T = refl.do(types) catch |err| {
-            @compileError(@errorName(err));
-        };
+        const all_T = try refl.do(types);
 
         // generate APIs
         var apis: [all_T.len]API = undefined;

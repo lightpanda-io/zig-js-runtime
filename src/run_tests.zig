@@ -45,7 +45,7 @@ test {
     var proto_alloc: bench.Allocator = undefined;
     if (do_proto) {
         tests_nb += 1;
-        const proto_apis = comptime proto.generate(); // stage1: we need comptime
+        const proto_apis = comptime try proto.generate(); // stage1: we need comptime
         proto_alloc = bench.allocator(std.testing.allocator);
         var proto_arena = std.heap.ArenaAllocator.init(proto_alloc.allocator());
         defer proto_arena.deinit();
@@ -56,7 +56,7 @@ test {
     var prim_alloc: bench.Allocator = undefined;
     if (do_prim) {
         tests_nb += 1;
-        const prim_apis = comptime primitive_types.generate(); // stage1: we need to comptime
+        const prim_apis = comptime try primitive_types.generate(); // stage1: we need to comptime
         prim_alloc = bench.allocator(std.testing.allocator);
         var prim_arena = std.heap.ArenaAllocator.init(prim_alloc.allocator());
         defer prim_arena.deinit();
@@ -67,7 +67,7 @@ test {
     var nat_alloc: bench.Allocator = undefined;
     if (do_nat) {
         tests_nb += 1;
-        const nat_apis = comptime native_types.generate(); // stage1: we need to comptime
+        const nat_apis = comptime try native_types.generate(); // stage1: we need to comptime
         nat_alloc = bench.allocator(std.testing.allocator);
         var nat_arena = std.heap.ArenaAllocator.init(nat_alloc.allocator());
         defer nat_arena.deinit();
@@ -78,7 +78,7 @@ test {
     var complex_alloc: bench.Allocator = undefined;
     if (do_complex) {
         tests_nb += 1;
-        const complex_apis = comptime complex_types.generate(); // stage1: we need to comptime
+        const complex_apis = comptime try complex_types.generate(); // stage1: we need to comptime
         complex_alloc = bench.allocator(std.testing.allocator);
         var complex_arena = std.heap.ArenaAllocator.init(complex_alloc.allocator());
         defer complex_arena.deinit();
@@ -89,7 +89,7 @@ test {
     var multi_alloc: bench.Allocator = undefined;
     if (do_multi) {
         tests_nb += 1;
-        const multi_apis = comptime multiple_types.generate(); // stage1: we need to comptime
+        const multi_apis = comptime try multiple_types.generate(); // stage1: we need to comptime
         multi_alloc = bench.allocator(std.testing.allocator);
         var multi_arena = std.heap.ArenaAllocator.init(multi_alloc.allocator());
         defer multi_arena.deinit();
@@ -100,7 +100,7 @@ test {
     var cbk_alloc: bench.Allocator = undefined;
     if (do_cbk) {
         tests_nb += 1;
-        const cbk_apis = comptime callback.generate(); // stage1: we need comptime
+        const cbk_apis = comptime try callback.generate(); // stage1: we need comptime
         cbk_alloc = bench.allocator(std.testing.allocator);
         var cbk_arena = std.heap.ArenaAllocator.init(cbk_alloc.allocator());
         defer cbk_arena.deinit();
