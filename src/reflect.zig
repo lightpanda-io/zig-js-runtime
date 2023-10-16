@@ -41,12 +41,12 @@ const internal_types = [_]type{
     CallbackArg,
 };
 
+// Type describes the reflect information of an individual value, either:
+// - an input paramater of a function
+// - or a return value of a function
 pub const Type = struct {
     T: type, // could be pointer or concrete
     name: ?[]const u8, // not available for return type
-
-    under_opt: ?type,
-    under_ptr: ?type,
 
     // is this a custom struct (native or nested)?
     T_refl_index: ?usize = null,
@@ -60,16 +60,56 @@ pub const Type = struct {
         }
     }
 
-    pub inline fn under_T(comptime self: Type) type {
-        comptime {
-            if (self.under_ptr) |T| {
-                return T;
-            }
-            if (self.under_opt) |T| {
-                return T;
-            }
-            return self.T;
+    // NOTE: underlying types
+    // ----------------------
+    // The logic with underlying types is that a concrete Zig type
+    // can be encapsulated by several layers of syntax, sometimes additionaly:
+    // - an error union -> !T
+    // - an optional type -> ?T
+    // - a pointer -> *T
+    // And of course those can add themselves, eg. !?*T
+    // We need to get information about:
+    // - the original type, ie. the complete one
+    // - the underlying type, ie. the concrete one
+    // - and all the successive stages
+
+    // ?Type
+    fn _underOpt(comptime T: type) ?type {
+        const info = @typeInfo(T);
+        if (info != .Optional) {
+            return null;
         }
+        return info.Optional.child;
+    }
+    pub inline fn underOpt(comptime self: Type) ?type {
+        std.debug.assert(@inComptime());
+        return Type._underOpt(self.T);
+    }
+
+    // ?*Type
+    // *Type
+    fn _underPtr(comptime T: type) ?type {
+        const TT = Type._underOpt(T) orelse T;
+        const info = @typeInfo(TT);
+        if (info == .Pointer and info.Pointer.size != .Slice) {
+            // NOTE: slice are pointers but we handle them as single value
+            return info.Pointer.child;
+        }
+        return null;
+    }
+    pub inline fn underPtr(comptime self: Type) ?type {
+        std.debug.assert(@inComptime());
+        return Type._underPtr(self.T);
+    }
+
+    fn _underT(comptime T: type) type {
+        if (Type._underPtr(T)) |TT| return TT;
+        if (Type._underOpt(T)) |TT| return TT;
+        return T;
+    }
+    pub inline fn underT(comptime self: Type) type {
+        std.debug.assert(@inComptime());
+        return Type._underT(self.T);
     }
 
     // find if T is a VariadicType
@@ -125,12 +165,12 @@ pub const Type = struct {
 
         // lookup unecessary
         for (builtin_types) |builtin_T| {
-            if (builtin_T == self.under_T()) {
+            if (builtin_T == self.underT()) {
                 return;
             }
         }
         for (internal_types) |internal_T| {
-            if (internal_T == self.under_T()) {
+            if (internal_T == self.underT()) {
                 return;
             }
         }
@@ -144,20 +184,20 @@ pub const Type = struct {
         }
 
         // if variadic, lookup the concrete type
-        var variadic_type = try Type.variadic(self.under_T());
+        var variadic_type = try Type.variadic(self.underT());
         if (variadic_type) |*tt| {
             return tt.lookup(structs);
         }
 
         // check under_T in all structs (and nested structs)
         inline for (structs) |s| {
-            if (self.under_T() == s.T or self.under_T() == s.Self()) {
+            if (self.underT() == s.T or self.underT() == s.Self()) {
                 self.T_refl_index = s.index;
                 break;
             }
             inline for (s.nested, 0..) |nested, i| {
-                if (self.under_T() == nested.T) {
-                    if (self.under_ptr != null) {
+                if (self.underT() == nested.T) {
+                    if (self.underPtr() != null) {
                         const msg = "pointer on nested struct is not allowed, choose a type struct for this use case";
                         fmtErr(msg.len, msg, self.T);
                         return error.TypeNestedPtr;
@@ -192,14 +232,6 @@ pub const Type = struct {
         return &union_types;
     }
 
-    fn isPointer(comptime info: std.builtin.Type) bool {
-        if (info == .Pointer and info.Pointer.size != .Slice) {
-            // NOTE: slice are pointers but we handle them as single value
-            return true;
-        }
-        return false;
-    }
-
     fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
         const info = @typeInfo(T);
 
@@ -209,29 +241,9 @@ pub const Type = struct {
             union_T = try reflectUnion(T, info);
         }
 
-        // underlying T
-        // NOTE: the following cases are handled:
-        // - T is a value (under_opt = null, under_ptr = null)
-        // - T is a pointer (under_opt = null, under_ptr = T child)
-        // - T is an optional value (under_opt = T child, under_ptr = null)
-        // - T is an optional pointer (under_opt = T child, under_ptr = T child child)
-        var under_opt: ?type = null;
-        var under_ptr: ?type = null;
-        if (info == .Optional) {
-            under_opt = info.Optional.child;
-            const child_info = @typeInfo(info.Optional.child);
-            if (isPointer(child_info)) {
-                under_ptr = child_info.Pointer.child;
-            } else if (child_info == .Union) {
-                union_T = try reflectUnion(info.Optional.child, child_info);
-            }
-        } else if (isPointer(info)) {
-            under_ptr = info.Pointer.child;
-        }
-
         // variadic types must be optional
-        if (under_opt == null) {
-            const under = under_ptr orelse T;
+        if (Type._underOpt(T) == null) {
+            const under = Type._underT(T);
             if (Type._is_variadic(under)) {
                 return error.TypeVariadicNotOptional;
             }
@@ -240,8 +252,6 @@ pub const Type = struct {
         var t = Type{
             .T = T,
             .name = name,
-            .under_opt = under_opt,
-            .under_ptr = under_ptr,
             .union_T = union_T,
         };
         return t;
@@ -469,7 +479,7 @@ pub const Func = struct {
             // variadic
             // ensure only 1 variadic argument
             // and that it's the last one
-            if (Type._is_variadic(args_types[i].under_T()) and i < (args.len - 1)) {
+            if (Type._is_variadic(args_types[i].underT()) and i < (args.len - 1)) {
                 return error.FuncVariadicNotLastOne;
             }
         }
@@ -479,7 +489,7 @@ pub const Func = struct {
         var i = args_types.len;
         while (i > 0) {
             i -= 1;
-            if (args_types[i].under_opt == null) {
+            if (args_types[i].underOpt() == null) {
                 break;
             }
             first_optional_arg = i;
@@ -502,7 +512,7 @@ pub const Func = struct {
 
         // reflect return type
         const return_type = try Type.reflect(func.Fn.return_type.?, null);
-        if (Type._is_variadic(return_type.under_T())) return error.FuncReturnTypeVariadic;
+        if (Type._is_variadic(return_type.underT())) return error.FuncReturnTypeVariadic;
 
         return Func{
             .js_name = js_name,
