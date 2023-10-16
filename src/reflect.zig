@@ -42,7 +42,7 @@ const internal_types = [_]type{
 };
 
 // Type describes the reflect information of an individual value, either:
-// - an input paramater of a function
+// - an input parameter of a function
 // - or a return value of a function
 pub const Type = struct {
     T: type, // could be pointer or concrete
@@ -73,9 +73,24 @@ pub const Type = struct {
     // - the underlying type, ie. the concrete one
     // - and all the successive stages
 
+    // !Type
+    fn _underErr(comptime T: type) ?type {
+        const info = @typeInfo(T);
+        if (info != .ErrorUnion) {
+            return null;
+        }
+        return info.ErrorUnion.payload;
+    }
+    pub inline fn underErr(comptime self: Type) ?type {
+        std.debug.assert(@inComptime());
+        return Type._underErr(self.T);
+    }
+
+    // !?Type (from underErr)
     // ?Type
     fn _underOpt(comptime T: type) ?type {
-        const info = @typeInfo(T);
+        const TT = Type._underErr(T) orelse T;
+        const info = @typeInfo(TT);
         if (info != .Optional) {
             return null;
         }
@@ -86,10 +101,18 @@ pub const Type = struct {
         return Type._underOpt(self.T);
     }
 
-    // ?*Type
+    // !?*Type, ?*Type (from underOpt)
+    // !*Type (from underErr)
     // *Type
     fn _underPtr(comptime T: type) ?type {
-        const TT = Type._underOpt(T) orelse T;
+        var TT: type = undefined;
+        if (Type._underOpt(T)) |t| {
+            TT = t;
+        } else if (Type._underErr(T)) |t| {
+            TT = t;
+        } else {
+            TT = T;
+        }
         const info = @typeInfo(TT);
         if (info == .Pointer and info.Pointer.size != .Slice) {
             // NOTE: slice are pointers but we handle them as single value
@@ -102,9 +125,14 @@ pub const Type = struct {
         return Type._underPtr(self.T);
     }
 
+    // !?*Type, ?*Type, !*Type, *Type (from underPtr)
+    // !?Type, ?Type (from underOpt)
+    // !Type (from underErr)
+    // Type
     fn _underT(comptime T: type) type {
         if (Type._underPtr(T)) |TT| return TT;
         if (Type._underOpt(T)) |TT| return TT;
+        if (Type._underErr(T)) |TT| return TT;
         return T;
     }
     pub inline fn underT(comptime self: Type) type {
@@ -481,6 +509,11 @@ pub const Func = struct {
             // and that it's the last one
             if (Type._is_variadic(args_types[i].underT()) and i < (args.len - 1)) {
                 return error.FuncVariadicNotLastOne;
+            }
+
+            // error union prohibited for args
+            if (args_types[i].underErr() != null) {
+                return error.FuncErrorUnionArg;
             }
         }
 
@@ -1258,6 +1291,7 @@ const Error = error{
     FuncMultiCbk,
     FuncVariadicNotLastOne,
     FuncReturnTypeVariadic,
+    FuncErrorUnionArg,
 
     // type errors
     TypeTaggedUnion,
@@ -1366,6 +1400,9 @@ const TestFuncVariadicNotLastOne = struct {
 };
 const TestFuncReturnTypeVariadic = struct {
     pub fn _example(_: TestFuncReturnTypeVariadic) ?VariadicBool {}
+};
+const TestFuncErrorUnionArg = struct {
+    pub fn _example(_: TestFuncErrorUnionArg, _: anyerror!void) void {}
 };
 
 // types tests
@@ -1476,6 +1513,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestFuncReturnTypeVariadic},
         error.FuncReturnTypeVariadic,
+    );
+    try ensureErr(
+        .{TestFuncErrorUnionArg},
+        error.FuncErrorUnionArg,
     );
 
     // types checks

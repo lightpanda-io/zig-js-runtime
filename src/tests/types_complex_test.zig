@@ -51,12 +51,33 @@ const MyVariadic = struct {
     }
 };
 
+const MyErrorUnion = struct {
+    pub fn constructor() MyErrorUnion {
+        return .{};
+    }
+
+    pub fn get_withoutError(_: MyErrorUnion) !u8 {
+        return 0;
+    }
+
+    pub fn get_withError(_: MyErrorUnion) !u8 {
+        return error.MyError;
+    }
+
+    pub fn _funcWithoutError(_: MyErrorUnion) !void {}
+
+    pub fn _funcWithError(_: MyErrorUnion) !void {
+        return error.MyError;
+    }
+};
+
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{
+pub fn generate() []public.API {
+    return public.compile(.{
         MyIterable,
         MyList,
         MyVariadic,
+        MyErrorUnion,
     });
 }
 
@@ -93,4 +114,13 @@ pub fn exec(
         .{ .src = "myVariadic.empty()", .ex = "true" },
     };
     try tests.checkCases(js_env, &variadic);
+
+    var error_union = [_]tests.Case{
+        .{ .src = "let myErrorUnion = new MyErrorUnion();", .ex = "undefined" },
+        .{ .src = "myErrorUnion.withoutError", .ex = "0" },
+        .{ .src = "var myErrorGetter = ''; try {myErrorUnion.withError} catch (error) {myErrorGetter = error}; myErrorGetter", .ex = "Error: MyError" },
+        .{ .src = "myErrorUnion.funcWithoutError()", .ex = "undefined" },
+        .{ .src = "var myErrorFunc = ''; try {myErrorUnion.funcWithError()} catch (error) {myErrorFunc = error}; myErrorFunc", .ex = "Error: MyError" },
+    };
+    try tests.checkCases(js_env, &error_union);
 }
