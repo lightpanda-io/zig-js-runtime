@@ -75,7 +75,7 @@ pub fn jsToNative(
     // JS Null or Undefined value
     if (js_val.isNull() or js_val.isUndefined()) {
         // if Native optional type return null
-        if (comptime zig_T.under_opt != null) {
+        if (comptime zig_T.underOpt() != null) {
             return null;
         }
         // Here we should normally return an error
@@ -95,7 +95,7 @@ pub fn jsToNative(
         const js_obj = js_val.castTo(v8.Object);
         const nested_T = T_refl.nested[index];
         // using under_T to handle both mandatory and optional JS object
-        var obj: zig_T.under_T() = undefined;
+        var obj: zig_T.underT() = undefined;
         inline for (nested_T.fields) |field| {
             const name = field.name.?;
             const key = v8.String.initUtf8(isolate, name);
@@ -104,7 +104,7 @@ pub fn jsToNative(
                 const field_val = try jsToNative(alloc, T_refl, field, field_js_val, isolate, ctx);
                 @field(obj, name) = field_val;
             } else {
-                if (field.under_opt != null) {
+                if (comptime field.underOpt() != null) {
                     @field(obj, name) = null;
                 } else {
                     return error.JSWrongObject;
@@ -162,7 +162,7 @@ pub fn jsToNative(
         // integers unsigned
         u8, ?u8, u16, ?u16 => {
             const v = try js_val.toU32(ctx);
-            if (zig_T.under_opt) |under_opt| {
+            if (comptime zig_T.underOpt()) |under_opt| {
                 return @as(under_opt, @intCast(v));
             }
             return @as(zig_T.T, @intCast(v));

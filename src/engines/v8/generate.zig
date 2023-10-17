@@ -77,7 +77,7 @@ fn getNativeArg(
     // JS Null or Undefined value
     if (js_value.isNull() or js_value.isUndefined()) {
         // if Native optional type return null
-        if (comptime arg_T.under_opt != null) {
+        if (comptime arg_T.underOpt() != null) {
             return null;
         }
         // TODO: else return error "Argument x is not an object"
@@ -89,7 +89,7 @@ fn getNativeArg(
         all_T,
         js_value.castTo(v8.Object),
     ) catch unreachable; // TODO: throw js exception
-    if (arg_T.under_ptr != null) {
+    if (arg_T.underPtr() != null) {
         value = ptr;
     } else {
         value = ptr.*;
@@ -175,7 +175,7 @@ fn getArgs(
         comptime var arg_real: refl.Type = undefined;
 
         comptime {
-            if (try refl.Type.variadic(arg.under_T())) |arg_v| {
+            if (try refl.Type.variadic(arg.underT())) |arg_v| {
                 arg_real = arg_v;
             } else {
                 arg_real = arg;
@@ -239,7 +239,7 @@ pub fn setNativeObject(
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
-    const T = obj_T.under_T();
+    const T = obj_T.underT();
 
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
@@ -290,11 +290,12 @@ fn setReturnType(
     ctx: v8.Context,
     isolate: v8.Isolate,
 ) !v8.Value {
-    const val_T = if (ret.under_opt) |T| T else ret.T;
+    const under_opt = comptime ret.underOpt();
+    const val_T = if (under_opt) |T| T else ret.T;
     var val: val_T = undefined;
 
     // Optional
-    if (ret.under_opt != null) {
+    if (under_opt != null) {
         if (res == null) {
             // if null just return JS null
             return isolate.initNull().toValue();
@@ -372,7 +373,7 @@ fn setReturnType(
     // return is a builtin type
 
     const js_val = nativeToJS(
-        ret.under_T(),
+        ret.underT(),
         val,
         isolate,
     ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
