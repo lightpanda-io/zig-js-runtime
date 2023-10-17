@@ -7,7 +7,7 @@ const Window = @import("tests/cbk_test.zig").Window;
 pub fn main() !void {
 
     // generate APIs
-    const apis = public.compile(.{ public.Console, Window });
+    const apis = comptime try public.compile(.{ public.Console, Window });
 
     // create JS vm
     const vm = public.VM.init();
