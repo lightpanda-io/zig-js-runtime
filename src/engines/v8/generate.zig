@@ -20,6 +20,12 @@ const TPL = @import("v8.zig").TPL;
 // Utils functions
 // ---------------
 
+fn throwError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
+    const err = v8.String.initUtf8(isolate, msg);
+    const exception = v8.Exception.initError(err);
+    js_res.set(isolate.throwException(exception));
+}
+
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
@@ -290,27 +296,27 @@ fn setReturnType(
     ctx: v8.Context,
     isolate: v8.Isolate,
 ) !v8.Value {
-    const under_opt = comptime ret.underOpt();
-    const val_T = if (under_opt) |T| T else ret.T;
-    var val: val_T = undefined;
+    const info = @typeInfo(@TypeOf(res));
+
+    // Error Union
+    if (info == .ErrorUnion) {
+        const unwrapped = try res;
+        return setReturnType(alloc, all_T, ret, unwrapped, ctx, isolate);
+    }
 
     // Optional
-    if (under_opt != null) {
+    if (info == .Optional) {
         if (res == null) {
             // if null just return JS null
             return isolate.initNull().toValue();
-        } else {
-            // otherwise replace with the underlying type
-            val = res.?;
         }
-    } else {
-        val = res;
+        return setReturnType(alloc, all_T, ret, res.?, ctx, isolate);
     }
 
     // Union type
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
-        const activeTag = @tagName(std.meta.activeTag(val));
+        const activeTag = @tagName(std.meta.activeTag(res));
         // TODO: better algorythm?
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
@@ -318,7 +324,7 @@ fn setReturnType(
                     alloc,
                     all_T,
                     tt,
-                    @field(val, tt.name.?),
+                    @field(res, tt.name.?),
                     ctx,
                     isolate,
                 );
@@ -340,7 +346,7 @@ fn setReturnType(
                 alloc,
                 all_T,
                 field,
-                @field(val, name),
+                @field(res, name),
                 ctx,
                 isolate,
             );
@@ -363,7 +369,7 @@ fn setReturnType(
             alloc,
             all_T[index],
             ret,
-            val,
+            res,
             js_obj,
             isolate,
         ) catch unreachable;
@@ -374,7 +380,7 @@ fn setReturnType(
 
     const js_val = nativeToJS(
         ret.underT(),
-        val,
+        res,
         isolate,
     ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
     return js_val;
@@ -466,6 +472,7 @@ fn generateConstructor(
                 info.getThis(),
                 isolate,
             ) catch unreachable;
+            // TODO: we choose for now not throw user error
         }
     }.constructor;
 }
@@ -512,7 +519,10 @@ fn generateGetter(
                 res,
                 isolate.getCurrentContext(),
                 isolate,
-            ) catch unreachable;
+            ) catch |err| {
+                // TODO: how to handle internal errors vs user errors
+                return throwError(@errorName(err), info.getReturnValue(), isolate);
+            };
             info.getReturnValue().setValueHandle(js_val.handle);
         }
     }.getter;
@@ -629,7 +639,10 @@ fn generateMethod(
                 res,
                 ctx,
                 isolate,
-            ) catch unreachable;
+            ) catch |err| {
+                // TODO: how to handle internal errors vs user errors
+                return throwError(@errorName(err), info.getReturnValue(), isolate);
+            };
             info.getReturnValue().setValueHandle(js_val.handle);
 
             // sync callback
