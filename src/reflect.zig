@@ -261,7 +261,7 @@ pub const Type = struct {
     }
 
     fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
-        const info = @typeInfo(T);
+        const info = @typeInfo(Type._underT(T));
 
         // union T
         var union_T: ?[]Type = null;
