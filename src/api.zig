@@ -50,3 +50,7 @@ pub const CallbackArg = Engine.CallbackArg;
 pub const TryCatch = Engine.TryCatch;
 pub const VM = Engine.VM;
 pub const Env = Engine.Env;
+
+pub const engineType = enum {
+    v8,
+};

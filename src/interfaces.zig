@@ -41,6 +41,9 @@ pub fn Env(
     comptime Object_T: type,
 ) void {
 
+    // engine()
+    assertDecl(T, "engine", fn () public.engineType);
+
     // init()
     assertDecl(T, "init", fn (
         arena_alloc: *std.heap.ArenaAllocator,
