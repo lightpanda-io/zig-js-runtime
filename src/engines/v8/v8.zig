@@ -77,6 +77,10 @@ pub const Env = struct {
 
     context: ?v8.Context = null,
 
+    pub fn engine() public.engineType {
+        return .v8;
+    }
+
     pub fn init(arena_alloc: *std.heap.ArenaAllocator, loop: *Loop) anyerror!Env {
 
         // globals values
