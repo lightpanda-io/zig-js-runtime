@@ -164,8 +164,13 @@ pub const Env = struct {
         ctx.enter();
 
         // APIs prototype
-        // set the prototype of each corresponding Function
+        // set the prototype of each corresponding constructor Function
+        // NOTE: this is required to inherit attributes at the Type level,
+        // ie. static class attributes.
+        // For static instance attributes we set them
+        // on FunctionTemplate.PrototypeTemplate
         // TODO: is there a better way to do it at the Template level?
+        // see https://github.com/Browsercore/jsruntime-lib/issues/128
         inline for (apis, 0..) |api, i| {
             if (api.T_refl.proto_index) |proto_index| {
                 const cstr_tpl = gen.getTpl(i).tpl;

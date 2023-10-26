@@ -766,6 +766,10 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
                 if (T_refl.proto_index.? != proto_tpl.?.index) {
                     return LoadError.WrongPrototypeTemplateProvided;
                 }
+                // at instance level, inherit from proto template
+                // ie. an instance of the Child function has all properties
+                // on Parent's instance template
+                // ie. <Child>.prototype.__proto__ === <Parent>.prototype
                 cstr_tpl.inherit(proto_tpl.?.tpl);
             }
 

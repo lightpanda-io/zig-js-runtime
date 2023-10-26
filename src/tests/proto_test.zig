@@ -45,6 +45,8 @@ const Person = struct {
         self.age = age;
     }
 
+    // TODO: should be a static function
+    // see https://github.com/Browsercore/jsruntime-lib/issues/127
     pub fn get_symbol_toStringTag(_: Person) []const u8 {
         return "MyPerson";
     }
@@ -178,7 +180,7 @@ pub fn generate() ![]public.API {
 
 // exec tests
 pub fn exec(
-    _: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     js_env: *public.Env,
     comptime apis: []public.API,
 ) !void {
@@ -186,6 +188,12 @@ pub fn exec(
     // start JS env
     js_env.start(apis);
     defer js_env.stop();
+
+    const ownBase = switch (public.Env.engine()) {
+        .v8 => 5,
+    };
+    const ownBaseLen = intToStr(alloc, ownBase);
+    defer alloc.free(ownBaseLen);
 
     // global
     try js_env.attachObject(try js_env.getGlobal(), "self", null);
@@ -234,9 +242,39 @@ pub fn exec(
     };
     try tests.checkCases(js_env, &cases4);
 
-    // prototype chain
-    var cases_proto = [_]tests.Case{
-        .{ .src = "User.__proto__ === Person;", .ex = "true" },
+    // static attr
+    const ownPersonLen = intToStr(alloc, ownBase + 2);
+    defer alloc.free(ownPersonLen);
+    var cases_static = [_]tests.Case{
+        // basic static case
+        .{ .src = "Person.AGE_MIN === 18", .ex = "true" },
+        .{ .src = "Person.NATIONALITY === 'French'", .ex = "true" },
+        // static attributes are own properties
+        .{ .src = "let ownPerson = Object.getOwnPropertyNames(Person)", .ex = "undefined" },
+        .{ .src = "ownPerson.length", .ex = ownPersonLen },
+        // static attributes are also available on instances
+        .{ .src = "p.AGE_MIN === 18", .ex = "true" },
+        .{ .src = "p.NATIONALITY === 'French'", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &cases_static);
+
+    // prototype chain, constructor level
+    var cases_proto_constructor = [_]tests.Case{
+        // template level (load) FunctionTemplate.inherit
+        .{ .src = "User.prototype.__proto__ === Person.prototype", .ex = "true" },
+        // object level (context started) FunctionTemplate.getFunction.setPrototype
+        .{ .src = "User.__proto__ === Person", .ex = "true" },
+        // static attributes inherited on constructor
+        .{ .src = "User.AGE_MIN === 18", .ex = "true" },
+        .{ .src = "User.NATIONALITY === 'French'", .ex = "true" },
+        // static attributes inherited are NOT own properties
+        .{ .src = "let ownUser = Object.getOwnPropertyNames(User)", .ex = "undefined" },
+        .{ .src = "ownUser.length", .ex = ownBaseLen },
+    };
+    try tests.checkCases(js_env, &cases_proto_constructor);
+
+    // prototype chain, instance level
+    var cases_proto_instance = [_]tests.Case{
         .{ .src = "let u = new User('Francis', 'Englund', 42);", .ex = "undefined" },
         .{ .src = "u.__proto__ === User.prototype", .ex = "true" },
         .{ .src = "u.__proto__.__proto__ === Person.prototype", .ex = "true" },
@@ -246,8 +284,11 @@ pub fn exec(
         .{ .src = "u.age = 43;", .ex = "43" },
         .{ .src = "u.role = 2;", .ex = "2" },
         .{ .src = "u.age;", .ex = "43" },
+        // static attributes inherited are also available on instances
+        .{ .src = "u.AGE_MIN === 18", .ex = "true" },
+        .{ .src = "u.NATIONALITY === 'French'", .ex = "true" },
     };
-    try tests.checkCases(js_env, &cases_proto);
+    try tests.checkCases(js_env, &cases_proto_instance);
 
     // constructor returning pointer
     var casesPtr = [_]tests.Case{
@@ -274,10 +315,12 @@ pub fn exec(
         .{ .src = "upc.name === 'Francis'", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesProtoCast);
+}
 
-    var casesStatic = [_]tests.Case{
-        .{ .src = "Person.AGE_MIN === 18", .ex = "true" },
-        .{ .src = "Person.NATIONALITY === 'French'", .ex = "true" },
-    };
-    try tests.checkCases(js_env, &casesStatic);
+fn intToStr(alloc: std.mem.Allocator, nb: u8) []const u8 {
+    return std.fmt.allocPrint(
+        alloc,
+        "{d}",
+        .{nb},
+    ) catch unreachable;
 }
