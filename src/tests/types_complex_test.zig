@@ -71,6 +71,62 @@ const MyErrorUnion = struct {
     }
 };
 
+pub const MyException = struct {
+    err: ErrorSet,
+
+    const errorNames = [_][]const u8{
+        "MyCustomError",
+    };
+    const errorMsgs = [_][]const u8{
+        "Some custom message.",
+    };
+    fn errorStrings(comptime i: usize) []const u8 {
+        return errorNames[0] ++ ": " ++ errorMsgs[i];
+    }
+
+    // interface definition
+
+    pub const ErrorSet = error{
+        MyCustomError,
+    };
+
+    pub fn init(_: std.mem.Allocator, err: ErrorSet) anyerror!MyException {
+        return .{ .err = err };
+    }
+
+    pub fn get_name(self: MyException) []const u8 {
+        return switch (self.err) {
+            ErrorSet.MyCustomError => errorNames[0],
+        };
+    }
+
+    pub fn get_message(self: MyException) []const u8 {
+        return switch (self.err) {
+            ErrorSet.MyCustomError => errorMsgs[0],
+        };
+    }
+
+    pub fn _toString(self: MyException) []const u8 {
+        return switch (self.err) {
+            ErrorSet.MyCustomError => errorStrings(0),
+        };
+    }
+};
+
+const MyTypeWithException = struct {
+    pub const Exception = MyException;
+
+    pub fn constructor() MyTypeWithException {
+        return .{};
+    }
+
+    pub fn _withoutError(_: MyTypeWithException) MyException.ErrorSet!void {}
+
+    pub fn _withError(_: MyTypeWithException) MyException.ErrorSet!void {
+        return MyException.ErrorSet.MyCustomError;
+    }
+};
+
 // generate API, comptime
 pub fn generate() []public.API {
     return public.compile(.{
@@ -78,18 +134,20 @@ pub fn generate() []public.API {
         MyList,
         MyVariadic,
         MyErrorUnion,
+        MyException,
+        MyTypeWithException,
     });
 }
 
 // exec tests
 pub fn exec(
-    _: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     js_env: *public.Env,
     comptime apis: []public.API,
 ) !void {
 
     // start JS env
-    js_env.start(apis);
+    try js_env.start(alloc, apis);
     defer js_env.stop();
 
     var iter = [_]tests.Case{
@@ -123,4 +181,14 @@ pub fn exec(
         .{ .src = "var myErrorFunc = ''; try {myErrorUnion.funcWithError()} catch (error) {myErrorFunc = error}; myErrorFunc", .ex = "Error: MyError" },
     };
     try tests.checkCases(js_env, &error_union);
+
+    var exception = [_]tests.Case{
+        .{ .src = "MyException.prototype.__proto__ === Error.prototype", .ex = "true" },
+        .{ .src = "let myTypeWithException = new MyTypeWithException();", .ex = "undefined" },
+        .{ .src = "myTypeWithException.withoutError()", .ex = "undefined" },
+        .{ .src = "var myCustomError = ''; try {myTypeWithException.withError()} catch (error) {myCustomError = error}", .ex = "MyCustomError: Some custom message." },
+        .{ .src = "myCustomError instanceof MyException", .ex = "true" },
+        .{ .src = "myCustomError instanceof Error", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &exception);
 }

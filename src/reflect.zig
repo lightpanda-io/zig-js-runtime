@@ -60,6 +60,38 @@ pub const Type = struct {
         }
     }
 
+    // Is the returned Type a custom Exception error?
+    // conditions:
+    // - the return type must be an ErrorUnion
+    // - the API must define a custom Exception
+    // - the return type ErrorSet must be the custom Exception ErrorSet
+    pub fn isException(
+        comptime self: Type,
+        comptime api: Struct,
+        comptime all: []Struct,
+    ) ?Struct {
+        std.debug.assert(@inComptime());
+
+        if (self.errorSet()) |errSet| {
+            if (api.exception(all)) |exception| {
+                if (errSet == @field(exception.T, "ErrorSet")) {
+                    return exception;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // If the Type is an ErrorUnion, returns it's ErrorSet
+    fn errorSet(comptime self: Type) ?type {
+        std.debug.assert(@inComptime());
+        if (@typeInfo(self.T) != .ErrorUnion) {
+            return null;
+        }
+        return @typeInfo(self.T).ErrorUnion.error_set;
+    }
+
     // NOTE: underlying types
     // ----------------------
     // The logic with underlying types is that a concrete Zig type
@@ -843,6 +875,65 @@ pub const Struct = struct {
         return attrs;
     }
 
+    // Is the T a well-formed exception?
+    fn _checkException(comptime T: type) Error!void {
+
+        // check ErrorSet
+        if (!@hasDecl(T, "ErrorSet")) {
+            return error.StructExceptionWithoutErrorSet;
+        }
+        const errSet = @field(T, "ErrorSet");
+        if (@typeInfo(errSet) != .ErrorSet) {
+            return error.StructExceptionWrongErrorSet;
+        }
+
+        // check interface methods
+        const err = error.StructExceptionWrongInterface;
+        if (!isDecl(T, "init", fn (_: std.mem.Allocator, _: errSet) anyerror!T)) return err;
+        if (!isDecl(T, "get_name", fn (_: T) []const u8)) return err;
+        if (!isDecl(T, "get_message", fn (_: T) []const u8)) return err;
+        if (!isDecl(T, "_toString", fn (_: T) []const u8)) return err;
+    }
+
+    // Is the API an exception?
+    pub fn isException(comptime self: Struct) bool {
+        std.debug.assert(@inComptime());
+        // it's an exception if the check does not return an error
+        Struct._checkException(self.T) catch return false;
+        return true;
+    }
+
+    // Does the T has an exception?
+    fn _hasException(comptime T: type) Error!?type {
+        if (!@hasDecl(T, "Exception")) {
+            return null;
+        }
+
+        const exceptT = @field(T, "Exception");
+        try Struct._checkException(exceptT);
+        return exceptT;
+    }
+
+    // Retrieve the optional Exception of the API,
+    // including from prototype chain
+    fn exception(comptime self: Struct, comptime all: []Struct) ?Struct {
+
+        // errors have already been checked at lookup stage
+        if (Struct._hasException(self.T) catch unreachable) |T| {
+            for (all) |s| {
+                if (s.T == T) return s;
+            }
+        }
+
+        // to avoid verbose declaration we allow Exception to be declared
+        // on the prototype chain
+        if (self.proto_index) |idx| {
+            return all[idx].exception(all);
+        }
+
+        return null;
+    }
+
     fn reflectProto(comptime T: type, comptime real_T: type) Error!?type {
 
         // check the 'protoype' declaration
@@ -1187,6 +1278,19 @@ fn lookupDuplicates(comptime all: []Struct) Error!void {
     }
 }
 
+fn lookupException(comptime all: []Struct) Error!void {
+    outer: for (all) |s| {
+        if (try Struct._hasException(s.T)) |T| {
+            for (all) |st| {
+                if (st.T == T) {
+                    continue :outer;
+                }
+            }
+            return error.StructExceptionDoesNotExist;
+        }
+    }
+}
+
 pub fn do(comptime types: anytype) Error![]Struct {
     comptime {
 
@@ -1221,6 +1325,9 @@ pub fn do(comptime types: anytype) Error![]Struct {
         // look for prototype chain
         // second pass, as sort as modified the index reference
         try lookupPrototype(&all);
+
+        // look for exception
+        try lookupException(&all);
 
         // look Types for corresponding Struct
         inline for (&all) |*s| {
@@ -1277,6 +1384,11 @@ fn isStringLiteral(comptime T: type) bool {
     return false;
 }
 
+fn isDecl(comptime T: type, comptime name: []const u8, comptime Decl: type) bool {
+    if (!@hasDecl(T, name)) return false;
+    return @TypeOf(@field(T, name)) == Decl;
+}
+
 fn fmtErr(comptime n: usize, comptime msg: *const [n:0]u8, comptime T: type) void {
     if (!builtin.is_test) {
         @compileLog(msg, T);
@@ -1303,6 +1415,10 @@ const Error = error{
     StructLookup,
     StructDuplicateType,
     StructDuplicateName,
+    StructExceptionWithoutErrorSet,
+    StructExceptionWrongErrorSet,
+    StructExceptionWrongInterface,
+    StructExceptionDoesNotExist,
 
     // func errors
     FuncNoSelf,
@@ -1397,6 +1513,36 @@ const TestStructLookup = struct {
 const TestStructDuplicateTypeA = struct {};
 const TestStructDuplicateTypeB = struct {
     pub const Self = TestStructDuplicateTypeA;
+};
+const MyExceptionWithoutErrorSet = struct {};
+const TestStructExceptionWithoutErrorSet = struct {
+    pub const Exception = MyExceptionWithoutErrorSet;
+};
+const MyExceptionWrongErrorSet = struct {
+    pub const ErrorSet = bool;
+};
+const TestStructExceptionWrongErrorSet = struct {
+    pub const Exception = MyExceptionWrongErrorSet;
+};
+const MyException = struct {
+    pub const ErrorSet = error{
+        MyException,
+    };
+    pub fn init(_: std.mem.Allocator, _: ErrorSet) anyerror!MyException {
+        return .{};
+    }
+    pub fn get_name(_: MyException) []const u8 {
+        return "";
+    }
+    pub fn get_message(_: MyException) []const u8 {
+        return "";
+    }
+    pub fn _toString(_: MyException) []const u8 {
+        return "";
+    }
+};
+const TestStructExceptionDoesNotExist = struct {
+    pub const Exception = MyException;
 };
 
 // funcs tests
@@ -1511,6 +1657,18 @@ pub fn tests() !void {
     try ensureErr(
         .{ TestStructDuplicateTypeA, TestStructDuplicateTypeB },
         error.StructDuplicateType,
+    );
+    try ensureErr(
+        .{TestStructExceptionWithoutErrorSet},
+        error.StructExceptionWithoutErrorSet,
+    );
+    try ensureErr(
+        .{TestStructExceptionWrongErrorSet},
+        error.StructExceptionWrongErrorSet,
+    );
+    try ensureErr(
+        .{TestStructExceptionDoesNotExist},
+        error.StructExceptionDoesNotExist,
     );
 
     // funcs checks

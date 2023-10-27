@@ -66,13 +66,13 @@ pub fn generate() []public.API {
 
 // exec tests
 pub fn exec(
-    _: std.mem.Allocator,
+    alloc: std.mem.Allocator,
     js_env: *public.Env,
     comptime apis: []public.API,
 ) !void {
 
     // start JS env
-    js_env.start(apis);
+    try js_env.start(alloc, apis);
     defer js_env.stop();
 
     var cases = [_]tests.Case{
