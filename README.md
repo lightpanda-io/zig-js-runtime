@@ -102,7 +102,7 @@ For Debian/Ubuntu based Linux:
 ```
 sudo apt install xz-utils \
     python3 ca-certificates git \
-    pkg-config libglib2.0-dev
+    pkg-config libglib2.0-dev clang
 ```
 
 For MacOS, you only need Python 3.
