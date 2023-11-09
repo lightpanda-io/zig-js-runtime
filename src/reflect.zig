@@ -420,18 +420,13 @@ pub const Func = struct {
             @panic("func is not a function");
         }
 
-        // check args length
+        // check self is present
         var args = func.Fn.params;
         if (kind != .constructor and args.len == 0) {
             // TODO: handle "class methods"
             const msg = "getter/setter/methods should have at least 1 argument, self";
             fmtErr(msg.len, msg, T);
             return error.FuncNoSelf;
-        }
-        if (kind == .getter and args.len > 1) {
-            const msg = "getter should have only 1 argument: self";
-            fmtErr(msg.len, msg, T);
-            return error.FuncGetterMultiArg;
         }
 
         // self special case (only for methods)
@@ -515,6 +510,33 @@ pub const Func = struct {
             if (args_types[i].underErr() != null) {
                 return error.FuncErrorUnionArg;
             }
+        }
+
+        // check getter and setter internal argument is an allocator
+        if (kind == .getter or kind == .setter) {
+            if (index_offset == 1) {
+                if (args[0].type.? != std.mem.Allocator) {
+                    const msg = "getter/setter non-internal argument should be an allocator";
+                    fmtErr(msg.len, msg, T);
+                    return error.FuncGetterSetterNotAllocator;
+                }
+            }
+        }
+
+        const js_args_nb = args.len - index_offset;
+
+        // check getter has no js arg
+        if (kind == .getter and js_args_nb > 0) {
+            const msg = "getter should have only 1 JS argument: self";
+            fmtErr(msg.len, msg, T);
+            return error.FuncGetterMultiArg;
+        }
+
+        // check setter has at least one js arg
+        if (kind == .setter and js_args_nb == 0) {
+            const msg = "setter should have 1 JS argument";
+            fmtErr(msg.len, msg, T);
+            return error.FuncSetterNoArg;
         }
 
         // first optional arg
@@ -1284,8 +1306,10 @@ const Error = error{
 
     // func errors
     FuncNoSelf,
+    FuncGetterSetterNotAllocator,
     FuncGetterMultiArg,
     FuncSetterFirstArgNotSelfPtr,
+    FuncSetterNoArg,
     FuncGetterMethodFirstArgNotSelfOrSelfPtr,
     FuncVoidArg,
     FuncMultiCbk,
@@ -1380,10 +1404,18 @@ const TestFuncNoSelf = struct {
     pub fn _example() void {}
 };
 const TestFuncGetterMultiArg = struct {
-    pub fn get_example(_: TestFuncGetterMultiArg, _: anytype) void {}
+    pub fn get_example(_: TestFuncGetterMultiArg, _: bool) void {}
+};
+const TestFuncGetterSetterNotAllocator = struct {
+    pub fn get_example(_: TestFuncGetterSetterNotAllocator, _: *Loop) bool {
+        return true;
+    }
 };
 const TestFuncSetterFirstArgNotSelfPtr = struct {
     pub fn set_example(_: TestFuncSetterFirstArgNotSelfPtr) void {}
+};
+const TestFuncSetterNoArg = struct {
+    pub fn set_example(_: *TestFuncSetterNoArg) void {}
 };
 const TestFuncGetterMethodFirstArgNotSelfOrSelfPtr = struct {
     pub fn _example(_: bool) void {}
@@ -1491,8 +1523,16 @@ pub fn tests() !void {
         error.FuncGetterMultiArg,
     );
     try ensureErr(
+        .{TestFuncGetterSetterNotAllocator},
+        error.FuncGetterSetterNotAllocator,
+    );
+    try ensureErr(
         .{TestFuncSetterFirstArgNotSelfPtr},
         error.FuncSetterFirstArgNotSelfPtr,
+    );
+    try ensureErr(
+        .{TestFuncSetterNoArg},
+        error.FuncSetterNoArg,
     );
     try ensureErr(
         .{TestFuncGetterMethodFirstArgNotSelfOrSelfPtr},

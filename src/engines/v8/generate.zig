@@ -494,8 +494,9 @@ fn generateGetter(
 
             // TODO: check func params length
 
-            // retrieve the zig object
             var args: func.args_T = undefined;
+
+            // retrieve the zig object
 
             if (!comptime T_refl.isEmpty()) {
                 const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
@@ -505,6 +506,11 @@ fn generateGetter(
                 } else if (self_T == *T_refl.Self()) {
                     @field(args, "0") = obj_ptr;
                 }
+            }
+
+            // provide allocator if needed
+            if ((func.args.len) == 2) {
+                @field(args, "1") == utils.allocator;
             }
 
             // call the corresponding zig object method
@@ -546,9 +552,11 @@ fn generateSetter(
 
             // TODO: check func params length
 
+            var args: func.args_T = undefined;
+
             // get the value set in javascript
             const js_value = v8.Value{ .handle = raw_value.? };
-            const arg_T = func.args[0];
+            const arg_T = func.args[func.index_offset];
             var zig_value: arg_T.T = undefined;
 
             if (arg_T.isNative()) {
@@ -573,13 +581,25 @@ fn generateSetter(
                     isolate.getCurrentContext(),
                 ) catch unreachable; // TODO: throw js exception
             }
+            const js_value_name = func.args[func.index_offset].name.?;
+            @field(args, js_value_name) = zig_value;
 
             // retrieve the zig object
-            const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
+            const obj_ptr = getNativeObject(
+                T_refl,
+                all_T,
+                info.getThis(),
+            ) catch unreachable;
+            @field(args, "0") = obj_ptr;
+
+            // provide allocator if needed
+            if ((func.args.len) == 3) {
+                @field(args, "1") == utils.allocator;
+            }
 
             // call the corresponding zig object method
             const setter_func = @field(T_refl.T, func.name);
-            _ = @call(.auto, setter_func, .{ obj_ptr, zig_value }); // return should be void
+            _ = @call(.auto, setter_func, args); // return should be void
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
