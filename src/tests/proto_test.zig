@@ -33,6 +33,14 @@ const Person = struct {
         return self.age;
     }
 
+    pub fn get_allocator(_: Person, _: std.mem.Allocator) bool {
+        return true;
+    }
+
+    pub fn set_allocator(_: *Person, _: std.mem.Allocator, _: bool) bool {
+        return true;
+    }
+
     pub fn set_age(self: *Person, age: u32) void {
         self.age = age;
     }
@@ -224,6 +232,7 @@ pub fn exec(
     // 2. getter
     var cases2 = [_]tests.Case{
         .{ .src = "p.age === 40", .ex = "true" },
+        .{ .src = "p.allocator", .ex = "true" },
     };
     try tests.checkCases(js_env, &cases2);
 
@@ -231,6 +240,7 @@ pub fn exec(
     var cases3 = [_]tests.Case{
         .{ .src = "p.age = 41;", .ex = "41" },
         .{ .src = "p.age", .ex = "41" },
+        .{ .src = "p.allocator = true", .ex = "true" },
     };
     try tests.checkCases(js_env, &cases3);
 
