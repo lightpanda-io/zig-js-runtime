@@ -33,12 +33,18 @@ const Person = struct {
         return self.age;
     }
 
-    pub fn get_allocator(_: Person, _: std.mem.Allocator) bool {
+    fn allocTest(alloc: std.mem.Allocator) !void {
+        const v = try alloc.alloc(u8, 10);
+        defer alloc.free(v);
+    }
+
+    pub fn get_allocator(_: Person, alloc: std.mem.Allocator) !bool {
+        try Person.allocTest(alloc);
         return true;
     }
 
-    pub fn set_allocator(_: *Person, _: std.mem.Allocator, _: bool) bool {
-        return true;
+    pub fn set_allocator(_: *Person, alloc: std.mem.Allocator, _: bool) void {
+        Person.allocTest(alloc) catch unreachable;
     }
 
     pub fn set_age(self: *Person, age: u32) void {
