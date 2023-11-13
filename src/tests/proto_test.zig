@@ -33,7 +33,10 @@ const Person = struct {
         return self.age;
     }
 
-    pub fn get_allocator(_: Person, _: std.mem.Allocator) bool {
+    pub fn get_allocator(_: Person, alloc: std.mem.Allocator) !bool {
+        const v = try alloc.alloc(u8, 10);
+        defer alloc.free(v);
+
         return true;
     }
 
