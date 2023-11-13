@@ -509,8 +509,8 @@ fn generateGetter(
             }
 
             // provide allocator if needed
-            if ((func.args.len) == 2) {
-                @field(args, "1") == utils.allocator;
+            if ((func.args.len) == 1) {
+                @field(args, "1") = utils.allocator;
             }
 
             // call the corresponding zig object method
@@ -593,8 +593,8 @@ fn generateSetter(
             @field(args, "0") = obj_ptr;
 
             // provide allocator if needed
-            if ((func.args.len) == 3) {
-                @field(args, "1") == utils.allocator;
+            if ((func.args.len) == 2) {
+                @field(args, "1") = utils.allocator;
             }
 
             // call the corresponding zig object method
