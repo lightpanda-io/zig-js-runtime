@@ -73,3 +73,6 @@ jobs:
           path: |
             benchmark.txt
             commit.txt
+
+          # configure the retention policy: 10 days on PR and 150 on main.
+          retention-days: ${{ github.event_name == 'pull_request' && 10 || 90 }}
