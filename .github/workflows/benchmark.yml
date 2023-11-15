@@ -62,8 +62,14 @@ jobs:
           ./zig-out/bin/jsruntime-bench > benchmark.txt
           cat benchmark.txt
 
+      - name: write commit
+        run: |
+          echo "${{github.sha}}" > commit.txt
+
       - name: upload artifact
         uses: actions/upload-artifact@v3
         with:
           name: benchmark-results
-          path: benchmark.txt
+          path: |
+            benchmark.txt
+            commit.txt
