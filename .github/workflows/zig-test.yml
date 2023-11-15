@@ -41,4 +41,11 @@ jobs:
           mkdir -p vendor/v8/${{env.ARCH}}/release
           ln -s /usr/local/lib/libc_v8.a vendor/v8/${{env.ARCH}}/release/libc_v8.a
 
-      - run: zig build test -Dengine=v8
+      - name: zig build debug
+        run: zig build -Dengine=v8
+
+      - name: zig build test
+        run: zig build test -Dengine=v8
+
+      - name: zig build release
+        run: zig build -Doptimize=ReleaseSafe -Dengine=v8
