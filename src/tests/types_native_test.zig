@@ -177,8 +177,8 @@ const Country = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{ Brand, Car, Country });
+pub fn generate() []public.API {
+    return public.compile(.{ Brand, Car, Country });
 }
 
 // exec tests

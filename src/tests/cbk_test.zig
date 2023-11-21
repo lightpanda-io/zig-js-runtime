@@ -47,8 +47,8 @@ pub const Window = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]jsruntime.API {
-    return try jsruntime.compile(.{Window});
+pub fn generate() []jsruntime.API {
+    return jsruntime.compile(.{Window});
 }
 
 // exec tests

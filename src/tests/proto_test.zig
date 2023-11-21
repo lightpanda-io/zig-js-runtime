@@ -180,8 +180,8 @@ const UserProtoCast = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{
+pub fn generate() []public.API {
+    return public.compile(.{
         User,
         Person,
         PersonPtr,

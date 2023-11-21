@@ -60,8 +60,8 @@ const Computer = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{ Windows, MacOS, Linux, Computer });
+pub fn generate() []public.API {
+    return public.compile(.{ Windows, MacOS, Linux, Computer });
 }
 
 // exec tests

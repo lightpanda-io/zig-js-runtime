@@ -72,8 +72,8 @@ const MyErrorUnion = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{
+pub fn generate() []public.API {
+    return public.compile(.{
         MyIterable,
         MyList,
         MyVariadic,
