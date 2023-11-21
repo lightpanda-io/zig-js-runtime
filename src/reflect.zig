@@ -1524,6 +1524,14 @@ const MyExceptionWrongErrorSet = struct {
 const TestStructExceptionWrongErrorSet = struct {
     pub const Exception = MyExceptionWrongErrorSet;
 };
+const MyExceptionWrong = struct {
+    pub const ErrorSet = error{
+        MyException,
+    };
+};
+const TestStructExceptionWrongInterface = struct {
+    pub const Exception = MyExceptionWrong;
+};
 const MyException = struct {
     pub const ErrorSet = error{
         MyException,
@@ -1665,6 +1673,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructExceptionWrongErrorSet},
         error.StructExceptionWrongErrorSet,
+    );
+    try ensureErr(
+        .{ TestStructExceptionWrongInterface, MyExceptionWrong },
+        error.StructExceptionWrongInterface,
     );
     try ensureErr(
         .{TestStructExceptionDoesNotExist},
