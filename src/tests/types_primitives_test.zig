@@ -96,8 +96,8 @@ const Primitives = struct {
 };
 
 // generate API, comptime
-pub fn generate() ![]public.API {
-    return try public.compile(.{Primitives});
+pub fn generate() []public.API {
+    return public.compile(.{Primitives});
 }
 
 // exec tests

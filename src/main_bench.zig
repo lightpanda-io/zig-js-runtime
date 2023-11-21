@@ -71,7 +71,7 @@ fn benchWithoutIsolate(
 pub fn main() !void {
 
     // generate APIs
-    const apis = comptime try proto.generate(); // stage1: we need comptime
+    const apis = comptime proto.generate(); // stage1: we need comptime
 
     // create JS vm
     const vm = public.VM.init();
