@@ -876,7 +876,7 @@ pub const Struct = struct {
     }
 
     // Is the T a well-formed exception?
-    fn _checkException(comptime T: type) Error!void {
+    fn _checkException(comptime T: type, isErr: bool) Error!void {
 
         // check ErrorSet
         if (!@hasDecl(T, "ErrorSet")) {
@@ -889,17 +889,17 @@ pub const Struct = struct {
 
         // check interface methods
         const err = error.StructExceptionWrongInterface;
-        if (!isDecl(T, "init", fn (_: std.mem.Allocator, _: errSet) anyerror!T)) return err;
-        if (!isDecl(T, "get_name", fn (_: T) []const u8)) return err;
-        if (!isDecl(T, "get_message", fn (_: T) []const u8)) return err;
-        if (!isDecl(T, "_toString", fn (_: T) []const u8)) return err;
+        if (!isDecl(T, "init", fn (_: std.mem.Allocator, _: errSet) anyerror!T, isErr)) return err;
+        if (!isDecl(T, "get_name", fn (_: T) []const u8, isErr)) return err;
+        if (!isDecl(T, "get_message", fn (_: T) []const u8, isErr)) return err;
+        if (!isDecl(T, "_toString", fn (_: T) []const u8, isErr)) return err;
     }
 
     // Is the API an exception?
     pub fn isException(comptime self: Struct) bool {
         std.debug.assert(@inComptime());
         // it's an exception if the check does not return an error
-        Struct._checkException(self.T) catch return false;
+        Struct._checkException(self.T, false) catch return false;
         return true;
     }
 
@@ -908,9 +908,8 @@ pub const Struct = struct {
         if (!@hasDecl(T, "Exception")) {
             return null;
         }
-
         const exceptT = @field(T, "Exception");
-        try Struct._checkException(exceptT);
+        try Struct._checkException(exceptT, true);
         return exceptT;
     }
 
@@ -1384,9 +1383,20 @@ fn isStringLiteral(comptime T: type) bool {
     return false;
 }
 
-fn isDecl(comptime T: type, comptime name: []const u8, comptime Decl: type) bool {
-    if (!@hasDecl(T, name)) return false;
-    return @TypeOf(@field(T, name)) == Decl;
+fn isDecl(comptime T: type, comptime name: []const u8, comptime Decl: type, comptime isErr: bool) bool {
+    if (!@hasDecl(T, name)) {
+        if (isErr) {
+            const msg = @typeName(T) ++ ": no '" ++ name ++ "' declaration";
+            fmtErr(comptime msg.len, msg, T);
+        }
+        return false;
+    }
+    const typeOK = @TypeOf(@field(T, name)) == Decl;
+    if (!typeOK and isErr) {
+        const msg = @typeName(T) ++ ": '" ++ name ++ "' wrong type";
+        fmtErr(comptime msg.len, msg, T);
+    }
+    return typeOK;
 }
 
 fn fmtErr(comptime n: usize, comptime msg: *const [n:0]u8, comptime T: type) void {
