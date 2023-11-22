@@ -69,6 +69,9 @@ fn throwError(
 
     // throw exeption
     js_res.set(isolate.throwException(js_obj));
+
+    // TODO: v8 does not throw a stack trace as Exception is not a prototype of Error
+    // There is no way to change this with the current v8 public API
 }
 
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
