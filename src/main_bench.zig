@@ -1,4 +1,5 @@
 const std = @import("std");
+const io = @import("std").io;
 
 const public = @import("api.zig");
 
@@ -68,7 +69,33 @@ fn benchWithoutIsolate(
     };
 }
 
+const usage =
+    \\usage: {s} [options]
+    \\  Run and display a jsruntime benchmark.
+    \\
+    \\  -h, --help       Print this help message and exit.
+    \\  --json           result is formatted in JSON.
+    \\
+;
+
 pub fn main() !void {
+    const allocator = std.heap.page_allocator;
+
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    // get the exec name.
+    const execname = args.next().?;
+
+    var json = false;
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, "-h", arg) or std.mem.eql(u8, "--help", arg)) {
+            try io.getStdErr().writer().print(usage, .{execname});
+            std.os.exit(0);
+        } else if (std.mem.eql(u8, "--json", arg)) {
+            json = true;
+        }
+    }
 
     // generate APIs
     const apis = comptime proto.generate(); // stage1: we need comptime
@@ -78,7 +105,7 @@ pub fn main() !void {
     defer vm.deinit();
 
     // allocators
-    var bench1 = bench.allocator(std.heap.page_allocator);
+    var bench1 = bench.allocator(allocator);
     var arena1 = std.heap.ArenaAllocator.init(bench1.allocator());
     defer arena1.deinit();
     var bench2 = bench.allocator(std.heap.page_allocator);
@@ -95,6 +122,20 @@ pub fn main() !void {
     // benchmark funcs
     const res1 = try benchWithIsolate(&bench1, &arena1, proto.exec, apis, iter, warmup);
     const res2 = try benchWithoutIsolate(&bench2, &arena2, proto.exec, apis, iter, warmup);
+
+    // generate a json output with the bench result.
+    if (json) {
+        const res = [_]struct {
+            name: []const u8,
+            bench: bench.Result,
+        }{
+            .{ .name = "With Isolate", .bench = res1 },
+            .{ .name = "Without Isolate", .bench = res2 },
+        };
+
+        try std.json.stringify(res, .{ .whitespace = .indent_2 }, io.getStdOut().writer());
+        std.os.exit(0);
+    }
 
     // benchmark measures
     const dur1 = pretty.Measure{ .unit = "us", .value = res1.duration / us };
