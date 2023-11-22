@@ -34,11 +34,12 @@ fn throwError(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
-    comptime ret: refl.Type,
+    comptime func: refl.Func,
     err: anytype,
     js_res: v8.ReturnValue,
     isolate: v8.Isolate,
 ) void {
+    const ret = func.return_type;
 
     // Is the returned Type a custom Exception error?
     // conditions:
@@ -54,7 +55,7 @@ fn throwError(
     }
 
     // create custom error instance
-    const obj = except.?.T.init(alloc, err) catch unreachable; // TODO
+    const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
     const ctx = isolate.getCurrentContext();
     const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(ctx);
     _ = setNativeObject(
@@ -574,7 +575,7 @@ fn generateGetter(
                     utils.allocator,
                     T_refl,
                     all_T,
-                    func.return_type,
+                    func,
                     err,
                     info.getReturnValue(),
                     isolate,
@@ -716,7 +717,7 @@ fn generateMethod(
                     utils.allocator,
                     T_refl,
                     all_T,
-                    func.return_type,
+                    func,
                     err,
                     info.getReturnValue(),
                     isolate,

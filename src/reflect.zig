@@ -884,7 +884,12 @@ pub const Struct = struct {
 
         // check interface methods
         const err = error.StructExceptionWrongInterface;
-        if (!isDecl(T, "init", fn (_: std.mem.Allocator, _: errSet) anyerror!T, isErr)) return err;
+        if (!isDecl(
+            T,
+            "init",
+            fn (_: std.mem.Allocator, _: errSet, _: []const u8) anyerror!T,
+            isErr,
+        )) return err;
         if (!isDecl(T, "get_name", fn (_: T) []const u8, isErr)) return err;
         if (!isDecl(T, "get_message", fn (_: T) []const u8, isErr)) return err;
         if (!isDecl(T, "_toString", fn (_: T) []const u8, isErr)) return err;
