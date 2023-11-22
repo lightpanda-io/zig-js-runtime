@@ -39,8 +39,17 @@ fn throwError(
     js_res: v8.ReturnValue,
     isolate: v8.Isolate,
 ) void {
-    const except = ret.isException(T_refl, all_T);
-    if (except == null) {
+
+    // Is the returned Type a custom Exception error?
+    // conditions:
+    // - the return type must be an ErrorUnion
+    // - the API must define a custom Exception
+    // - the ErrorSet of the return type must be an error of Exception
+    const except = comptime T_refl.exception(all_T);
+    if (comptime ret.errorSet() == null or except == null) {
+        return throwBasicError(@errorName(err), js_res, isolate);
+    }
+    if (!ret.isErrorException(except.?, err)) {
         return throwBasicError(@errorName(err), js_res, isolate);
     }
 

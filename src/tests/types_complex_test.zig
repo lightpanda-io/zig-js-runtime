@@ -125,6 +125,10 @@ const MyTypeWithException = struct {
     pub fn _withError(_: MyTypeWithException) MyException.ErrorSet!void {
         return MyException.ErrorSet.MyCustomError;
     }
+
+    pub fn _superSetError(_: MyTypeWithException) !void {
+        return MyException.ErrorSet.MyCustomError;
+    }
 };
 
 // generate API, comptime
@@ -189,6 +193,7 @@ pub fn exec(
         .{ .src = "var myCustomError = ''; try {myTypeWithException.withError()} catch (error) {myCustomError = error}", .ex = "MyCustomError: Some custom message." },
         .{ .src = "myCustomError instanceof MyException", .ex = "true" },
         .{ .src = "myCustomError instanceof Error", .ex = "true" },
+        .{ .src = "var mySuperError = ''; try {myTypeWithException.superSetError()} catch (error) {mySuperError = error}", .ex = "MyCustomError: Some custom message." },
     };
     try tests.checkCases(js_env, &exception);
 }

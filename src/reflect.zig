@@ -60,31 +60,26 @@ pub const Type = struct {
         }
     }
 
-    // Is the returned Type a custom Exception error?
-    // conditions:
-    // - the return type must be an ErrorUnion
-    // - the API must define a custom Exception
-    // - the return type ErrorSet must be the custom Exception ErrorSet
-    pub fn isException(
-        comptime self: Type,
-        comptime api: Struct,
-        comptime all: []Struct,
-    ) ?Struct {
-        std.debug.assert(@inComptime());
+    pub fn isErrorException(comptime self: Type, comptime exception: Struct, err: anytype) bool {
+        const errSet = self.errorSet().?;
+        const exceptSet = @field(exception.T, "ErrorSet");
 
-        if (self.errorSet()) |errSet| {
-            if (api.exception(all)) |exception| {
-                if (errSet == @field(exception.T, "ErrorSet")) {
-                    return exception;
-                }
+        // check if the ErrorSet of the return type is the same than the exception
+        if (comptime exceptSet == errSet) return true;
+
+        // check if the error returned is part of the exception
+        // (ie. the ErrorSet of the return type is a superset of the exception)
+        const errName = @errorName(err);
+        for (@typeInfo(exceptSet).ErrorSet.?) |e| {
+            if (std.mem.eql(u8, errName, e.name)) {
+                return true;
             }
         }
-
-        return null;
+        return false;
     }
 
     // If the Type is an ErrorUnion, returns it's ErrorSet
-    fn errorSet(comptime self: Type) ?type {
+    pub fn errorSet(comptime self: Type) ?type {
         std.debug.assert(@inComptime());
         if (@typeInfo(self.T) != .ErrorUnion) {
             return null;
@@ -915,7 +910,8 @@ pub const Struct = struct {
 
     // Retrieve the optional Exception of the API,
     // including from prototype chain
-    fn exception(comptime self: Struct, comptime all: []Struct) ?Struct {
+    pub fn exception(comptime self: Struct, comptime all: []Struct) ?Struct {
+        std.debug.assert(@inComptime());
 
         // errors have already been checked at lookup stage
         if (Struct._hasException(self.T) catch unreachable) |T| {
