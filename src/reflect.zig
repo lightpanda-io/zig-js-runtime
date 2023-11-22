@@ -892,7 +892,6 @@ pub const Struct = struct {
         )) return err;
         if (!isDecl(T, "get_name", fn (_: T) []const u8, isErr)) return err;
         if (!isDecl(T, "get_message", fn (_: T) []const u8, isErr)) return err;
-        if (!isDecl(T, "_toString", fn (_: T) []const u8, isErr)) return err;
     }
 
     // Is the API an exception?
