@@ -90,7 +90,7 @@ pub const MyException = struct {
         MyCustomError,
     };
 
-    pub fn init(_: std.mem.Allocator, err: ErrorSet) anyerror!MyException {
+    pub fn init(_: std.mem.Allocator, err: ErrorSet, _: []const u8) anyerror!MyException {
         return .{ .err = err };
     }
 

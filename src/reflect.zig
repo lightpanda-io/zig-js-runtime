@@ -1546,16 +1546,13 @@ const MyException = struct {
     pub const ErrorSet = error{
         MyException,
     };
-    pub fn init(_: std.mem.Allocator, _: ErrorSet) anyerror!MyException {
+    pub fn init(_: std.mem.Allocator, _: ErrorSet, _: []const u8) anyerror!MyException {
         return .{};
     }
     pub fn get_name(_: MyException) []const u8 {
         return "";
     }
     pub fn get_message(_: MyException) []const u8 {
-        return "";
-    }
-    pub fn _toString(_: MyException) []const u8 {
         return "";
     }
 };
