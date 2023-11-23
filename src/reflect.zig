@@ -1234,18 +1234,29 @@ pub fn do(comptime types: anytype) Error![]Struct {
 // Utils funcs
 // -----------
 
-fn jsName(comptime name: []const u8) []u8 {
-    comptime {
-        var js_name: [name.len]u8 = undefined;
-        js_name[0] = std.ascii.toLower(name[0]);
-        for (name, 0..) |char, i| {
-            if (i == 0) {
-                continue;
-            }
-            js_name[i] = char;
+fn jsName(comptime name: []const u8) []const u8 {
+    std.debug.assert(@inComptime());
+
+    // uppercase names should not change
+    var is_upper = true;
+    for (name) |char| {
+        if (!std.ascii.isUpper(char)) {
+            is_upper = false;
+            break;
         }
-        return &js_name;
     }
+    if (is_upper) return name;
+
+    // otherwhise lower first character
+    var js_name: [name.len]u8 = undefined;
+    js_name[0] = std.ascii.toLower(name[0]);
+    for (name, 0..) |char, i| {
+        if (i == 0) {
+            continue;
+        }
+        js_name[i] = char;
+    }
+    return &js_name;
 }
 
 fn shortName(comptime T: type) []const u8 {
