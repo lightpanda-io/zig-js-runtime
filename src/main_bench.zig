@@ -105,7 +105,7 @@ pub fn main() !void {
     defer vm.deinit();
 
     // allocators
-    var bench1 = bench.allocator(allocator);
+    var bench1 = bench.allocator(std.heap.page_allocator);
     var arena1 = std.heap.ArenaAllocator.init(bench1.allocator());
     defer arena1.deinit();
     var bench2 = bench.allocator(std.heap.page_allocator);
