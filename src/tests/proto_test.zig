@@ -21,10 +21,16 @@ const Person = struct {
     pub const _AGE_MIN = 18;
     pub const _NATIONALITY = "French";
 
-    pub fn constructor(_: std.mem.Allocator, first_name: []u8, last_name: []u8, age: u32) Person {
+    pub fn constructor(alloc: std.mem.Allocator, first_name: []u8, last_name: []u8, age: u32) Person {
+
+        // alloc last_name slice to keep them after function returns
+        // NOTE: we do not alloc first_name on purpose to check freeArgs
+        const last_name_alloc = alloc.alloc(u8, last_name.len) catch unreachable;
+        @memcpy(last_name_alloc, last_name);
+
         return .{
             .first_name = first_name,
-            .last_name = last_name,
+            .last_name = last_name_alloc,
             .age = age,
         };
     }
@@ -53,6 +59,10 @@ const Person = struct {
 
     pub fn set_allocator(_: *Person, alloc: std.mem.Allocator, _: bool) void {
         Person.allocTest(alloc) catch unreachable;
+    }
+
+    pub fn get_nonAllocFirstName(self: Person) []const u8 {
+        return self.first_name;
     }
 
     pub fn set_age(self: *Person, age: u32) void {
@@ -99,8 +109,11 @@ const PersonPtr = struct {
     name: []u8,
 
     pub fn constructor(alloc: std.mem.Allocator, name: []u8) *PersonPtr {
+        const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
+        @memcpy(name_alloc, name);
+
         var person_ptr = alloc.create(PersonPtr) catch unreachable;
-        person_ptr.* = .{ .name = name };
+        person_ptr.* = .{ .name = name_alloc };
         return person_ptr;
     }
 
@@ -108,8 +121,10 @@ const PersonPtr = struct {
         return self.name;
     }
 
-    pub fn set_name(self: *PersonPtr, name: []u8) void {
-        self.name = name;
+    pub fn set_name(self: *PersonPtr, alloc: std.mem.Allocator, name: []u8) void {
+        const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
+        @memcpy(name_alloc, name);
+        self.name = name_alloc;
     }
 };
 
@@ -168,8 +183,10 @@ const PersonProtoCast = struct {
         return @ptrCast(child_ptr);
     }
 
-    pub fn constructor(first_name: []u8) PersonProtoCast {
-        return .{ .first_name = first_name };
+    pub fn constructor(alloc: std.mem.Allocator, first_name: []u8) PersonProtoCast {
+        const first_name_alloc = alloc.alloc(u8, first_name.len) catch unreachable;
+        @memcpy(first_name_alloc, first_name);
+        return .{ .first_name = first_name_alloc };
     }
 
     pub fn get_name(self: PersonProtoCast) []const u8 {
@@ -182,8 +199,8 @@ const UserProtoCast = struct {
 
     pub const prototype = *PersonProtoCast;
 
-    pub fn constructor(first_name: []u8) UserProtoCast {
-        return .{ .not_proto = PersonProtoCast.constructor(first_name) };
+    pub fn constructor(alloc: std.mem.Allocator, first_name: []u8) UserProtoCast {
+        return .{ .not_proto = PersonProtoCast.constructor(alloc, first_name) };
     }
 };
 
@@ -249,6 +266,9 @@ pub fn exec(
         .{ .src = "p.allocator", .ex = "true" },
         .{ .src = "p.UPPER", .ex = "true" },
         .{ .src = "p.UPPERMETHOD()", .ex = "true" },
+        // first name has not been allocated, so it's a normal behavior
+        // here we check that freeArgs works well
+        .{ .src = "p.nonAllocFirstName !== 'Francis'", .ex = "true" },
     };
     try tests.checkCases(js_env, &cases2);
 
