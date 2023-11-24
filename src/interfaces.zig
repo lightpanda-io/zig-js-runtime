@@ -63,8 +63,9 @@ pub fn Env(
     // start()
     assertDecl(T, "start", fn (
         self: *T,
+        alloc: std.mem.Allocator,
         comptime apis: []API_T,
-    ) void);
+    ) anyerror!void);
 
     // stop()
     assertDecl(T, "stop", fn (self: *T) void);

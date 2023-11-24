@@ -20,10 +20,58 @@ const TPL = @import("v8.zig").TPL;
 // Utils functions
 // ---------------
 
-fn throwError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
-    const err = v8.String.initUtf8(isolate, msg);
-    const exception = v8.Exception.initError(err);
+fn throwBasicError(
+    msg: []const u8,
+    js_res: v8.ReturnValue,
+    isolate: v8.Isolate,
+) void {
+    const except_msg = v8.String.initUtf8(isolate, msg);
+    const exception = v8.Exception.initError(except_msg);
     js_res.set(isolate.throwException(exception));
+}
+
+fn throwError(
+    alloc: std.mem.Allocator,
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    comptime func: refl.Func,
+    err: anytype,
+    js_res: v8.ReturnValue,
+    isolate: v8.Isolate,
+) void {
+    const ret = func.return_type;
+
+    // Is the returned Type a custom Exception error?
+    // conditions:
+    // - the return type must be an ErrorUnion
+    // - the API must define a custom Exception
+    // - the ErrorSet of the return type must be an error of Exception
+    const except = comptime T_refl.exception(all_T);
+    if (comptime ret.errorSet() == null or except == null) {
+        return throwBasicError(@errorName(err), js_res, isolate);
+    }
+    if (!ret.isErrorException(except.?, err)) {
+        return throwBasicError(@errorName(err), js_res, isolate);
+    }
+
+    // create custom error instance
+    const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
+    const ctx = isolate.getCurrentContext();
+    const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(ctx);
+    _ = setNativeObject(
+        alloc,
+        except.?,
+        @TypeOf(obj),
+        obj,
+        js_obj,
+        isolate,
+    ) catch unreachable;
+
+    // throw exeption
+    js_res.set(isolate.throwException(js_obj));
+
+    // TODO: v8 does not throw a stack trace as Exception is not a prototype of Error
+    // There is no way to change this with the current v8 public API
 }
 
 fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
@@ -240,12 +288,11 @@ fn getArgs(
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
-    comptime obj_T: refl.Type,
+    comptime T: type,
     obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
 ) !void {
-    const T = obj_T.underT();
 
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
@@ -368,7 +415,7 @@ fn setReturnType(
         _ = setNativeObject(
             alloc,
             all_T[index],
-            ret,
+            ret.underT(),
             res,
             js_obj,
             isolate,
@@ -467,7 +514,7 @@ fn generateConstructor(
             setNativeObject(
                 utils.allocator,
                 T_refl,
-                func.return_type,
+                func.return_type.underT(),
                 obj,
                 info.getThis(),
                 isolate,
@@ -527,7 +574,15 @@ fn generateGetter(
                 isolate,
             ) catch |err| {
                 // TODO: how to handle internal errors vs user errors
-                return throwError(@errorName(err), info.getReturnValue(), isolate);
+                return throwError(
+                    utils.allocator,
+                    T_refl,
+                    all_T,
+                    func,
+                    err,
+                    info.getReturnValue(),
+                    isolate,
+                );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
         }
@@ -661,7 +716,15 @@ fn generateMethod(
                 isolate,
             ) catch |err| {
                 // TODO: how to handle internal errors vs user errors
-                return throwError(@errorName(err), info.getReturnValue(), isolate);
+                return throwError(
+                    utils.allocator,
+                    T_refl,
+                    all_T,
+                    func,
+                    err,
+                    info.getReturnValue(),
+                    isolate,
+                );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
 

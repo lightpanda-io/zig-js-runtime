@@ -156,28 +156,45 @@ pub const Env = struct {
     }
 
     // start a Javascript context
-    pub fn start(self: *Env, comptime apis: []API) void {
+    pub fn start(self: *Env, alloc: std.mem.Allocator, comptime apis: []API) anyerror!void {
 
         // context
         self.context = v8.Context.init(self.isolate, self.globals, null);
         const ctx = self.context.?;
         ctx.enter();
 
-        // APIs prototype
-        // set the prototype of each corresponding constructor Function
-        // NOTE: this is required to inherit attributes at the Type level,
-        // ie. static class attributes.
-        // For static instance attributes we set them
-        // on FunctionTemplate.PrototypeTemplate
-        // TODO: is there a better way to do it at the Template level?
-        // see https://github.com/Browsercore/jsruntime-lib/issues/128
+        // TODO: ideally all this should disapear,
+        // we shouldn't do anything at context startup time
         inline for (apis, 0..) |api, i| {
+
+            // APIs prototype
+            // set the prototype of each corresponding constructor Function
+            // NOTE: this is required to inherit attributes at the Type level,
+            // ie. static class attributes.
+            // For static instance attributes we set them
+            // on FunctionTemplate.PrototypeTemplate
+            // TODO: is there a better way to do it at the Template level?
+            // see https://github.com/Browsercore/jsruntime-lib/issues/128
             if (api.T_refl.proto_index) |proto_index| {
                 const cstr_tpl = gen.getTpl(i).tpl;
                 const proto_tpl = gen.getTpl(proto_index).tpl;
                 const cstr_obj = cstr_tpl.getFunction(ctx).toObject();
                 const proto_obj = proto_tpl.getFunction(ctx).toObject();
                 _ = cstr_obj.setPrototype(ctx, proto_obj);
+            }
+
+            // Custom exception
+            // NOTE: there is no way in v8 to subclass the Error built-in type
+            // TODO: this is an horrible hack
+            if (comptime api.T_refl.isException()) {
+                const script = api.T_refl.name ++ ".prototype.__proto__ = Error.prototype";
+                const res = try self.execTryCatch(
+                    alloc,
+                    script,
+                    "errorSubclass",
+                );
+                defer res.deinit(alloc);
+                if (!res.success) return error.errorSubClass;
             }
         }
     }
@@ -363,7 +380,7 @@ fn createJSObject(
     try setNativeObject(
         utils.allocator,
         T_refl,
-        T_refl.value,
+        T_refl.value.underT(),
         obj,
         js_obj,
         isolate,
@@ -453,7 +470,8 @@ pub const JSResult = struct {
         if (self.stack != null) {
             return;
         }
-        const stack = try_catch.getStackTrace(context).?;
-        self.stack = try valueToUtf8(alloc, stack, isolate, context);
+        if (try_catch.getStackTrace(context)) |stack| {
+            self.stack = try valueToUtf8(alloc, stack, isolate, context);
+        }
     }
 };

@@ -159,7 +159,7 @@ fn exec(
 ) !void {
 
     // start JS env
-    js_env.start(apis);
+    try js_env.start(alloc, apis);
     defer js_env.stop();
 
     try shellExec(alloc, js_env, apis);
