@@ -43,6 +43,14 @@ const Person = struct {
         return true;
     }
 
+    pub fn get_UPPER(_: Person) bool {
+        return true;
+    }
+
+    pub fn _UPPERMETHOD(_: Person) bool {
+        return true;
+    }
+
     pub fn set_allocator(_: *Person, alloc: std.mem.Allocator, _: bool) void {
         Person.allocTest(alloc) catch unreachable;
     }
@@ -239,6 +247,8 @@ pub fn exec(
     var cases2 = [_]tests.Case{
         .{ .src = "p.age === 40", .ex = "true" },
         .{ .src = "p.allocator", .ex = "true" },
+        .{ .src = "p.UPPER", .ex = "true" },
+        .{ .src = "p.UPPERMETHOD()", .ex = "true" },
     };
     try tests.checkCases(js_env, &cases2);
 
