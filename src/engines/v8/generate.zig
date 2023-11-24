@@ -258,7 +258,6 @@ fn getArgs(
             // take all trailing JS arg as variadic members
             const rest_nb = js_args_nb - i + func.index_offset;
             const slice = alloc.alloc(arg_real.T, rest_nb) catch unreachable;
-            // TODO: alloc.free slice after func call
             var iter: usize = 0;
             while (iter < rest_nb) {
                 const slice_value = getArg(
@@ -283,6 +282,25 @@ fn getArgs(
     }
 
     return args;
+}
+
+fn freeArgs(comptime func: refl.Func, obj: anytype) !void {
+    inline for (func.args) |arg_T| {
+
+        // free char slices
+        // the API functions will be responsible of copying the slice
+        // in their implementations if they want to keep it afterwards
+        if (arg_T.underT() == []u8 or arg_T.underT() == []const u8) {
+            utils.allocator.free(@field(obj, arg_T.name.?));
+        }
+
+        // free varidadic slices
+        if (try refl.Type.variadic(arg_T.underT()) != null) {
+            const val = @field(obj, arg_T.name.?).?;
+            // NOTE: variadic are optional by design
+            utils.allocator.free(@field(val, "slice"));
+        }
+    }
 }
 
 pub fn setNativeObject(
@@ -520,6 +538,9 @@ fn generateConstructor(
                 isolate,
             ) catch unreachable;
             // TODO: we choose for now not throw user error
+
+            // free memory if required
+            freeArgs(func, args) catch unreachable;
         }
     }.constructor;
 }
@@ -585,6 +606,9 @@ fn generateGetter(
                 );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
+
+            // free memory if required
+            freeArgs(func, args) catch unreachable;
         }
     }.getter;
 }
@@ -658,6 +682,9 @@ fn generateSetter(
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
+
+            // free memory if required
+            freeArgs(func, args) catch unreachable;
         }
     }.setter;
 }
@@ -727,6 +754,9 @@ fn generateMethod(
                 );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
+
+            // free memory if required
+            freeArgs(func, args) catch unreachable;
 
             // sync callback
             // for test purpose, does not have any sense in real case

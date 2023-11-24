@@ -10,16 +10,20 @@ const tests = public.test_utils;
 const Brand = struct {
     name: []const u8,
 
-    pub fn constructor(name: []const u8) Brand {
-        return .{ .name = name };
+    pub fn constructor(alloc: std.mem.Allocator, name: []const u8) Brand {
+        const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
+        @memcpy(name_alloc, name);
+        return .{ .name = name_alloc };
     }
 
     pub fn get_name(self: Brand) []const u8 {
         return self.name;
     }
 
-    pub fn set_name(self: *Brand, name: []u8) void {
-        self.name = name;
+    pub fn set_name(self: *Brand, alloc: std.mem.Allocator, name: []u8) void {
+        const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
+        @memcpy(name_alloc, name);
+        self.name = name_alloc;
     }
 };
 
