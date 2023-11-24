@@ -25,6 +25,10 @@ const Brand = struct {
         @memcpy(name_alloc, name);
         self.name = name_alloc;
     }
+
+    pub fn deinit(self: *Brand, alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
+    }
 };
 
 const Car = struct {
@@ -117,6 +121,10 @@ const Car = struct {
     // return *<Struct> in method
     pub fn _getBrandPtr(self: Car) *Brand {
         return self.get_brandPtr();
+    }
+
+    pub fn deinit(self: *Car, alloc: std.mem.Allocator) void {
+        alloc.destroy(self.brand_ptr);
     }
 };
 

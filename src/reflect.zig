@@ -433,6 +433,15 @@ pub const Func = struct {
         try self.return_type.lookup(structs);
     }
 
+    fn hasAlloc(comptime self: Func) bool {
+        for (self.args) |arg| {
+            if (arg.underT() == std.mem.Allocator) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     fn reflect(
         comptime T: type,
         comptime kind: FuncKind,
@@ -870,6 +879,18 @@ pub const Struct = struct {
         return attrs;
     }
 
+    // Does the T has a well-formed deinit method?
+    fn _checkDeinit(comptime T: type, comptime self_T: type, isErr: bool) !void {
+        if (!isDecl(
+            T,
+            "deinit",
+            fn (_: *self_T, _: std.mem.Allocator) void,
+            isErr,
+        )) {
+            return error.StructAllocWrongDeinit;
+        }
+    }
+
     // Is the T a well-formed exception?
     fn _checkException(comptime T: type, isErr: bool) Error!void {
 
@@ -892,6 +913,13 @@ pub const Struct = struct {
         )) return err;
         if (!isDecl(T, "get_name", fn (_: T) []const u8, isErr)) return err;
         if (!isDecl(T, "get_message", fn (_: T) []const u8, isErr)) return err;
+    }
+
+    // Has the API a deinit method?
+    pub fn hasDenit(comptime self: Struct) bool {
+        std.debug.assert(@inComptime());
+        Struct._checkDeinit(self.T, self.Self(), false) catch false;
+        return true;
     }
 
     // Is the API an exception?
@@ -1181,6 +1209,44 @@ pub const Struct = struct {
             }
         }
 
+        // check deinit
+        // only if at least one function has an allocator argument
+        var check_deinit = false;
+        if (has_constructor and constructor.hasAlloc()) {
+            check_deinit = true;
+        }
+        if (!check_deinit) {
+            for (getters) |getter| {
+                if (getter.hasAlloc()) {
+                    check_deinit = true;
+                    break;
+                }
+            }
+        }
+        if (!check_deinit) {
+            for (setters) |setter| {
+                if (setter.hasAlloc()) {
+                    check_deinit = true;
+                    break;
+                }
+            }
+        }
+        if (!check_deinit) {
+            for (methods) |method| {
+                if (method.hasAlloc()) {
+                    check_deinit = true;
+                    break;
+                }
+            }
+        }
+        if (check_deinit) {
+            if (self_T) |self| {
+                try Struct._checkDeinit(T, self, true);
+            } else {
+                try Struct._checkDeinit(T, T, true);
+            }
+        }
+
         // string tag
         var string_tag: bool = false;
         for (getters) |getter| {
@@ -1440,6 +1506,7 @@ const Error = error{
     StructExceptionWrongErrorSet,
     StructExceptionWrongInterface,
     StructExceptionDoesNotExist,
+    StructAllocWrongDeinit,
 
     // func errors
     FuncNoSelf,
@@ -1566,9 +1633,29 @@ const MyException = struct {
     pub fn get_message(_: MyException) []const u8 {
         return "";
     }
+    pub fn deinit(_: *MyException, _: std.mem.Allocator) void {}
 };
 const TestStructExceptionDoesNotExist = struct {
     pub const Exception = MyException;
+};
+const TestStructAllocNoDeinit = struct {
+    name: []const u8,
+    pub fn constructor(alloc: std.mem.Allocator, name: []const u8) TestStructAllocWrongDeinit {
+        const name_alloc = alloc.alloc(u8, name.len);
+        @memcpy(name_alloc, name);
+        return .{ .name = name_alloc };
+    }
+};
+const TestStructAllocWrongDeinit = struct {
+    name: []const u8,
+    pub fn constructor(alloc: std.mem.Allocator, name: []const u8) TestStructAllocWrongDeinit {
+        const name_alloc = alloc.alloc(u8, name.len);
+        @memcpy(name_alloc, name);
+        return .{ .name = name_alloc };
+    }
+    pub fn deinit(_: TestStructAllocWrongDeinit, _: std.mem.Allocator) void {
+        // should be a pointer
+    }
 };
 
 // funcs tests
@@ -1699,6 +1786,14 @@ pub fn tests() !void {
     try ensureErr(
         .{TestStructExceptionDoesNotExist},
         error.StructExceptionDoesNotExist,
+    );
+    try ensureErr(
+        .{TestStructAllocNoDeinit},
+        error.StructAllocWrongDeinit,
+    );
+    try ensureErr(
+        .{TestStructAllocWrongDeinit},
+        error.StructAllocWrongDeinit,
     );
 
     // funcs checks
