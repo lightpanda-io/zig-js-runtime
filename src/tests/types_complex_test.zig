@@ -129,6 +129,10 @@ const MyTypeWithException = struct {
     pub fn _superSetError(_: MyTypeWithException) !void {
         return MyException.ErrorSet.MyCustomError;
     }
+
+    pub fn _outOfMemory(_: MyTypeWithException) !void {
+        return error.OutOfMemory;
+    }
 };
 
 // generate API, comptime
@@ -194,6 +198,7 @@ pub fn exec(
         .{ .src = "myCustomError instanceof MyException", .ex = "true" },
         .{ .src = "myCustomError instanceof Error", .ex = "true" },
         .{ .src = "var mySuperError = ''; try {myTypeWithException.superSetError()} catch (error) {mySuperError = error}", .ex = "MyCustomError: Some custom message." },
+        .{ .src = "var oomError = ''; try {myTypeWithException.outOfMemory()} catch (error) {oomError = error}; oomError", .ex = "Error: OutOfMemory" },
     };
     try tests.checkCases(js_env, &exception);
 }
