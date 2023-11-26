@@ -291,7 +291,12 @@ fn freeArgs(comptime func: refl.Func, obj: anytype) !void {
         // the API functions will be responsible of copying the slice
         // in their implementations if they want to keep it afterwards
         if (arg_T.underT() == []u8 or arg_T.underT() == []const u8) {
-            utils.allocator.free(@field(obj, arg_T.name.?));
+            const val = @field(obj, arg_T.name.?);
+            if (arg_T.underOpt() != null) {
+                utils.allocator.free(val.?);
+            } else {
+                utils.allocator.free(val);
+            }
         }
 
         // free varidadic slices
