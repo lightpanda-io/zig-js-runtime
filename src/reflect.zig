@@ -905,10 +905,14 @@ pub const Struct = struct {
 
         // check interface methods
         const err = error.StructExceptionWrongInterface;
+        // TODO: the type of the error should be the one define in the ErroSet field
+        // instead here we accept anyerror, see comment on throwError generate function
+        // So the implementation API should deal with that, knowing that the runtime
+        // error sent will be part of the ErrorSet (here an @errSetCast is possible)
         if (!isDecl(
             T,
             "init",
-            fn (_: std.mem.Allocator, _: errSet, _: []const u8) anyerror!T,
+            fn (_: std.mem.Allocator, _: anyerror, _: []const u8) anyerror!T,
             isErr,
         )) return err;
         if (!isDecl(T, "get_name", fn (_: T) []const u8, isErr)) return err;
@@ -1624,7 +1628,7 @@ const MyException = struct {
     pub const ErrorSet = error{
         MyException,
     };
-    pub fn init(_: std.mem.Allocator, _: ErrorSet, _: []const u8) anyerror!MyException {
+    pub fn init(_: std.mem.Allocator, _: anyerror, _: []const u8) anyerror!MyException {
         return .{};
     }
     pub fn get_name(_: MyException) []const u8 {

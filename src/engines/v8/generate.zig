@@ -35,7 +35,7 @@ fn throwError(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
-    err: anytype,
+    err: anyerror,
     js_res: v8.ReturnValue,
     isolate: v8.Isolate,
 ) void {
@@ -55,6 +55,10 @@ fn throwError(
     }
 
     // create custom error instance
+    // TODO: by now the compiler is not able to see that we have ensure that at runtime
+    // the error will be part of the ErrorSet of the custom exception.
+    // So we have to use anyerror type here for now
+    // and let the API implementation do the cast
     const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
     const ctx = isolate.getCurrentContext();
     const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(ctx);

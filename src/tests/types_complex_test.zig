@@ -96,8 +96,8 @@ pub const MyException = struct {
         MyCustomError,
     };
 
-    pub fn init(_: std.mem.Allocator, err: ErrorSet, _: []const u8) anyerror!MyException {
-        return .{ .err = err };
+    pub fn init(_: std.mem.Allocator, err: anyerror, _: []const u8) anyerror!MyException {
+        return .{ .err = @as(ErrorSet, @errSetCast(err)) };
     }
 
     pub fn get_name(self: MyException) []const u8 {
@@ -136,6 +136,10 @@ const MyTypeWithException = struct {
 
     pub fn _superSetError(_: MyTypeWithException) !void {
         return MyException.ErrorSet.MyCustomError;
+    }
+
+    pub fn _outOfMemory(_: MyTypeWithException) !void {
+        return error.OutOfMemory;
     }
 };
 
@@ -202,6 +206,7 @@ pub fn exec(
         .{ .src = "myCustomError instanceof MyException", .ex = "true" },
         .{ .src = "myCustomError instanceof Error", .ex = "true" },
         .{ .src = "var mySuperError = ''; try {myTypeWithException.superSetError()} catch (error) {mySuperError = error}", .ex = "MyCustomError: Some custom message." },
+        .{ .src = "var oomError = ''; try {myTypeWithException.outOfMemory()} catch (error) {oomError = error}; oomError", .ex = "Error: OutOfMemory" },
     };
     try tests.checkCases(js_env, &exception);
 }
