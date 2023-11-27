@@ -293,7 +293,10 @@ fn freeArgs(comptime func: refl.Func, obj: anytype) !void {
         if (arg_T.underT() == []u8 or arg_T.underT() == []const u8) {
             const val = @field(obj, arg_T.name.?);
             if (arg_T.underOpt() != null) {
-                utils.allocator.free(val.?);
+                // free only if val is non-null
+                if (val) |v| {
+                    utils.allocator.free(v);
+                }
             } else {
                 utils.allocator.free(val);
             }
