@@ -90,8 +90,8 @@ pub const MyException = struct {
         MyCustomError,
     };
 
-    pub fn init(_: std.mem.Allocator, err: ErrorSet, _: []const u8) anyerror!MyException {
-        return .{ .err = err };
+    pub fn init(_: std.mem.Allocator, err: anyerror, _: []const u8) anyerror!MyException {
+        return .{ .err = @as(ErrorSet, @errSetCast(err)) };
     }
 
     pub fn get_name(self: MyException) []const u8 {

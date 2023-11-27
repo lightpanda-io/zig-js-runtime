@@ -35,7 +35,7 @@ fn throwError(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
-    err: anytype,
+    err: anyerror,
     js_res: v8.ReturnValue,
     isolate: v8.Isolate,
 ) void {
