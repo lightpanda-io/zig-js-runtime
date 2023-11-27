@@ -77,6 +77,8 @@ const Person = struct {
         self.age = age;
     }
 
+    pub fn _say(_: *Person, _: ?[]const u8) void {}
+
     // TODO: should be a static function
     // see https://github.com/Browsercore/jsruntime-lib/issues/127
     pub fn get_symbol_toStringTag(_: Person) []const u8 {
@@ -385,6 +387,14 @@ pub fn exec(
         .{ .src = "upc.name === 'Francis'", .ex = "true" },
     };
     try tests.checkCases(js_env, &casesProtoCast);
+
+    // free func arguments
+    var casesFreeArguments = [_]tests.Case{
+        .{ .src = "let dt = new Person('Deep', 'Thought', 7500000);", .ex = "undefined" },
+        .{ .src = "dt.say('42')", .ex = "undefined" },
+        .{ .src = "dt.say(null)", .ex = "undefined" },
+    };
+    try tests.checkCases(js_env, &casesFreeArguments);
 }
 
 fn intToStr(alloc: std.mem.Allocator, nb: u8) []const u8 {
