@@ -23,6 +23,10 @@ const MyList = struct {
     pub fn _symbol_iterator(self: MyList) MyIterable {
         return MyIterable.init(self.items);
     }
+
+    pub fn deinit(self: *MyList, alloc: std.mem.Allocator) void {
+        alloc.free(self.items);
+    }
 };
 
 const MyVariadic = struct {
@@ -49,6 +53,8 @@ const MyVariadic = struct {
     pub fn _empty(_: MyVariadic, _: ?VariadicBool) bool {
         return true;
     }
+
+    pub fn deinit(_: *MyVariadic, _: std.mem.Allocator) void {}
 };
 
 const MyErrorUnion = struct {
@@ -111,6 +117,8 @@ pub const MyException = struct {
             ErrorSet.MyCustomError => errorStrings(0),
         };
     }
+
+    pub fn deinit(_: *MyException, _: std.mem.Allocator) void {}
 };
 
 const MyTypeWithException = struct {

@@ -82,6 +82,10 @@ const Person = struct {
     pub fn get_symbol_toStringTag(_: Person) []const u8 {
         return "MyPerson";
     }
+
+    pub fn deinit(self: *Person, alloc: std.mem.Allocator) void {
+        alloc.free(self.last_name);
+    }
 };
 
 const User = struct {
@@ -102,6 +106,10 @@ const User = struct {
 
     pub fn get_role(self: User) u8 {
         return self.role;
+    }
+
+    pub fn deinit(self: *User, alloc: std.mem.Allocator) void {
+        self.proto.deinit(alloc);
     }
 };
 
@@ -125,6 +133,10 @@ const PersonPtr = struct {
         const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
         @memcpy(name_alloc, name);
         self.name = name_alloc;
+    }
+
+    pub fn deinit(self: *PersonPtr, alloc: std.mem.Allocator) void {
+        alloc.free(self.name);
     }
 };
 
@@ -174,6 +186,10 @@ const UserContainer = struct {
     pub fn _roleVal(self: UserForContainer) u8 {
         return self.role;
     }
+
+    pub fn deinit(self: *UserForContainer, alloc: std.mem.Allocator) void {
+        self.proto.deinit(alloc);
+    }
 };
 
 const PersonProtoCast = struct {
@@ -192,6 +208,10 @@ const PersonProtoCast = struct {
     pub fn get_name(self: PersonProtoCast) []const u8 {
         return self.first_name;
     }
+
+    pub fn deinit(self: *PersonProtoCast, alloc: std.mem.Allocator) void {
+        alloc.free(self.first_name);
+    }
 };
 
 const UserProtoCast = struct {
@@ -201,6 +221,10 @@ const UserProtoCast = struct {
 
     pub fn constructor(alloc: std.mem.Allocator, first_name: []u8) UserProtoCast {
         return .{ .not_proto = PersonProtoCast.constructor(alloc, first_name) };
+    }
+
+    pub fn deinit(self: *UserProtoCast, alloc: std.mem.Allocator) void {
+        self.not_proto.deinit(alloc);
     }
 };
 
