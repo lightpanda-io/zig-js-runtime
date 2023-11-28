@@ -70,6 +70,12 @@ const MyErrorUnion = struct {
         return error.MyError;
     }
 
+    pub fn set_withoutError(_: *MyErrorUnion, _: bool) !void {}
+
+    pub fn set_withError(_: *MyErrorUnion, _: bool) !void {
+        return error.MyError;
+    }
+
     pub fn _funcWithoutError(_: MyErrorUnion) !void {}
 
     pub fn _funcWithError(_: MyErrorUnion) !void {
@@ -193,6 +199,8 @@ pub fn exec(
         .{ .src = "let myErrorUnion = new MyErrorUnion();", .ex = "undefined" },
         .{ .src = "myErrorUnion.withoutError", .ex = "0" },
         .{ .src = "var myErrorGetter = ''; try {myErrorUnion.withError} catch (error) {myErrorGetter = error}; myErrorGetter", .ex = "Error: MyError" },
+        .{ .src = "myErrorUnion.withoutError = true", .ex = "true" },
+        .{ .src = "var myErrorSetter = ''; try {myErrorUnion.withError = true} catch (error) {myErrorSetter = error}; myErrorSetter", .ex = "Error: MyError" },
         .{ .src = "myErrorUnion.funcWithoutError()", .ex = "undefined" },
         .{ .src = "var myErrorFunc = ''; try {myErrorUnion.funcWithError()} catch (error) {myErrorFunc = error}; myErrorFunc", .ex = "Error: MyError" },
     };

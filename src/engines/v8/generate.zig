@@ -690,7 +690,22 @@ fn generateSetter(
 
             // call the corresponding zig object method
             const setter_func = @field(T_refl.T, func.name);
-            _ = @call(.auto, setter_func, args); // return should be void
+            if (@typeInfo(func.return_type.T) == .ErrorUnion) {
+                _ = @call(.auto, setter_func, args) catch |err| {
+                    // TODO: how to handle internal errors vs user errors
+                    return throwError(
+                        utils.allocator,
+                        T_refl,
+                        all_T,
+                        func,
+                        err,
+                        info.getReturnValue(),
+                        isolate,
+                    );
+                }; // return should be void
+            } else {
+                _ = @call(.auto, setter_func, args); // return should be void
+            }
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
