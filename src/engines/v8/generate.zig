@@ -538,7 +538,24 @@ fn generateConstructor(
 
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
-            const obj = @call(.auto, cstr_func, args);
+            const obj_T = func.return_type.underErr() orelse func.return_type.T;
+            var obj: obj_T = undefined;
+            if (func.return_type.underErr() != null) {
+                obj = @call(.auto, cstr_func, args) catch |err| {
+                    // TODO: how to handle internal errors vs user errors
+                    return throwError(
+                        utils.allocator,
+                        T_refl,
+                        all_T,
+                        func,
+                        err,
+                        info.getReturnValue(),
+                        isolate,
+                    );
+                };
+            } else {
+                obj = @call(.auto, cstr_func, args);
+            }
 
             // bind native object to JS new object
             setNativeObject(

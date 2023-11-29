@@ -58,7 +58,8 @@ const MyVariadic = struct {
 };
 
 const MyErrorUnion = struct {
-    pub fn constructor() MyErrorUnion {
+    pub fn constructor(is_err: bool) !MyErrorUnion {
+        if (is_err) return error.MyError;
         return .{};
     }
 
@@ -196,7 +197,8 @@ pub fn exec(
     try tests.checkCases(js_env, &variadic);
 
     var error_union = [_]tests.Case{
-        .{ .src = "let myErrorUnion = new MyErrorUnion();", .ex = "undefined" },
+        .{ .src = "var myErrorCstr = ''; try {new MyErrorUnion(true)} catch (error) {myErrorCstr = error}; myErrorCstr", .ex = "Error: MyError" },
+        .{ .src = "let myErrorUnion = new MyErrorUnion(false);", .ex = "undefined" },
         .{ .src = "myErrorUnion.withoutError", .ex = "0" },
         .{ .src = "var myErrorGetter = ''; try {myErrorUnion.withError} catch (error) {myErrorGetter = error}; myErrorGetter", .ex = "Error: MyError" },
         .{ .src = "myErrorUnion.withoutError = true", .ex = "true" },
