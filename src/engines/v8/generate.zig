@@ -536,6 +536,9 @@ fn generateConstructor(
                 ctx,
             );
 
+            // free memory if required
+            defer freeArgs(func, args) catch unreachable;
+
             // call the native func
             const cstr_func = @field(T_refl.T, func.name);
             const obj_T = func.return_type.underErr() orelse func.return_type.T;
@@ -567,9 +570,6 @@ fn generateConstructor(
                 isolate,
             ) catch unreachable;
             // TODO: we choose for now not throw user error
-
-            // free memory if required
-            freeArgs(func, args) catch unreachable;
         }
     }.constructor;
 }
@@ -592,6 +592,9 @@ fn generateGetter(
             // TODO: check func params length
 
             var args: func.args_T = undefined;
+
+            // free memory if required
+            defer freeArgs(func, args) catch unreachable;
 
             // retrieve the zig object
 
@@ -635,9 +638,6 @@ fn generateGetter(
                 );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
-
-            // free memory if required
-            freeArgs(func, args) catch unreachable;
         }
     }.getter;
 }
@@ -692,6 +692,9 @@ fn generateSetter(
             const js_value_name = func.args[func.index_offset].name.?;
             @field(args, js_value_name) = zig_value;
 
+            // free memory if required
+            defer freeArgs(func, args) catch unreachable;
+
             // retrieve the zig object
             const obj_ptr = getNativeObject(
                 T_refl,
@@ -726,9 +729,6 @@ fn generateSetter(
 
             // return to javascript the provided value
             info.getReturnValue().setValueHandle(raw_value.?);
-
-            // free memory if required
-            freeArgs(func, args) catch unreachable;
         }
     }.setter;
 }
@@ -761,6 +761,9 @@ fn generateMethod(
                 isolate,
                 ctx,
             );
+
+            // free memory if required
+            defer freeArgs(func, args) catch unreachable;
 
             // retrieve the zig object
             if (!comptime T_refl.isEmpty()) {
@@ -798,9 +801,6 @@ fn generateMethod(
                 );
             };
             info.getReturnValue().setValueHandle(js_val.handle);
-
-            // free memory if required
-            freeArgs(func, args) catch unreachable;
 
             // sync callback
             // for test purpose, does not have any sense in real case
