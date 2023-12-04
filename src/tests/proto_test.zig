@@ -122,7 +122,7 @@ const PersonPtr = struct {
         const name_alloc = alloc.alloc(u8, name.len) catch unreachable;
         @memcpy(name_alloc, name);
 
-        var person_ptr = alloc.create(PersonPtr) catch unreachable;
+        const person_ptr = alloc.create(PersonPtr) catch unreachable;
         person_ptr.* = .{ .name = name_alloc };
         return person_ptr;
     }

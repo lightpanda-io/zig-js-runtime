@@ -251,7 +251,7 @@ pub fn shell(
     };
 
     // create internal server listening on a unix socket
-    var addr = try std.net.Address.initUnix(conf.socket_path.?);
+    const addr = try std.net.Address.initUnix(conf.socket_path.?);
     var server = std.net.StreamServer.init(.{ .reuse_address = true });
     defer server.deinit();
     try server.listen(addr);

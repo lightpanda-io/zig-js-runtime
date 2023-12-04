@@ -36,9 +36,9 @@ const Car = struct {
     brand_ptr: *Brand,
 
     pub fn constructor(alloc: std.mem.Allocator) Car {
-        var brand_name: []const u8 = "Renault";
+        const brand_name: []const u8 = "Renault";
         const brand = Brand{ .name = brand_name };
-        var brand_ptr = alloc.create(Brand) catch unreachable;
+        const brand_ptr = alloc.create(Brand) catch unreachable;
         brand_ptr.* = Brand{ .name = brand_name };
         return .{ .brand = brand, .brand_ptr = brand_ptr };
     }

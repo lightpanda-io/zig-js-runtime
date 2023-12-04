@@ -135,7 +135,7 @@ pub const Func = struct {
         const js_func = js_func_val.castTo(v8.Function);
 
         // const js_func_pers = PersistentFunction.init(isolate, js_func);
-        var js_func_pers = try alloc.create(PersistentFunction);
+        const js_func_pers = try alloc.create(PersistentFunction);
         js_func_pers.* = PersistentFunction.init(isolate, js_func);
 
         return Func{

@@ -46,7 +46,7 @@ pub const Engine = blk: {
     }
 
     // - as a root declaration
-    var root = @import("root");
+    const root = @import("root");
     if (@hasDecl(root, "JSEngine")) {
         checkInterfaces(root.JSEngine);
         break :blk root.JSEngine;

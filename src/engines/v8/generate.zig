@@ -357,7 +357,7 @@ pub fn setNativeObject(
         ext = v8.External.init(isolate, obj_ptr);
     } else {
         // use the refs mechanism
-        var int_ptr = try alloc.create(usize);
+        const int_ptr = try alloc.create(usize);
         int_ptr.* = @intFromPtr(obj_ptr);
         ext = v8.External.init(isolate, int_ptr);
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
