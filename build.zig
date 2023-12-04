@@ -1,8 +1,26 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const pkgs = packages("");
 
+/// Do not rename this constant. It is scanned by some scripts to determine
+/// which zig version to install.
+pub const recommended_zig_version = "0.11.0";
+
 pub fn build(b: *std.Build) !void {
+    switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {
+        .eq => {},
+        .lt => {
+            @compileError("The minimum version of Zig required to compile is '" ++ recommended_zig_version ++ "', found '" ++ builtin.zig_version_string ++ "'.");
+        },
+        .gt => {
+            std.debug.print(
+                "WARNING: Recommended Zig version '{s}', but found '{s}', build may fail...\n\n",
+                .{ recommended_zig_version, builtin.zig_version_string },
+            );
+        },
+    }
+
     const target = b.standardTargetOptions(.{});
     const mode = b.standardOptimizeOption(.{});
 

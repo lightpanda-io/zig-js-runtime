@@ -10,6 +10,7 @@ on:
     paths:
       - "src/**/*.zig"
       - "src/*.zig"
+      - "*.zig"
   pull_request:
 
     # By default GH trigger on types opened, synchronize and reopened.
@@ -24,6 +25,7 @@ on:
     paths:
       - "src/**/*.zig"
       - "src/*.zig"
+      - "*.zig"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
