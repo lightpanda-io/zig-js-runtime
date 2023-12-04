@@ -80,7 +80,7 @@ pub fn GenerateTable(
             if (header.len != columns_nb) {
                 @compileError("header elements should be equal to table columns_nb");
             }
-            var self = Self{ .title = title, .head = header };
+            const self = Self{ .title = title, .head = header };
             return self;
         }
 
@@ -194,7 +194,7 @@ pub fn GenerateTable(
                 var buf_str: [conf.max_row_length]u8 = undefined;
                 // stage1: we should catch err (or use try)
                 // but compiler give us an infinite loop
-                var str = argStr(buf_str[0..], value) catch unreachable;
+                const str = argStr(buf_str[0..], value) catch unreachable;
 
                 // align string and print
                 const str_len = try utf8Size(str);

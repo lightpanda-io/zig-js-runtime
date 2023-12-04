@@ -54,7 +54,7 @@ pub const VM = struct {
     platform: v8.Platform,
 
     pub fn init() VM {
-        var platform = v8.Platform.initDefault(0, true);
+        const platform = v8.Platform.initDefault(0, true);
         v8.initV8Platform(platform);
         v8.initV8();
         return .{ .platform = platform };

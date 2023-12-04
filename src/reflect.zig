@@ -304,7 +304,7 @@ pub const Type = struct {
             }
         }
 
-        var t = Type{
+        const t = Type{
             .T = T,
             .name = name,
             .union_T = union_T,

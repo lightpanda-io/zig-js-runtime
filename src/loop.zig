@@ -30,9 +30,9 @@ pub const SingleThreaded = struct {
     const Self = @This();
 
     pub fn init(alloc: std.mem.Allocator) !Self {
-        var io = try alloc.create(IO);
+        const io = try alloc.create(IO);
         io.* = try IO.init(32, 0);
-        var events_nb = try alloc.create(usize);
+        const events_nb = try alloc.create(usize);
         events_nb.* = 0;
         return Self{ .alloc = alloc, .io = io, .events_nb = events_nb };
     }
@@ -111,9 +111,9 @@ pub const SingleThreaded = struct {
     }
 
     pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) void {
-        var completion = self.alloc.create(IO.Completion) catch unreachable;
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
         completion.* = undefined;
-        var ctx = self.alloc.create(ContextTimeout) catch unreachable;
+        const ctx = self.alloc.create(ContextTimeout) catch unreachable;
         ctx.* = ContextTimeout{
             .loop = self,
             .js_cbk = js_cbk,

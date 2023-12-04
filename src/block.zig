@@ -303,7 +303,7 @@ pub fn block(
                 iterator.begin();
                 while (!iterator.finished()) {
                     var A = iterator.nextRange();
-                    var B = iterator.nextRange();
+                    const B = iterator.nextRange();
 
                     if (lessThan(context, items[B.end - 1], items[A.start])) {
                         // the two ranges are in reverse order, so a simple rotation should fix it
