@@ -525,6 +525,9 @@ pub const Func = struct {
 
             // JSObject
             if (args_types[i].T == JSObject) {
+                // JSObject arg is not allowed in a constructor function
+                // as the corresponding JS object has not been yet created
+                if (kind == .constructor) return error.FuncCstrWithJSObject;
                 index_offset += 1;
             }
 
@@ -1716,6 +1719,7 @@ const Error = error{
     FuncVariadicNotLastOne,
     FuncReturnTypeVariadic,
     FuncErrorUnionArg,
+    FuncCstrWithJSObject,
     FuncPostJSObjectInst,
 
     // type errors
@@ -1892,6 +1896,11 @@ const TestFuncReturnTypeVariadic = struct {
 const TestFuncErrorUnionArg = struct {
     pub fn _example(_: TestFuncErrorUnionArg, _: anyerror!void) void {}
 };
+const TestFuncCstrWithJSObject = struct {
+    pub fn constructor(_: JSObject) TestFuncCstrWithJSObject {
+        return .{};
+    }
+};
 const TestFuncPostJSObjectInst = struct {
     // missing JSObject arg
     pub fn postJSObjectInst(_: *TestFuncPostJSObjectInst) void {}
@@ -2041,6 +2050,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestFuncErrorUnionArg},
         error.FuncErrorUnionArg,
+    );
+    try ensureErr(
+        .{TestFuncCstrWithJSObject},
+        error.FuncCstrWithJSObject,
     );
     try ensureErr(
         .{TestFuncPostJSObjectInst},
