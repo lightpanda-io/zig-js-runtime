@@ -104,7 +104,7 @@ pub const MyException = struct {
     };
 
     pub fn init(_: std.mem.Allocator, err: anyerror, _: []const u8) anyerror!MyException {
-        return .{ .err = @as(ErrorSet, @errSetCast(err)) };
+        return .{ .err = @as(ErrorSet, @errorCast(err)) };
     }
 
     pub fn get_name(self: MyException) []const u8 {

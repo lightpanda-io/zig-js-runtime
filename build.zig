@@ -5,7 +5,7 @@ const pkgs = packages("");
 
 /// Do not rename this constant. It is scanned by some scripts to determine
 /// which zig version to install.
-pub const recommended_zig_version = "0.11.0";
+pub const recommended_zig_version = "0.12.0-dev.1773+8a8fd47d2";
 
 pub fn build(b: *std.Build) !void {
     switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {

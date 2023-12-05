@@ -908,7 +908,7 @@ pub const Struct = struct {
         // TODO: the type of the error should be the one define in the ErroSet field
         // instead here we accept anyerror, see comment on throwError generate function
         // So the implementation API should deal with that, knowing that the runtime
-        // error sent will be part of the ErrorSet (here an @errSetCast is possible)
+        // error sent will be part of the ErrorSet (here an @errorCast is possible)
         if (!isDecl(
             T,
             "init",
