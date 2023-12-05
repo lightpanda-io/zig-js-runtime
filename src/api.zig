@@ -44,6 +44,7 @@ pub const API = Engine.API;
 pub const TPL = Engine.TPL;
 
 pub const JSResult = Engine.JSResult;
+pub const JSObject = Engine.JSObject;
 pub const Callback = Engine.Callback;
 pub const CallbackSync = Engine.CallbackSync;
 pub const CallbackArg = Engine.CallbackArg;

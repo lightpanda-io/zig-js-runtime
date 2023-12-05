@@ -10,6 +10,7 @@ const utils = internal.utils;
 
 const public = @import("../../api.zig");
 const Loop = public.Loop;
+const JSObject = public.JSObject;
 
 const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
@@ -167,7 +168,6 @@ fn getArg(
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) arg.T {
-    _ = this;
     var value: arg.T = undefined;
 
     if (arg.isNative()) {
@@ -192,6 +192,7 @@ fn getArg(
             std.mem.Allocator => alloc,
             *Loop => utils.loop,
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
+            JSObject => JSObject{ .ctx = ctx, .js_obj = this },
             else => jsToNative(
                 alloc,
                 arg.T,
@@ -530,6 +531,44 @@ fn setReturnType(
     return js_val;
 }
 
+fn postInit(
+    alloc: std.mem.Allocator,
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    comptime func: refl.Func,
+    comptime argsT: type,
+    obj_ptr: anytype,
+    js_obj: v8.Object,
+    js_res: v8.ReturnValue,
+    ctx: v8.Context,
+    isolate: v8.Isolate,
+) void {
+    var args: argsT = undefined;
+    @field(args, "0") = obj_ptr;
+    @field(args, "1") = JSObject{ .ctx = ctx, .js_obj = js_obj };
+    const f = @field(T_refl.T, "postInit");
+    const ret = comptime try refl.funcReturnType(@TypeOf(f));
+    if (comptime refl.isErrorUnion(ret)) {
+        _ = @call(.auto, f, args) catch |err| {
+            return throwError(
+                alloc,
+                T_refl,
+                all_T,
+                func,
+                err,
+                js_res,
+                isolate,
+            );
+        };
+    } else {
+        _ = @call(
+            .auto,
+            f,
+            args,
+        );
+    }
+}
+
 fn getNativeObject(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
@@ -647,6 +686,22 @@ fn callFunc(
             cbk_info.getThis(),
             isolate,
         ) catch unreachable; // TODO: internal errors
+
+        // call postInit func
+        if (comptime try refl.postInitFunc(T_refl.T)) |piArgsT| {
+            postInit(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                piArgsT,
+                &res,
+                cbk_info.getThis(),
+                cbk_info.getReturnValue(),
+                ctx,
+                isolate,
+            );
+        }
     } else {
 
         // return to javascript the result

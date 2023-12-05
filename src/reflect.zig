@@ -9,6 +9,8 @@ const Callback = public.Callback;
 const CallbackSync = public.CallbackSync;
 const CallbackArg = public.CallbackArg;
 
+const JSObject = public.JSObject;
+
 const i64Num = public.i64Num;
 const u64Num = public.u64Num;
 
@@ -36,6 +38,7 @@ const builtin_types = [_]type{
 const internal_types = [_]type{
     std.mem.Allocator,
     Loop,
+    JSObject,
     Callback,
     CallbackSync,
     CallbackArg,
@@ -517,6 +520,11 @@ pub const Func = struct {
 
             // loop
             if (args_types[i].T == *Loop) {
+                index_offset += 1;
+            }
+
+            // JSObject
+            if (args_types[i].T == JSObject) {
                 index_offset += 1;
             }
 
@@ -1213,6 +1221,15 @@ pub const Struct = struct {
             }
         }
 
+        // postInit
+        if (@hasDecl(T, "postInit")) {
+            _ = postInitFunc(T) catch {
+                const msg = "function 'postInit' not well formed";
+                fmtErr(msg.len, msg, T);
+                return error.FuncPostInit;
+            };
+        }
+
         // check deinit
         // only if at least one function has an allocator argument
         var check_deinit = false;
@@ -1407,6 +1424,181 @@ pub fn do(comptime types: anytype) Error![]Struct {
     }
 }
 
+// New style reflect
+// -----------------
+
+// EqlOptions to handle how check equality is done
+// if ptr, check is also done with *T
+// if err, T can be wrapped in an ErrorUnion
+// if opt, T can be wrapped in an Optional
+// by default all those options are not allowed
+const EqlOptions = struct {
+    ptr: bool = false,
+    err: bool = false,
+    opt: bool = false,
+};
+
+// assert T is equal to X
+// see EqlOptions for behavior details
+fn assertT(comptime T: type, comptime X: type, comptime opts: EqlOptions) !void {
+    if (T == X) return;
+    if (opts.ptr and T == *X) return;
+    const err = error.AssertT;
+    const info = @typeInfo(X);
+    switch (info) {
+        .ErrorUnion => {
+            if (opts.err) return try assertT(T, info.ErrorUnion.payload, opts);
+            return err;
+        },
+        .Optional => {
+            if (opts.opt) return try assertT(T, info.Optional.child, opts);
+            return err;
+        },
+        else => return err,
+    }
+}
+
+// assert T is a supported container type
+// currently only Struct and Union
+fn assertApi(comptime T: type) !void {
+    const info = @typeInfo(T);
+    return switch (info) {
+        .Struct, .Union => {},
+        else => error.AssertAPI,
+    };
+}
+
+// assert func is a function
+fn assertFunc(comptime func: type) !void {
+    if (@typeInfo(func) != .Fn) return error.AssertFunc;
+}
+
+// assert func is a method of T
+// if not strict, T and *T are allowed
+fn assertFuncIsMethod(comptime T: type, comptime func: type, comptime strict: bool) !void {
+    try assertFunc(func);
+    const err = error.AssertFuncIsMethod;
+    const info = @typeInfo(func).Fn;
+    if (info.params.len == 0) return err;
+
+    const first = info.params[0].type.?;
+    if (strict) {
+        if (first != T) return err;
+    } else {
+        if (first != T and first != *T) return err;
+    }
+}
+
+// assert func has the correnct number of parameters
+fn assertFuncParamsNb(comptime func: type, comptime nb: u8) !void {
+    try assertFunc(func);
+    const info = @typeInfo(func).Fn;
+    if (info.params.len != nb) return error.AssertFuncParamsNb;
+}
+
+// assert func has the type T as parameter
+// if the index is provided, check directly the corresponding parameter
+// otherwise check at least 1 parameter is of type T
+fn assertFuncHasParam(comptime func: type, comptime T: type, comptime index: ?u8) !void {
+    try assertFunc(func);
+    const err = error.AssertFuncHasParam;
+    const info = @typeInfo(func).Fn;
+
+    // if index is provided, check it directly
+    if (index) |i| {
+        if (info.params.len < i + 1) return err;
+        if (info.params[i].type.? != T) {
+            return err;
+        }
+        return;
+    }
+
+    // otherwise check all
+    for (info.params) |param| {
+        if (param.type.? == T) {
+            return;
+        }
+    }
+    return err;
+}
+
+// assert func returns T
+// see EqlOptions for behavior details
+fn assertFuncReturnT(comptime func: type, comptime T: type, comptime opts: EqlOptions) !void {
+    try assertFunc(func);
+    const ret = @typeInfo(func).Fn.return_type.?;
+    assertT(T, ret, opts) catch return error.AssertFuncReturnT;
+}
+
+// createTupleT generate a tuple type
+// with the members passed as fields
+fn createTupleT(comptime members: []type) type {
+    var fields: [members.len]std.builtin.Type.StructField = undefined;
+    for (members, 0..) |member, i| {
+        fields[i] = std.builtin.Type.StructField{
+            .name = try itoa(i),
+            .type = member,
+            .default_value = null,
+            .is_comptime = false,
+            .alignment = @alignOf(member),
+        };
+    }
+    const s = std.builtin.Type.Struct{
+        .layout = std.builtin.Type.ContainerLayout.Auto,
+        .fields = &fields,
+        .decls = &.{},
+        .is_tuple = true,
+    };
+    const t = std.builtin.Type{ .Struct = s };
+    return @Type(t);
+}
+
+// argsT generate from the func parameters
+// a tuple type suitable for the @call builtin func
+fn argsT(comptime func: type) type {
+    try assertFunc(func);
+    const info = @typeInfo(func).Fn;
+    var params: [info.params.len]type = undefined;
+    for (info.params, 0..) |param, i| {
+        params[i] = param.type.?;
+    }
+    return createTupleT(&params);
+}
+
+// public functions
+
+// funcReturnType retrieve the return type of a func
+pub fn funcReturnType(comptime func: type) !type {
+    std.debug.assert(@inComptime());
+    try assertFunc(func);
+    const info = @typeInfo(func).Fn;
+    return info.return_type.?;
+}
+
+// isErrorUnion check if a type is an ErrorUnion
+pub fn isErrorUnion(comptime T: type) bool {
+    std.debug.assert(@inComptime());
+    const info = @typeInfo(T);
+    return info == .ErrorUnion;
+}
+
+// postInitFunc check if T has `postInit` function
+// and returns the arguments tuple type expected as parameters
+pub fn postInitFunc(comptime T: type) !?type {
+    std.debug.assert(@inComptime());
+    try assertApi(T);
+
+    const name = "postInit";
+    if (!@hasDecl(T, name)) return null;
+
+    const func = @TypeOf(@field(T, name));
+    try assertFuncIsMethod(*T, func, true);
+    try assertFuncParamsNb(func, 2);
+    try assertFuncHasParam(func, JSObject, 1);
+    try assertFuncReturnT(func, void, .{ .err = true });
+    return argsT(func);
+}
+
 // Utils funcs
 // -----------
 
@@ -1524,6 +1716,7 @@ const Error = error{
     FuncVariadicNotLastOne,
     FuncReturnTypeVariadic,
     FuncErrorUnionArg,
+    FuncPostInit,
 
     // type errors
     TypeTaggedUnion,
@@ -1699,6 +1892,10 @@ const TestFuncReturnTypeVariadic = struct {
 const TestFuncErrorUnionArg = struct {
     pub fn _example(_: TestFuncErrorUnionArg, _: anyerror!void) void {}
 };
+const TestFuncPostInit = struct {
+    // missing JSObject arg
+    pub fn postInit(_: *TestFuncPostInit) void {}
+};
 
 // types tests
 const TestTaggedUnion = union {
@@ -1844,6 +2041,10 @@ pub fn tests() !void {
     try ensureErr(
         .{TestFuncErrorUnionArg},
         error.FuncErrorUnionArg,
+    );
+    try ensureErr(
+        .{TestFuncPostInit},
+        error.FuncPostInit,
     );
 
     // types checks
