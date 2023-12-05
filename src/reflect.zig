@@ -1221,12 +1221,12 @@ pub const Struct = struct {
             }
         }
 
-        // postInit
-        if (@hasDecl(T, "postInit")) {
-            _ = postInitFunc(T) catch {
-                const msg = "function 'postInit' not well formed";
+        // postJSObjectInst
+        if (@hasDecl(T, "postJSObjectInst")) {
+            _ = postJSObjectInstFunc(T) catch {
+                const msg = "function 'postJSObjectInst' not well formed";
                 fmtErr(msg.len, msg, T);
-                return error.FuncPostInit;
+                return error.FuncPostJSObjectInst;
             };
         }
 
@@ -1582,13 +1582,13 @@ pub fn isErrorUnion(comptime T: type) bool {
     return info == .ErrorUnion;
 }
 
-// postInitFunc check if T has `postInit` function
+// postJSObjectInstFunc check if T has `postJSObjectInst` function
 // and returns the arguments tuple type expected as parameters
-pub fn postInitFunc(comptime T: type) !?type {
+pub fn postJSObjectInstFunc(comptime T: type) !?type {
     std.debug.assert(@inComptime());
     try assertApi(T);
 
-    const name = "postInit";
+    const name = "postJSObjectInst";
     if (!@hasDecl(T, name)) return null;
 
     const func = @TypeOf(@field(T, name));
@@ -1716,7 +1716,7 @@ const Error = error{
     FuncVariadicNotLastOne,
     FuncReturnTypeVariadic,
     FuncErrorUnionArg,
-    FuncPostInit,
+    FuncPostJSObjectInst,
 
     // type errors
     TypeTaggedUnion,
@@ -1892,9 +1892,9 @@ const TestFuncReturnTypeVariadic = struct {
 const TestFuncErrorUnionArg = struct {
     pub fn _example(_: TestFuncErrorUnionArg, _: anyerror!void) void {}
 };
-const TestFuncPostInit = struct {
+const TestFuncPostJSObjectInst = struct {
     // missing JSObject arg
-    pub fn postInit(_: *TestFuncPostInit) void {}
+    pub fn postJSObjectInst(_: *TestFuncPostJSObjectInst) void {}
 };
 
 // types tests
@@ -2043,8 +2043,8 @@ pub fn tests() !void {
         error.FuncErrorUnionArg,
     );
     try ensureErr(
-        .{TestFuncPostInit},
-        error.FuncPostInit,
+        .{TestFuncPostJSObjectInst},
+        error.FuncPostJSObjectInst,
     );
 
     // types checks
