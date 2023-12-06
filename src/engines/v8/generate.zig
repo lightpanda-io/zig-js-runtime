@@ -396,7 +396,7 @@ pub fn setNativeObject(
     obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
-) !void {
+) !*T {
 
     // assign and bind native obj to JS obj
     var obj_ptr: *T = undefined;
@@ -421,7 +421,7 @@ pub fn setNativeObject(
     // if the object is an empty struct (ie. a kind of container)
     // no need to keep it's reference
     if (T_refl.isEmpty()) {
-        return;
+        return obj_ptr;
     }
 
     // bind the native object pointer to JS obj
@@ -437,13 +437,16 @@ pub fn setNativeObject(
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
     js_obj.setInternalField(0, ext);
+    return obj_ptr;
 }
 
 fn setReturnType(
     alloc: std.mem.Allocator,
     comptime all_T: []refl.Struct,
     comptime ret: refl.Type,
+    comptime func: refl.Func,
     res: anytype,
+    js_res: v8.ReturnValue,
     ctx: v8.Context,
     isolate: v8.Isolate,
 ) !v8.Value {
@@ -455,7 +458,7 @@ fn setReturnType(
             // if null just return JS null
             return isolate.initNull().toValue();
         }
-        return setReturnType(alloc, all_T, ret, res.?, ctx, isolate);
+        return setReturnType(alloc, all_T, ret, func, res.?, js_res, ctx, isolate);
     }
 
     // Union type
@@ -469,7 +472,9 @@ fn setReturnType(
                     alloc,
                     all_T,
                     tt,
+                    func,
                     @field(res, tt.name.?),
+                    js_res,
                     ctx,
                     isolate,
                 );
@@ -491,7 +496,9 @@ fn setReturnType(
                 alloc,
                 all_T,
                 field,
+                func,
                 @field(res, name),
+                js_res,
                 ctx,
                 isolate,
             );
@@ -510,14 +517,32 @@ fn setReturnType(
         // instantiate a JS object from template
         // and bind it to the native object
         const js_obj = gen.getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
-        _ = try setNativeObject(
+        const obj_ptr = setNativeObject(
             alloc,
             all_T[index],
             ret.underT(),
             res,
             js_obj,
             isolate,
-        );
+        ) catch unreachable;
+
+        // call postJSObjectInst func
+        const T_refl = all_T[index];
+        if (comptime try refl.postJSObjectInstFunc(T_refl.T)) |piArgsT| {
+            postJSObjectInst(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                piArgsT,
+                obj_ptr,
+                js_obj,
+                js_res,
+                ctx,
+                isolate,
+            );
+        }
+
         return js_obj.toValue();
     }
 
@@ -678,7 +703,7 @@ fn callFunc(
     if (comptime func_kind == .constructor) {
 
         // bind native object to JS object this
-        setNativeObject(
+        _ = setNativeObject(
             utils.allocator,
             T_refl,
             func.return_type.underT(),
@@ -709,7 +734,9 @@ fn callFunc(
             utils.allocator,
             all_T,
             func.return_type,
+            func,
             res,
+            cbk_info.getReturnValue(),
             ctx,
             isolate,
         ) catch unreachable; // TODO: internal errors

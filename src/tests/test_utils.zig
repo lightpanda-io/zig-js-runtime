@@ -24,6 +24,24 @@ pub fn sleep(nanoseconds: u64) void {
     std.os.nanosleep(s, ns);
 }
 
+// result memory is owned by the caller
+pub fn intToStr(alloc: std.mem.Allocator, nb: u8) []const u8 {
+    return std.fmt.allocPrint(
+        alloc,
+        "{d}",
+        .{nb},
+    ) catch unreachable;
+}
+
+// engineOwnPropertiesDefault returns the number of own properties
+// by default for a current Type
+// result memory is owned by the caller
+pub fn engineOwnPropertiesDefault() u8 {
+    return switch (public.Env.engine()) {
+        .v8 => 5,
+    };
+}
+
 var test_case: usize = 0;
 
 fn caseError(src: []const u8, exp: []const u8, res: []const u8, stack: ?[]const u8) void {
