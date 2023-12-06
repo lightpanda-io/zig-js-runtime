@@ -2,6 +2,10 @@ name: benchmark
 
 env:
   ARCH: x86_64-linux
+  AWS_ACCESS_KEY_ID: ${{ vars.LPD_PERF_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.LPD_PERF_AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: ${{ vars.LPD_PERF_AWS_BUCKET }}
+  AWS_BUCKET: ${{ vars.LPD_PERF_AWS_REGION }}
 
 on:
   push:
@@ -94,11 +98,6 @@ jobs:
       credentials:
        username: ${{ github.actor }}
        password: ${{ secrets.GITHUB_TOKEN }}
-      env:
-        AWS_ACCESS_KEY_ID: ${{ vars.LPD_PERF_AWS_ACCESS_KEY_ID }}
-        AWS_SECRET_ACCESS_KEY: ${{ secrets.LPD_PERF_AWS_SECRET_ACCESS_KEY }}
-        AWS_REGION: ${{ vars.LPD_PERF_AWS_BUCKET }}
-        AWS_BUCKET: ${{ vars.LPD_PERF_AWS_REGION }}
 
     steps:
       - name: download artifact
