@@ -377,7 +377,7 @@ fn createJSObject(
     }
 
     // bind Native and JS objects together
-    try setNativeObject(
+    _ = try setNativeObject(
         utils.allocator,
         T_refl,
         T_refl.value.underT(),

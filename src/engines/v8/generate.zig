@@ -14,6 +14,7 @@ const Loop = public.Loop;
 const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const jsToNative = @import("types_primitives.zig").jsToNative;
+const jsToObject = @import("types_primitives.zig").jsToObject;
 
 const TPL = @import("v8.zig").TPL;
 
@@ -159,45 +160,41 @@ fn getArg(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
-    comptime func: refl.Func,
     comptime arg: refl.Type,
-    iter: usize,
-    info: v8.FunctionCallbackInfo,
+    this: v8.Object,
+    js_val: ?v8.Value,
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) arg.T {
+    _ = this;
     var value: arg.T = undefined;
 
     if (arg.isNative()) {
 
         // native types
-        const js_value = info.getArg(@intCast(iter - func.index_offset));
-        value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_value);
+        value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_val.?);
+    } else if (arg.nested_index) |index| {
+
+        // nested types (ie. JS anonymous objects)
+        value = jsToObject(
+            alloc,
+            T_refl.nested[index],
+            arg.T,
+            js_val.?,
+            isolate,
+            ctx,
+        ) catch unreachable;
     } else {
 
-        // builtin types
-        // and nested types (ie. JS anonymous objects)
+        // builtin and internal types
         value = switch (arg.T) {
             std.mem.Allocator => alloc,
             *Loop => utils.loop,
-            cbk.Func => cbk.Func.init(
-                alloc,
-                func,
-                info,
-                isolate,
-            ) catch unreachable,
-            cbk.FuncSync => cbk.FuncSync.init(
-                alloc,
-                func,
-                info,
-                isolate,
-            ) catch unreachable,
-            cbk.Arg => cbk.Arg{}, // stage1: we need type
+            cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
             else => jsToNative(
                 alloc,
-                T_refl,
-                arg,
-                info.getArg(@intCast(iter - func.index_offset)),
+                arg.T,
+                js_val.?,
                 isolate,
                 ctx,
             ) catch unreachable,
@@ -207,20 +204,68 @@ fn getArg(
     return value;
 }
 
-// This function can only be used by function callbacks (ie. constructor and methods)
-// as it takes a v8.FunctionCallbackInfo (with a getArg method).
+fn infoGetThis(
+    func_info: ?v8.FunctionCallbackInfo,
+    prop_info: ?v8.PropertyCallbackInfo,
+) v8.Object {
+    var this: v8.Object = undefined;
+    if (func_info) |info| {
+        this = info.getThis();
+    } else if (prop_info) |info| {
+        this = info.getThis();
+    }
+    return this;
+}
+
+fn infoGetArg(
+    func_info: ?v8.FunctionCallbackInfo,
+    prop_info: ?v8.PropertyCallbackInfo,
+    raw_value: ?*const v8.C_Value,
+    index: usize,
+    index_offset: usize,
+) ?v8.Value {
+    var js_value: ?v8.Value = null;
+    const i = @as(i8, @intCast(index)) - @as(i8, @intCast(index_offset));
+    if (i >= 0) {
+        if (func_info) |info| {
+            js_value = info.getArg(@as(u32, @intCast(i)));
+        } else if (prop_info) |_| {
+            if (raw_value) |val| {
+                js_value = v8.Value{ .handle = val };
+            }
+        }
+    }
+    return js_value;
+}
+
+// This function takes either a v8.FunctionCallbackInfo
+// or a v8.Propertycallbackinfo
+// in case of a setter raw_value is also required
 fn getArgs(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
-    info: v8.FunctionCallbackInfo,
+    func_info: ?v8.FunctionCallbackInfo,
+    prop_info: ?v8.PropertyCallbackInfo,
+    raw_value: ?*const v8.C_Value,
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) func.args_T {
     var args: func.args_T = undefined;
 
-    const js_args_nb = info.length();
+    var js_args_nb: u32 = undefined;
+    if (func_info) |info| {
+        js_args_nb = info.length();
+    } else if (prop_info) |_| {
+        if (raw_value == null) {
+            // getter
+            js_args_nb = 0;
+        } else {
+            // setter
+            js_args_nb = 1;
+        }
+    }
 
     // iter on function expected arguments
     inline for (func.args, 0..) |arg, i| {
@@ -245,17 +290,40 @@ fn getArgs(
         if (arg.T == arg_real.T) {
 
             // non-variadic arg
-            value = getArg(
-                alloc,
-                T_refl,
-                all_T,
-                func,
-                arg_real,
-                i,
-                info,
-                isolate,
-                ctx,
-            );
+            value = switch (arg.T) {
+
+                // special cases for callback arguments
+                // TODO: because thoses functions requires a v8.FunctionCallbackInfo
+                // they will not be available for generators with v8.PropertyCallbackInfo
+                // (getters and setters)
+                cbk.Func => cbk.Func.init(
+                    alloc,
+                    func,
+                    func_info.?,
+                    isolate,
+                ) catch unreachable,
+                cbk.FuncSync => cbk.FuncSync.init(
+                    alloc,
+                    func,
+                    func_info.?,
+                    isolate,
+                ) catch unreachable,
+                cbk.Arg => cbk.Arg{}, // stage1: we need type
+
+                // normal cases
+                else => blk: {
+                    break :blk getArg(
+                        alloc,
+                        T_refl,
+                        all_T,
+                        arg_real,
+                        infoGetThis(func_info, prop_info),
+                        infoGetArg(func_info, prop_info, raw_value, i, func.index_offset),
+                        isolate,
+                        ctx,
+                    );
+                },
+            };
         } else {
 
             // variadic arg
@@ -268,10 +336,9 @@ fn getArgs(
                     alloc,
                     T_refl,
                     all_T,
-                    func,
                     arg_real,
-                    iter + i,
-                    info,
+                    infoGetThis(func_info, prop_info),
+                    infoGetArg(func_info, prop_info, raw_value, iter + i, func.index_offset),
                     isolate,
                     ctx,
                 );
@@ -532,6 +599,8 @@ fn generateConstructor(
                 all_T,
                 func,
                 info,
+                null,
+                null,
                 isolate,
                 ctx,
             );
@@ -589,15 +658,23 @@ fn generateGetter(
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             const isolate = info.getIsolate();
 
-            // TODO: check func params length
-
-            var args: func.args_T = undefined;
+            // prepare args
+            var args = getArgs(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                null,
+                info,
+                null,
+                isolate,
+                isolate.getCurrentContext(),
+            );
 
             // free memory if required
             defer freeArgs(func, args) catch unreachable;
 
             // retrieve the zig object
-
             if (!comptime T_refl.isEmpty()) {
                 const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
                 const self_T = @TypeOf(@field(args, "0"));
@@ -606,11 +683,6 @@ fn generateGetter(
                 } else if (self_T == *T_refl.Self()) {
                     @field(args, "0") = obj_ptr;
                 }
-            }
-
-            // provide allocator if needed
-            if ((func.args.len) == 1) {
-                @field(args, "1") = utils.allocator;
             }
 
             // call the corresponding zig object method
@@ -660,37 +732,18 @@ fn generateSetter(
 
             // TODO: check func params length
 
-            var args: func.args_T = undefined;
-
-            // get the value set in javascript
-            const js_value = v8.Value{ .handle = raw_value.? };
-            const arg_T = func.args[func.index_offset];
-            var zig_value: arg_T.T = undefined;
-
-            if (arg_T.isNative()) {
-
-                // native type
-                zig_value = getNativeArg(
-                    all_T[arg_T.T_refl_index.?],
-                    all_T,
-                    arg_T,
-                    js_value,
-                );
-            } else {
-
-                // primitive type
-                // and nested type (ie. JS anonymous object)
-                zig_value = jsToNative(
-                    utils.allocator,
-                    T_refl,
-                    arg_T,
-                    js_value,
-                    isolate,
-                    isolate.getCurrentContext(),
-                ) catch unreachable; // TODO: throw js exception
-            }
-            const js_value_name = func.args[func.index_offset].name.?;
-            @field(args, js_value_name) = zig_value;
+            // prepare args
+            var args = getArgs(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                null,
+                info,
+                raw_value,
+                isolate,
+                isolate.getCurrentContext(),
+            );
 
             // free memory if required
             defer freeArgs(func, args) catch unreachable;
@@ -702,11 +755,6 @@ fn generateSetter(
                 info.getThis(),
             ) catch unreachable;
             @field(args, "0") = obj_ptr;
-
-            // provide allocator if needed
-            if ((func.args.len) == 2) {
-                @field(args, "1") = utils.allocator;
-            }
 
             // call the corresponding zig object method
             const setter_func = @field(T_refl.T, func.name);
@@ -758,6 +806,8 @@ fn generateMethod(
                 all_T,
                 func,
                 info,
+                null,
+                null,
                 isolate,
                 ctx,
             );
