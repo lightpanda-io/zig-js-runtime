@@ -22,6 +22,6 @@ jobs:
 
     steps:
       - run: |
-          cat /etc/resolve.conf
+          cat /etc/resolv.conf
           echo "{}" > benchmark.json
           /perf-fmt bench ${{ github.sha }} benchmark.json
