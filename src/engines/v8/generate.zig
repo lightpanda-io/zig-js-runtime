@@ -204,39 +204,43 @@ fn getArg(
     return value;
 }
 
-fn infoGetThis(
-    func_info: ?v8.FunctionCallbackInfo,
-    prop_info: ?v8.PropertyCallbackInfo,
-) v8.Object {
-    var this: v8.Object = undefined;
-    if (func_info) |info| {
-        this = info.getThis();
-    } else if (prop_info) |info| {
-        this = info.getThis();
-    }
-    return this;
-}
+const CallbackInfo = union(enum) {
+    func_cbk: v8.FunctionCallbackInfo,
+    prop_cbk: v8.PropertyCallbackInfo,
 
-fn infoGetArg(
-    func_info: ?v8.FunctionCallbackInfo,
-    prop_info: ?v8.PropertyCallbackInfo,
-    raw_value: ?*const v8.C_Value,
-    index: usize,
-    index_offset: usize,
-) ?v8.Value {
-    var js_value: ?v8.Value = null;
-    const i = @as(i8, @intCast(index)) - @as(i8, @intCast(index_offset));
-    if (i >= 0) {
-        if (func_info) |info| {
-            js_value = info.getArg(@as(u32, @intCast(i)));
-        } else if (prop_info) |_| {
-            if (raw_value) |val| {
-                js_value = v8.Value{ .handle = val };
-            }
+    fn length(self: CallbackInfo, raw_value: ?*const v8.C_Value) u32 {
+        return switch (self) {
+            .func_cbk => self.func_cbk.length(),
+            .prop_cbk => blk: {
+                break :blk if (raw_value == null) 0 else 1;
+            },
+        };
+    }
+
+    fn getThis(self: CallbackInfo) v8.Object {
+        switch (self) {
+            inline else => |case| return case.getThis(),
         }
     }
-    return js_value;
-}
+
+    fn getArg(
+        self: CallbackInfo,
+        raw_value: ?*const v8.C_Value,
+        index: usize,
+        index_offset: usize,
+    ) ?v8.Value {
+        const i = @as(i8, @intCast(index)) - @as(i8, @intCast(index_offset));
+        if (i < 0) return null;
+        switch (self) {
+            .func_cbk => return self.func_cbk.getArg(@as(u32, @intCast(i))),
+            .prop_cbk => {
+                if (raw_value) |val| {
+                    return v8.Value{ .handle = val };
+                } else return null;
+            },
+        }
+    }
+};
 
 // This function takes either a v8.FunctionCallbackInfo
 // or a v8.Propertycallbackinfo
@@ -246,26 +250,14 @@ fn getArgs(
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
-    func_info: ?v8.FunctionCallbackInfo,
-    prop_info: ?v8.PropertyCallbackInfo,
+    cbk_info: CallbackInfo,
     raw_value: ?*const v8.C_Value,
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) func.args_T {
     var args: func.args_T = undefined;
 
-    var js_args_nb: u32 = undefined;
-    if (func_info) |info| {
-        js_args_nb = info.length();
-    } else if (prop_info) |_| {
-        if (raw_value == null) {
-            // getter
-            js_args_nb = 0;
-        } else {
-            // setter
-            js_args_nb = 1;
-        }
-    }
+    const js_args_nb = cbk_info.length(raw_value);
 
     // iter on function expected arguments
     inline for (func.args, 0..) |arg, i| {
@@ -299,13 +291,13 @@ fn getArgs(
                 cbk.Func => cbk.Func.init(
                     alloc,
                     func,
-                    func_info.?,
+                    cbk_info.func_cbk,
                     isolate,
                 ) catch unreachable,
                 cbk.FuncSync => cbk.FuncSync.init(
                     alloc,
                     func,
-                    func_info.?,
+                    cbk_info.func_cbk,
                     isolate,
                 ) catch unreachable,
                 cbk.Arg => cbk.Arg{}, // stage1: we need type
@@ -317,8 +309,8 @@ fn getArgs(
                         T_refl,
                         all_T,
                         arg_real,
-                        infoGetThis(func_info, prop_info),
-                        infoGetArg(func_info, prop_info, raw_value, i, func.index_offset),
+                        cbk_info.getThis(),
+                        cbk_info.getArg(raw_value, i, func.index_offset),
                         isolate,
                         ctx,
                     );
@@ -337,8 +329,8 @@ fn getArgs(
                     T_refl,
                     all_T,
                     arg_real,
-                    infoGetThis(func_info, prop_info),
-                    infoGetArg(func_info, prop_info, raw_value, iter + i, func.index_offset),
+                    cbk_info.getThis(),
+                    cbk_info.getArg(raw_value, iter + i, func.index_offset),
                     isolate,
                     ctx,
                 );
@@ -598,8 +590,7 @@ fn generateConstructor(
                 T_refl,
                 all_T,
                 func,
-                info,
-                null,
+                CallbackInfo{ .func_cbk = info },
                 null,
                 isolate,
                 ctx,
@@ -664,8 +655,7 @@ fn generateGetter(
                 T_refl,
                 all_T,
                 func,
-                null,
-                info,
+                CallbackInfo{ .prop_cbk = info },
                 null,
                 isolate,
                 isolate.getCurrentContext(),
@@ -738,8 +728,7 @@ fn generateSetter(
                 T_refl,
                 all_T,
                 func,
-                null,
-                info,
+                CallbackInfo{ .prop_cbk = info },
                 raw_value,
                 isolate,
                 isolate.getCurrentContext(),
@@ -805,8 +794,7 @@ fn generateMethod(
                 T_refl,
                 all_T,
                 func,
-                info,
-                null,
+                CallbackInfo{ .func_cbk = info },
                 null,
                 isolate,
                 ctx,
