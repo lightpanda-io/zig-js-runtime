@@ -369,7 +369,7 @@ const Symbol = enum {
     }
 };
 
-const FuncKind = enum {
+pub const FuncKind = enum {
     ignore,
     constructor,
     getter,

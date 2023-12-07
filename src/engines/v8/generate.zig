@@ -94,7 +94,8 @@ const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} p
 fn checkArgsLen(
     comptime name: []const u8,
     comptime func: refl.Func,
-    info: v8.FunctionCallbackInfo,
+    cbk_info: CallbackInfo,
+    raw_value: ?*const v8.C_Value,
     isolate: v8.Isolate,
 ) bool {
 
@@ -106,7 +107,7 @@ fn checkArgsLen(
     func_args_len -= func.index_offset;
 
     // OK
-    const js_args_len = info.length();
+    const js_args_len = cbk_info.length(raw_value);
     if (js_args_len >= func_args_len) {
         // NOTE: using > to allow JS call to provide more arguments
         return true;
@@ -121,7 +122,7 @@ fn checkArgsLen(
     };
     var buf: [100]u8 = undefined;
     const msg = std.fmt.bufPrint(buf[0..], not_enough_args, args) catch unreachable;
-    throwTypeError(msg, info.getReturnValue(), isolate);
+    throwTypeError(msg, cbk_info.getReturnValue(), isolate);
     return false;
 }
 
@@ -208,19 +209,25 @@ const CallbackInfo = union(enum) {
     func_cbk: v8.FunctionCallbackInfo,
     prop_cbk: v8.PropertyCallbackInfo,
 
+    fn getIsolate(self: CallbackInfo) v8.Isolate {
+        return switch (self) {
+            .func_cbk => self.func_cbk.getIsolate(),
+            .prop_cbk => self.prop_cbk.getIsolate(),
+        };
+    }
+
     fn length(self: CallbackInfo, raw_value: ?*const v8.C_Value) u32 {
         return switch (self) {
             .func_cbk => self.func_cbk.length(),
-            .prop_cbk => blk: {
-                break :blk if (raw_value == null) 0 else 1;
-            },
+            .prop_cbk => if (raw_value == null) 0 else 1,
         };
     }
 
     fn getThis(self: CallbackInfo) v8.Object {
-        switch (self) {
-            inline else => |case| return case.getThis(),
-        }
+        return switch (self) {
+            .func_cbk => self.func_cbk.getThis(),
+            .prop_cbk => self.prop_cbk.getThis(),
+        };
     }
 
     fn getArg(
@@ -239,6 +246,13 @@ const CallbackInfo = union(enum) {
                 } else return null;
             },
         }
+    }
+
+    fn getReturnValue(self: CallbackInfo) v8.ReturnValue {
+        return switch (self) {
+            .func_cbk => self.func_cbk.getReturnValue(),
+            .prop_cbk => self.prop_cbk.getReturnValue(),
+        };
     }
 };
 
@@ -434,12 +448,6 @@ fn setReturnType(
 ) !v8.Value {
     const info = @typeInfo(@TypeOf(res));
 
-    // Error Union
-    if (info == .ErrorUnion) {
-        const unwrapped = try res;
-        return setReturnType(alloc, all_T, ret, unwrapped, ctx, isolate);
-    }
-
     // Optional
     if (info == .Optional) {
         if (res == null) {
@@ -501,14 +509,14 @@ fn setReturnType(
         // instantiate a JS object from template
         // and bind it to the native object
         const js_obj = gen.getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
-        _ = setNativeObject(
+        _ = try setNativeObject(
             alloc,
             all_T[index],
             ret.underT(),
             res,
             js_obj,
             isolate,
-        ) catch unreachable;
+        );
         return js_obj.toValue();
     }
 
@@ -559,6 +567,111 @@ fn getNativeObject(
     return obj_ptr;
 }
 
+fn callFunc(
+    comptime T_refl: refl.Struct,
+    comptime all_T: []refl.Struct,
+    comptime func: refl.Func,
+    comptime func_kind: refl.FuncKind,
+    cbk_info: CallbackInfo,
+    raw_value: ?*const v8.C_Value,
+) void {
+
+    // retrieve isolate and context
+    const isolate = cbk_info.getIsolate();
+    const ctx = isolate.getCurrentContext();
+
+    if (comptime func_kind == .constructor and !T_refl.has_constructor) {
+        return throwTypeError("Illegal constructor", cbk_info.getReturnValue(), isolate);
+    }
+
+    // check func params length
+    if (!checkArgsLen(T_refl.name, func, cbk_info, raw_value, isolate)) {
+        return;
+    }
+
+    // prepare args
+    var args = getArgs(
+        utils.allocator,
+        T_refl,
+        all_T,
+        func,
+        cbk_info,
+        raw_value,
+        isolate,
+        ctx,
+    );
+
+    // free memory if required
+    defer freeArgs(func, args) catch unreachable;
+
+    // retrieve the zig object
+    if (comptime func_kind != .constructor and !T_refl.isEmpty()) {
+        const obj_ptr = getNativeObject(T_refl, all_T, cbk_info.getThis()) catch unreachable;
+        const self_T = @TypeOf(@field(args, "0"));
+        if (self_T == T_refl.Self()) {
+            @field(args, "0") = obj_ptr.*;
+        } else if (self_T == *T_refl.Self()) {
+            @field(args, "0") = obj_ptr;
+        }
+    }
+
+    // call native func
+    const function = @field(T_refl.T, func.name);
+    const res_T = func.return_type.underErr() orelse func.return_type.T;
+    var res: res_T = undefined;
+    if (comptime @typeInfo(func.return_type.T) == .ErrorUnion) {
+        res = @call(.auto, function, args) catch |err| {
+            // TODO: how to handle internal errors vs user errors
+            return throwError(
+                utils.allocator,
+                T_refl,
+                all_T,
+                func,
+                err,
+                cbk_info.getReturnValue(),
+                isolate,
+            );
+        };
+    } else {
+        res = @call(.auto, function, args);
+    }
+
+    if (comptime func_kind == .constructor) {
+
+        // bind native object to JS object this
+        setNativeObject(
+            utils.allocator,
+            T_refl,
+            func.return_type.underT(),
+            res,
+            cbk_info.getThis(),
+            isolate,
+        ) catch unreachable; // TODO: internal errors
+    } else {
+
+        // return to javascript the result
+        const js_val = setReturnType(
+            utils.allocator,
+            all_T,
+            func.return_type,
+            res,
+            ctx,
+            isolate,
+        ) catch unreachable; // TODO: internal errors
+        cbk_info.getReturnValue().setValueHandle(js_val.handle);
+    }
+
+    // sync callback
+    // for test purpose, does not have any sense in real case
+    if (comptime func.callback_index != null) {
+        // -1 because of self
+        const js_func_index = func.callback_index.? - func.index_offset - 1;
+        if (func.args[js_func_index].T == cbk.FuncSync) {
+            args[func.callback_index.? - func.index_offset].call(utils.allocator) catch unreachable;
+        }
+    }
+}
+
 // JS functions callbacks
 // ----------------------
 
@@ -570,66 +683,16 @@ fn generateConstructor(
     return struct {
         fn constructor(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
-            // retrieve isolate and context
+            // callFunc
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
-            const isolate = info.getIsolate();
-            const ctx = isolate.getCurrentContext();
-
-            if (!comptime T_refl.has_constructor) {
-                return throwTypeError("Illegal constructor", info.getReturnValue(), isolate);
-            }
-
-            // check func params length
-            if (!checkArgsLen(T_refl.name, func, info, isolate)) {
-                return;
-            }
-
-            // prepare args
-            const args = getArgs(
-                utils.allocator,
+            callFunc(
                 T_refl,
                 all_T,
                 func,
+                .constructor,
                 CallbackInfo{ .func_cbk = info },
                 null,
-                isolate,
-                ctx,
             );
-
-            // free memory if required
-            defer freeArgs(func, args) catch unreachable;
-
-            // call the native func
-            const cstr_func = @field(T_refl.T, func.name);
-            const obj_T = func.return_type.underErr() orelse func.return_type.T;
-            var obj: obj_T = undefined;
-            if (func.return_type.underErr() != null) {
-                obj = @call(.auto, cstr_func, args) catch |err| {
-                    // TODO: how to handle internal errors vs user errors
-                    return throwError(
-                        utils.allocator,
-                        T_refl,
-                        all_T,
-                        func,
-                        err,
-                        info.getReturnValue(),
-                        isolate,
-                    );
-                };
-            } else {
-                obj = @call(.auto, cstr_func, args);
-            }
-
-            // bind native object to JS new object
-            setNativeObject(
-                utils.allocator,
-                T_refl,
-                func.return_type.underT(),
-                obj,
-                info.getThis(),
-                isolate,
-            ) catch unreachable;
-            // TODO: we choose for now not throw user error
         }
     }.constructor;
 }
@@ -645,61 +708,16 @@ fn generateGetter(
             raw_info: ?*const v8.C_PropertyCallbackInfo,
         ) callconv(.C) void {
 
-            // retrieve isolate
+            // callFunc
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
-            const isolate = info.getIsolate();
-
-            // prepare args
-            var args = getArgs(
-                utils.allocator,
+            callFunc(
                 T_refl,
                 all_T,
                 func,
+                .getter,
                 CallbackInfo{ .prop_cbk = info },
                 null,
-                isolate,
-                isolate.getCurrentContext(),
             );
-
-            // free memory if required
-            defer freeArgs(func, args) catch unreachable;
-
-            // retrieve the zig object
-            if (!comptime T_refl.isEmpty()) {
-                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
-                const self_T = @TypeOf(@field(args, "0"));
-                if (self_T == T_refl.Self()) {
-                    @field(args, "0") = obj_ptr.*;
-                } else if (self_T == *T_refl.Self()) {
-                    @field(args, "0") = obj_ptr;
-                }
-            }
-
-            // call the corresponding zig object method
-            const getter_func = @field(T_refl.T, func.name);
-            const res = @call(.auto, getter_func, args);
-
-            // return to javascript the result
-            const js_val = setReturnType(
-                utils.allocator,
-                all_T,
-                func.return_type,
-                res,
-                isolate.getCurrentContext(),
-                isolate,
-            ) catch |err| {
-                // TODO: how to handle internal errors vs user errors
-                return throwError(
-                    utils.allocator,
-                    T_refl,
-                    all_T,
-                    func,
-                    err,
-                    info.getReturnValue(),
-                    isolate,
-                );
-            };
-            info.getReturnValue().setValueHandle(js_val.handle);
         }
     }.getter;
 }
@@ -716,56 +734,16 @@ fn generateSetter(
             raw_info: ?*const v8.C_PropertyCallbackInfo,
         ) callconv(.C) void {
 
-            // retrieve isolate
+            // callFunc
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
-            const isolate = info.getIsolate();
-
-            // TODO: check func params length
-
-            // prepare args
-            var args = getArgs(
-                utils.allocator,
+            callFunc(
                 T_refl,
                 all_T,
                 func,
+                .setter,
                 CallbackInfo{ .prop_cbk = info },
                 raw_value,
-                isolate,
-                isolate.getCurrentContext(),
             );
-
-            // free memory if required
-            defer freeArgs(func, args) catch unreachable;
-
-            // retrieve the zig object
-            const obj_ptr = getNativeObject(
-                T_refl,
-                all_T,
-                info.getThis(),
-            ) catch unreachable;
-            @field(args, "0") = obj_ptr;
-
-            // call the corresponding zig object method
-            const setter_func = @field(T_refl.T, func.name);
-            if (@typeInfo(func.return_type.T) == .ErrorUnion) {
-                _ = @call(.auto, setter_func, args) catch |err| {
-                    // TODO: how to handle internal errors vs user errors
-                    return throwError(
-                        utils.allocator,
-                        T_refl,
-                        all_T,
-                        func,
-                        err,
-                        info.getReturnValue(),
-                        isolate,
-                    );
-                }; // return should be void
-            } else {
-                _ = @call(.auto, setter_func, args); // return should be void
-            }
-
-            // return to javascript the provided value
-            info.getReturnValue().setValueHandle(raw_value.?);
         }
     }.setter;
 }
@@ -778,77 +756,16 @@ fn generateMethod(
     return struct {
         fn method(raw_info: ?*const v8.C_FunctionCallbackInfo) callconv(.C) void {
 
-            // retrieve isolate and context
+            // callFunc
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
-            const isolate = info.getIsolate();
-            const ctx = isolate.getCurrentContext();
-
-            // check func params length
-            if (!checkArgsLen(T_refl.name, func, info, isolate)) {
-                return;
-            }
-
-            // prepare args
-            var args = getArgs(
-                utils.allocator,
+            callFunc(
                 T_refl,
                 all_T,
                 func,
+                .method,
                 CallbackInfo{ .func_cbk = info },
                 null,
-                isolate,
-                ctx,
             );
-
-            // free memory if required
-            defer freeArgs(func, args) catch unreachable;
-
-            // retrieve the zig object
-            if (!comptime T_refl.isEmpty()) {
-                const obj_ptr = getNativeObject(T_refl, all_T, info.getThis()) catch unreachable;
-                const self_T = @TypeOf(@field(args, "0"));
-                if (self_T == T_refl.Self()) {
-                    @field(args, "0") = obj_ptr.*;
-                } else if (self_T == *T_refl.Self()) {
-                    @field(args, "0") = obj_ptr;
-                }
-            }
-
-            // call native func
-            const method_func = @field(T_refl.T, func.name);
-            const res = @call(.auto, method_func, args);
-
-            // return to javascript the result
-            const js_val = setReturnType(
-                utils.allocator,
-                all_T,
-                func.return_type,
-                res,
-                ctx,
-                isolate,
-            ) catch |err| {
-                // TODO: how to handle internal errors vs user errors
-                return throwError(
-                    utils.allocator,
-                    T_refl,
-                    all_T,
-                    func,
-                    err,
-                    info.getReturnValue(),
-                    isolate,
-                );
-            };
-            info.getReturnValue().setValueHandle(js_val.handle);
-
-            // sync callback
-            // for test purpose, does not have any sense in real case
-            if (comptime func.callback_index != null) {
-                // -1 because of self
-                const js_func_index = func.callback_index.? - func.index_offset - 1;
-                if (func.args[js_func_index].T == cbk.FuncSync) {
-                    args[func.callback_index.? - func.index_offset].call(utils.allocator) catch unreachable;
-                }
-            }
         }
     }.method;
 }
