@@ -23,5 +23,6 @@ jobs:
     steps:
       - run: |
           cat /etc/resolv.conf
+          echo "nameserver 8.8.8.8" > /etc/resolv.conf
           echo "{}" > benchmark.json
           /perf-fmt bench ${{ github.sha }} benchmark.json
