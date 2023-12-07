@@ -1,0 +1,27 @@
+name: benchmark
+
+env:
+  AWS_ACCESS_KEY_ID: ${{ vars.LPD_PERF_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.LPD_PERF_AWS_SECRET_ACCESS_KEY }}
+  AWS_REGION: ${{ vars.LPD_PERF_AWS_BUCKET }}
+  AWS_BUCKET: ${{ vars.LPD_PERF_AWS_REGION }}
+
+on:
+  pull_request
+
+jobs:
+  perf-fmt:
+    name: perf-fmt
+
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/lightpanda-io/perf-fmt:latest
+      credentials:
+       username: ${{ github.actor }}
+       password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - run: |
+          cat /etc/resolve.conf
+          echo "{}" > benchmark.json
+          /perf-fmt bench ${{ github.sha }} benchmark.json
