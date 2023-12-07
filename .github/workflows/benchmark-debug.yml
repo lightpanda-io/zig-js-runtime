@@ -1,4 +1,4 @@
-name: benchmark
+name: benchmark-debug
 
 env:
   AWS_ACCESS_KEY_ID: ${{ vars.LPD_PERF_AWS_ACCESS_KEY_ID }}
