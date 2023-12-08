@@ -1485,44 +1485,42 @@ fn assertFuncIsMethod(comptime T: type, comptime func: type, comptime strict: bo
     if (info.params.len == 0) return err;
 
     const first = info.params[0].type.?;
-    if (strict) {
-        if (first != T) return err;
-    } else {
-        if (first != T and first != *T) return err;
-    }
+    if (first == T) return;
+    // only non strict assertion allows *T
+    if (!strict and first == *T) return;
+    return err;
 }
 
-// assert func has the correnct number of parameters
+// assert func has the correct number of parameters
 fn assertFuncParamsNb(comptime func: type, comptime nb: u8) !void {
     try assertFunc(func);
     const info = @typeInfo(func).Fn;
     if (info.params.len != nb) return error.AssertFuncParamsNb;
 }
 
-// assert func has the type T as parameter
-// if the index is provided, check directly the corresponding parameter
-// otherwise check at least 1 parameter is of type T
-fn assertFuncHasParam(comptime func: type, comptime T: type, comptime index: ?u8) !void {
+// assert function parameter at index is of type T
+fn assertFuncParamIsT(comptime func: type, comptime T: type, comptime index: u8) !void {
     try assertFunc(func);
     const err = error.AssertFuncHasParam;
     const info = @typeInfo(func).Fn;
 
-    // if index is provided, check it directly
-    if (index) |i| {
-        if (info.params.len < i + 1) return err;
-        if (info.params[i].type.? != T) {
-            return err;
-        }
-        return;
+    if (info.params.len < index + 1) return err;
+    if (info.params[index].type.? != T) {
+        return err;
     }
+}
 
-    // otherwise check all
+// assert function has at least 1 parameter of type T
+fn assertFuncHasParamT(comptime func: type, comptime T: type) !void {
+    try assertFunc(func);
+    const info = @typeInfo(func).Fn;
+
     for (info.params) |param| {
         if (param.type.? == T) {
             return;
         }
     }
-    return err;
+    return error.AssertFuncHasParam;
 }
 
 // assert func returns T
@@ -1597,7 +1595,7 @@ pub fn postAttachFunc(comptime T: type) !?type {
     const func = @TypeOf(@field(T, name));
     try assertFuncIsMethod(*T, func, true);
     try assertFuncParamsNb(func, 2);
-    try assertFuncHasParam(func, JSObject, 1);
+    try assertFuncParamIsT(func, JSObject, 1);
     try assertFuncReturnT(func, void, .{ .err = true });
     return argsT(func);
 }
