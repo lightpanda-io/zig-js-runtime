@@ -1224,12 +1224,12 @@ pub const Struct = struct {
             }
         }
 
-        // postJSObjectInst
-        if (@hasDecl(T, "postJSObjectInst")) {
-            _ = postJSObjectInstFunc(T) catch {
-                const msg = "function 'postJSObjectInst' not well formed";
+        // postAttach
+        if (@hasDecl(T, "postAttach")) {
+            _ = postAttachFunc(T) catch {
+                const msg = "function 'postAttach' not well formed";
                 fmtErr(msg.len, msg, T);
-                return error.FuncPostJSObjectInst;
+                return error.FuncPostAttach;
             };
         }
 
@@ -1585,13 +1585,13 @@ pub fn isErrorUnion(comptime T: type) bool {
     return info == .ErrorUnion;
 }
 
-// postJSObjectInstFunc check if T has `postJSObjectInst` function
+// postAttachFunc check if T has `postAttach` function
 // and returns the arguments tuple type expected as parameters
-pub fn postJSObjectInstFunc(comptime T: type) !?type {
+pub fn postAttachFunc(comptime T: type) !?type {
     std.debug.assert(@inComptime());
     try assertApi(T);
 
-    const name = "postJSObjectInst";
+    const name = "postAttach";
     if (!@hasDecl(T, name)) return null;
 
     const func = @TypeOf(@field(T, name));
@@ -1720,7 +1720,7 @@ const Error = error{
     FuncReturnTypeVariadic,
     FuncErrorUnionArg,
     FuncCstrWithJSObject,
-    FuncPostJSObjectInst,
+    FuncPostAttach,
 
     // type errors
     TypeTaggedUnion,
@@ -1901,9 +1901,9 @@ const TestFuncCstrWithJSObject = struct {
         return .{};
     }
 };
-const TestFuncPostJSObjectInst = struct {
+const TestFuncPostAttach = struct {
     // missing JSObject arg
-    pub fn postJSObjectInst(_: *TestFuncPostJSObjectInst) void {}
+    pub fn postAttach(_: *TestFuncPostAttach) void {}
 };
 
 // types tests
@@ -2056,8 +2056,8 @@ pub fn tests() !void {
         error.FuncCstrWithJSObject,
     );
     try ensureErr(
-        .{TestFuncPostJSObjectInst},
-        error.FuncPostJSObjectInst,
+        .{TestFuncPostAttach},
+        error.FuncPostAttach,
     );
 
     // types checks

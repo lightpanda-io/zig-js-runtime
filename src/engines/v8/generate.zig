@@ -526,10 +526,10 @@ fn setReturnType(
             isolate,
         ) catch unreachable;
 
-        // call postJSObjectInst func
+        // call postAttach func
         const T_refl = all_T[index];
-        if (comptime try refl.postJSObjectInstFunc(T_refl.T)) |piArgsT| {
-            postJSObjectInst(
+        if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
+            postAttach(
                 utils.allocator,
                 T_refl,
                 all_T,
@@ -556,7 +556,7 @@ fn setReturnType(
     return js_val;
 }
 
-fn postJSObjectInst(
+fn postAttach(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
@@ -571,7 +571,7 @@ fn postJSObjectInst(
     var args: argsT = undefined;
     @field(args, "0") = obj_ptr;
     @field(args, "1") = JSObject{ .ctx = ctx, .js_obj = js_obj };
-    const f = @field(T_refl.T, "postJSObjectInst");
+    const f = @field(T_refl.T, "postAttach");
     const ret = comptime try refl.funcReturnType(@TypeOf(f));
     if (comptime refl.isErrorUnion(ret)) {
         _ = @call(.auto, f, args) catch |err| {
@@ -712,9 +712,9 @@ fn callFunc(
             isolate,
         ) catch unreachable; // TODO: internal errors
 
-        // call postInit func
-        if (comptime try refl.postJSObjectInstFunc(T_refl.T)) |piArgsT| {
-            postJSObjectInst(
+        // call postAttach func
+        if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
+            postAttach(
                 utils.allocator,
                 T_refl,
                 all_T,
