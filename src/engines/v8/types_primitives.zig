@@ -9,7 +9,7 @@ const public = @import("../../api.zig");
 const i64Num = public.i64Num;
 const u64Num = public.u64Num;
 
-/// Convert a Native value to a JS value
+// Convert a Native value to a JS value
 pub fn nativeToJS(
     comptime T: type,
     val: T,
@@ -49,16 +49,16 @@ pub fn nativeToJS(
     return v8.getValue(js_val);
 }
 
-/// Convert a JS value to a Native value
-/// allocator is only used if the JS value is a string.
+// Convert a JS value to a Native value
+// allocator is only used if the JS value is a string,
+// in this case caller owns the memory
 pub fn jsToNative(
     alloc: std.mem.Allocator,
-    comptime T_refl: refl.Struct,
-    comptime zig_T: refl.Type,
+    comptime T: type,
     js_val: v8.Value,
     isolate: v8.Isolate,
     ctx: v8.Context,
-) !zig_T.T {
+) !T {
 
     // JS Undefined value for an Native void
     // not sure if this case make any sense (a void argument)
@@ -66,16 +66,18 @@ pub fn jsToNative(
     if (js_val.isUndefined()) {
         // distinct comptime condition, otherwise compile error
         comptime {
-            if (zig_T.T == void) {
+            if (T == void) {
                 return {};
             }
         }
     }
 
+    const info = @typeInfo(T);
+
     // JS Null or Undefined value
     if (js_val.isNull() or js_val.isUndefined()) {
         // if Native optional type return null
-        if (comptime zig_T.underOpt() != null) {
+        if (comptime info == .Optional) {
             return null;
         }
         // Here we should normally return an error
@@ -87,35 +89,9 @@ pub fn jsToNative(
         // TODO: return JS NaN for JS Undefined on int/float Native types.
     }
 
-    // JS objects
-    if (zig_T.nested_index) |index| {
-        if (!js_val.isObject()) {
-            return error.JSNotObject;
-        }
-        const js_obj = js_val.castTo(v8.Object);
-        const nested_T = T_refl.nested[index];
-        // using under_T to handle both mandatory and optional JS object
-        var obj: zig_T.underT() = undefined;
-        inline for (nested_T.fields) |field| {
-            const name = field.name.?;
-            const key = v8.String.initUtf8(isolate, name);
-            if (js_obj.has(ctx, key.toValue())) {
-                const field_js_val = try js_obj.getValue(ctx, key);
-                const field_val = try jsToNative(alloc, T_refl, field, field_js_val, isolate, ctx);
-                @field(obj, name) = field_val;
-            } else {
-                if (comptime field.underOpt() != null) {
-                    @field(obj, name) = null;
-                } else {
-                    return error.JSWrongObject;
-                }
-            }
-        }
-        // here we could handle pointer to JS object
-        // (by allocating a pointer, setting it's value to obj and returning it)
-        // but for this kind of use case a complete type API is preferable
-        // over an anonymous JS object
-        return obj;
+    // unwrap Optional
+    if (info == .Optional) {
+        return try jsToNative(alloc, info.Optional.child, js_val, isolate, ctx);
     }
 
     // JS values
@@ -127,31 +103,28 @@ pub fn jsToNative(
     // Therefore we do not check the type of the JS value (ie. IsString, IsBool, etc.)
     // instead we directly try to return the corresponding Native value.
 
-    switch (zig_T.T) {
+    switch (T) {
 
         // list of bytes (including strings)
-        []u8, ?[]u8, []const u8, ?[]const u8 => {
+        []u8, []const u8 => {
             return try valueToUtf8(alloc, js_val, isolate, ctx);
         },
 
         // floats
-        f32, ?f32 => return try js_val.toF32(ctx),
-        f64, ?f64 => return try js_val.toF64(ctx),
+        f32 => return try js_val.toF32(ctx),
+        f64 => return try js_val.toF64(ctx),
 
         // integers signed
-        i8, ?i8, i16, ?i16 => {
+        i8, i16 => {
             const v = try js_val.toI32(ctx);
-            if (zig_T.is_opt) {
-                return @as(zig_T.under_T, @intCast(v));
-            }
-            return @as(zig_T.T, @intCast(v));
+            return @as(T, @intCast(v));
         },
-        i32, ?i32 => return try js_val.toI32(ctx),
+        i32 => return try js_val.toI32(ctx),
         i64Num => {
             const v = try js_val.bitCastToI64(ctx);
             return i64Num.init(v);
         },
-        i64, ?i64 => {
+        i64 => {
             if (js_val.isBigInt()) {
                 const v = js_val.castTo(v8.BigInt);
                 return v.getInt64();
@@ -160,19 +133,16 @@ pub fn jsToNative(
         },
 
         // integers unsigned
-        u8, ?u8, u16, ?u16 => {
+        u8, u16 => {
             const v = try js_val.toU32(ctx);
-            if (comptime zig_T.underOpt()) |under_opt| {
-                return @as(under_opt, @intCast(v));
-            }
-            return @as(zig_T.T, @intCast(v));
+            return @as(T, @intCast(v));
         },
-        u32, ?u32 => return try js_val.toU32(ctx),
+        u32 => return try js_val.toU32(ctx),
         u64Num, ?u64Num => {
             const v = try js_val.bitCastToU64(ctx);
             return u64Num.init(v);
         },
-        u64, ?u64 => {
+        u64 => {
             if (js_val.isBigInt()) {
                 const v = js_val.castTo(v8.BigInt);
                 return v.getUint64();
@@ -181,10 +151,53 @@ pub fn jsToNative(
         },
 
         // bool
-        bool, ?bool => return js_val.toBool(isolate),
+        bool => return js_val.toBool(isolate),
 
         else => return error.JSTypeUnhandled,
     }
+}
+
+// Convert a JS value to a Native nested object
+pub fn jsToObject(
+    alloc: std.mem.Allocator,
+    comptime nested_T: refl.StructNested,
+    comptime T: type,
+    js_val: v8.Value,
+    isolate: v8.Isolate,
+    ctx: v8.Context,
+) !T {
+    if (!js_val.isObject()) {
+        return error.JSNotObject;
+    }
+
+    // unwrap Optional
+    const info = @typeInfo(T);
+    if (comptime info == .Optional) {
+        return try jsToObject(alloc, nested_T, info.Optional.child, js_val, isolate, ctx);
+    }
+
+    const js_obj = js_val.castTo(v8.Object);
+    var obj: T = undefined;
+    inline for (nested_T.fields) |field| {
+        const name = field.name.?;
+        const key = v8.String.initUtf8(isolate, name);
+        if (js_obj.has(ctx, key.toValue())) {
+            const field_js_val = try js_obj.getValue(ctx, key);
+            const field_val = try jsToNative(alloc, field.T, field_js_val, isolate, ctx);
+            @field(obj, name) = field_val;
+        } else {
+            if (comptime field.underOpt() != null) {
+                @field(obj, name) = null;
+            } else {
+                return error.JSWrongObject;
+            }
+        }
+    }
+    // here we could handle pointer to JS object
+    // (by allocating a pointer, setting it's value to obj and returning it)
+    // but for this kind of use case a complete type API is preferable
+    // over an anonymous JS object
+    return obj;
 }
 
 pub fn valueToUtf8(
