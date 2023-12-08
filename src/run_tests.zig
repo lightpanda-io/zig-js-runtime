@@ -15,6 +15,7 @@ const primitive_types = @import("tests/types_primitives_test.zig");
 const native_types = @import("tests/types_native_test.zig");
 const complex_types = @import("tests/types_complex_test.zig");
 const multiple_types = @import("tests/types_multiple_test.zig");
+const object_types = @import("tests/types_object.zig");
 const callback = @import("tests/cbk_test.zig");
 
 test {
@@ -31,8 +32,9 @@ test {
     const do_nat = true; // TODO: if enable alone we have "exceeded 1000 backwards branches" error
     const do_complex = true;
     const do_multi = true;
+    const do_obj = true;
     const do_cbk = true;
-    if (!do_proto and !do_prim and !do_nat and !do_complex and !do_multi and !do_cbk) {
+    if (!do_proto and !do_prim and !do_nat and !do_complex and !do_multi and !do_obj and !do_cbk) {
         std.debug.print("\nWARNING: No end to end tests.\n", .{});
         return;
     }
@@ -94,6 +96,17 @@ test {
         var multi_arena = std.heap.ArenaAllocator.init(multi_alloc.allocator());
         defer multi_arena.deinit();
         _ = try eng.loadEnv(&multi_arena, multiple_types.exec, multi_apis);
+    }
+
+    // object types tests
+    var obj_alloc: bench.Allocator = undefined;
+    if (do_obj) {
+        tests_nb += 1;
+        const obj_apis = comptime object_types.generate(); // stage1: we need to comptime
+        obj_alloc = bench.allocator(std.testing.allocator);
+        var obj_arena = std.heap.ArenaAllocator.init(obj_alloc.allocator());
+        defer obj_arena.deinit();
+        _ = try eng.loadEnv(&obj_arena, object_types.exec, obj_apis);
     }
 
     // callback tests
@@ -168,6 +181,15 @@ test {
             .value = multi_alloc_stats.alloc_size,
         };
         try t.addRow(.{ "Multiples", multi_alloc.alloc_nb, multi_alloc_size });
+    }
+
+    if (do_obj) {
+        const obj_alloc_stats = obj_alloc.stats();
+        const obj_alloc_size = pretty.Measure{
+            .unit = "b",
+            .value = obj_alloc_stats.alloc_size,
+        };
+        try t.addRow(.{ "Objects", obj_alloc.alloc_nb, obj_alloc_size });
     }
 
     if (do_cbk) {

@@ -254,11 +254,9 @@ pub fn exec(
     try js_env.start(alloc, apis);
     defer js_env.stop();
 
-    const ownBase = switch (public.Env.engine()) {
-        .v8 => 5,
-    };
-    const ownBaseLen = intToStr(alloc, ownBase);
-    defer alloc.free(ownBaseLen);
+    const ownBase = tests.engineOwnPropertiesDefault();
+    const ownBaseStr = tests.intToStr(alloc, ownBase);
+    defer alloc.free(ownBaseStr);
 
     // global
     try js_env.attachObject(try js_env.getGlobal(), "self", null);
@@ -315,15 +313,15 @@ pub fn exec(
     try tests.checkCases(js_env, &cases4);
 
     // static attr
-    const ownPersonLen = intToStr(alloc, ownBase + 2);
-    defer alloc.free(ownPersonLen);
+    const ownPersonStr = intToStr(alloc, ownBase + 2);
+    defer alloc.free(ownPersonStr);
     var cases_static = [_]tests.Case{
         // basic static case
         .{ .src = "Person.AGE_MIN === 18", .ex = "true" },
         .{ .src = "Person.NATIONALITY === 'French'", .ex = "true" },
         // static attributes are own properties
         .{ .src = "let ownPerson = Object.getOwnPropertyNames(Person)", .ex = "undefined" },
-        .{ .src = "ownPerson.length", .ex = ownPersonLen },
+        .{ .src = "ownPerson.length", .ex = ownPersonStr },
         // static attributes are also available on instances
         .{ .src = "p.AGE_MIN === 18", .ex = "true" },
         .{ .src = "p.NATIONALITY === 'French'", .ex = "true" },
@@ -341,7 +339,7 @@ pub fn exec(
         .{ .src = "User.NATIONALITY === 'French'", .ex = "true" },
         // static attributes inherited are NOT own properties
         .{ .src = "let ownUser = Object.getOwnPropertyNames(User)", .ex = "undefined" },
-        .{ .src = "ownUser.length", .ex = ownBaseLen },
+        .{ .src = "ownUser.length", .ex = ownBaseStr },
     };
     try tests.checkCases(js_env, &cases_proto_constructor);
 

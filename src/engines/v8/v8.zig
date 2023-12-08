@@ -18,6 +18,7 @@ pub const CallbackArg = @import("callback.zig").Arg;
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
+const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
 
 pub const API = struct {
@@ -386,6 +387,20 @@ fn createJSObject(
         isolate,
     );
 }
+
+pub const JSObject = struct {
+    ctx: v8.Context,
+    js_obj: v8.Object,
+
+    pub fn set(self: JSObject, key: []const u8, value: anytype) !void {
+        const isolate = self.ctx.getIsolate();
+        const js_value = try nativeToJS(@TypeOf(value), value, isolate);
+        const js_key = v8.String.initUtf8(isolate, key);
+        if (!self.js_obj.setValue(self.ctx, js_key, js_value)) {
+            return error.SetV8Object;
+        }
+    }
+};
 
 pub const TryCatch = struct {
     try_catch: *v8.TryCatch,
