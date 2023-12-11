@@ -6,10 +6,9 @@ const internal = @import("../../internal_api.zig");
 const refs = internal.refs;
 const refl = internal.refl;
 const gen = internal.gen;
-const utils = internal.utils;
+const NativeContext = internal.NativeContext;
 
 const public = @import("../../api.zig");
-const Loop = public.Loop;
 
 pub const Callback = @import("callback.zig").Func;
 pub const CallbackSync = @import("callback.zig").FuncSync;
@@ -18,6 +17,7 @@ pub const CallbackArg = @import("callback.zig").Arg;
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
+
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
 
@@ -69,7 +69,7 @@ pub const VM = struct {
 };
 
 pub const Env = struct {
-    loop: *Loop,
+    nat_ctx: *NativeContext,
 
     isolate: v8.Isolate,
     isolate_params: v8.CreateParams,
@@ -82,19 +82,13 @@ pub const Env = struct {
         return .v8;
     }
 
-    pub fn init(arena_alloc: *std.heap.ArenaAllocator, loop: *Loop) anyerror!Env {
+    pub fn init(nat_ctx: *NativeContext) anyerror!Env {
 
         // globals values
         // --------------
 
-        // allocator
-        utils.allocator = arena_alloc.allocator();
-
         // refs
         refs.map = refs.Map{};
-
-        // I/O loop
-        utils.loop = loop;
 
         // v8 values
         // ---------
@@ -115,7 +109,7 @@ pub const Env = struct {
         const globals = v8.ObjectTemplate.initDefault(isolate);
 
         return Env{
-            .loop = loop,
+            .nat_ctx = nat_ctx,
             .isolate_params = params,
             .isolate = isolate,
             .hscope = hscope,
@@ -145,15 +139,13 @@ pub const Env = struct {
 
         // unset globals
         refs.map = undefined;
-        utils.loop = undefined;
-        utils.allocator = undefined;
 
         self.* = undefined;
     }
 
     // load APIs into Javascript environement
     pub fn load(self: Env, comptime apis: []API, tpls: []TPL) anyerror!void {
-        try gen.load(self.isolate, self.globals, apis, tpls);
+        try gen.load(self.nat_ctx, self.isolate, self.globals, apis, tpls);
     }
 
     // start a Javascript context
@@ -223,6 +215,7 @@ pub const Env = struct {
             return error.EnvNotStarted;
         }
         return createJSObject(
+            self.nat_ctx.alloc,
             apis,
             obj,
             name,
@@ -292,7 +285,7 @@ pub const Env = struct {
         }
 
         // run loop
-        utils.loop.run() catch |err| {
+        self.nat_ctx.loop.run() catch |err| {
             if (try_catch.hasCaught()) {
                 if (cbk_res) |res| {
                     res.success = false;
@@ -329,7 +322,7 @@ pub const Env = struct {
         try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch);
 
         // run loop
-        utils.loop.run() catch |err| {
+        self.nat_ctx.loop.run() catch |err| {
             if (try_catch.hasCaught()) {
                 if (cbk_res) |r| {
                     r.success = false;
@@ -345,6 +338,7 @@ pub const Env = struct {
 };
 
 fn createJSObject(
+    alloc: std.mem.Allocator,
     comptime apis: []API,
     obj: anytype,
     name: []const u8,
@@ -379,7 +373,7 @@ fn createJSObject(
 
     // bind Native and JS objects together
     _ = try setNativeObject(
-        utils.allocator,
+        alloc,
         T_refl,
         T_refl.value.underT(),
         obj,

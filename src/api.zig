@@ -12,6 +12,7 @@ const internal = @import("internal_api.zig");
 pub const compile = internal.gen.compile;
 pub const loadEnv = internal.eng.loadEnv;
 pub const ContextExecFn = internal.eng.ContextExecFn;
+pub const NativeContext = internal.NativeContext;
 
 // Utils
 // -----

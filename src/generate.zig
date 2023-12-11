@@ -3,6 +3,7 @@ const v8 = @import("v8");
 
 const internal = @import("internal_api.zig");
 const refl = internal.refl;
+const NativeContext = internal.NativeContext;
 
 const public = @import("api.zig");
 const API = public.API;
@@ -59,6 +60,7 @@ pub fn getTpl(index: usize) TPL {
 // Load native APIs into a JS isolate
 // This function is called at runtime.
 pub fn load(
+    nat_ctx: *NativeContext,
     isolate: v8.Isolate,
     globals: v8.ObjectTemplate,
     comptime apis: []API,
@@ -66,10 +68,10 @@ pub fn load(
 ) !void {
     inline for (apis, 0..) |api, i| {
         if (api.T_refl.proto_index == null) {
-            tpls[i] = try api.load(isolate, globals, null);
+            tpls[i] = try api.load(nat_ctx, isolate, globals, null);
         } else {
             const proto_tpl = tpls[api.T_refl.proto_index.?]; // safe because apis are ordered from parent to child
-            tpls[i] = try api.load(isolate, globals, proto_tpl);
+            tpls[i] = try api.load(nat_ctx, isolate, globals, proto_tpl);
         }
     }
     TPLs = tpls;

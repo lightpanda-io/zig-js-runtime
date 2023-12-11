@@ -73,7 +73,7 @@ fn connCallback(
     ctx.cmdContext.socket = result catch |err| @panic(@errorName(err));
 
     // launch receving messages asynchronously
-    ctx.cmdContext.js_env.loop.io.recv(
+    ctx.cmdContext.js_env.nat_ctx.loop.io.recv(
         *CmdContext,
         ctx.cmdContext,
         cmdCallback,
@@ -142,7 +142,7 @@ fn cmdCallback(
     _ = std.os.write(ctx.socket, "ok") catch unreachable;
 
     // continue receving messages asynchronously
-    ctx.js_env.loop.io.recv(
+    ctx.js_env.nat_ctx.loop.io.recv(
         *CmdContext,
         ctx,
         cmdCallback,
@@ -199,7 +199,7 @@ pub fn shellExec(
     var completion: IO.Completion = undefined;
 
     // launch accepting connection asynchronously on internal server
-    const loop = js_env.loop;
+    const loop = js_env.nat_ctx.loop;
     loop.io.accept(
         *ConnContext,
         &conn_ctx,
