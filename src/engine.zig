@@ -5,6 +5,7 @@ const internal = @import("internal_api.zig");
 const refs = internal.refs;
 const gen = internal.gen;
 const refl = internal.refl;
+const NativeContext = internal.NativeContext;
 
 const public = @import("api.zig");
 const API = public.API;
@@ -28,7 +29,7 @@ pub fn loadEnv(
     }
     var loop = try Loop.init(alloc);
     defer loop.deinit();
-    var js_env = try Env.init(arena_alloc, &loop);
+    var js_env = try Env.init(alloc, &loop);
     defer js_env.deinit();
 
     // load APIs in JS env
