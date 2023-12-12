@@ -4,7 +4,6 @@ const internal = @import("internal_api.zig");
 const refl = internal.refl;
 
 const public = @import("api.zig");
-const NativeContext = @import("internal_api.zig").NativeContext;
 
 // Interfaces definitions
 // ----------------------
@@ -45,7 +44,7 @@ pub fn Env(
     assertDecl(T, "engine", fn () public.engineType);
 
     // init()
-    assertDecl(T, "init", fn (nat_ctx: *NativeContext) anyerror!T);
+    assertDecl(T, "init", fn (alloc: std.mem.Allocator, loop: *public.Loop) anyerror!T);
 
     // deinit()
     assertDecl(T, "deinit", fn (self: *T) void);

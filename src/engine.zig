@@ -20,22 +20,16 @@ pub fn loadEnv(
     comptime ctxExecFn: ContextExecFn,
     comptime apis: []API,
 ) !void {
-
-    // native context
     const alloc = arena_alloc.allocator();
-    var loop = try Loop.init(alloc);
-    defer loop.deinit();
-    var nat_ctx = NativeContext{
-        .alloc = alloc,
-        .loop = &loop,
-    };
 
     // create JS env
     var start: std.time.Instant = undefined;
     if (builtin.is_test) {
         start = try std.time.Instant.now();
     }
-    var js_env = try Env.init(&nat_ctx);
+    var loop = try Loop.init(alloc);
+    defer loop.deinit();
+    var js_env = try Env.init(alloc, &loop);
     defer js_env.deinit();
 
     // load APIs in JS env

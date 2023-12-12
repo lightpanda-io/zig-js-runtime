@@ -82,13 +82,22 @@ pub const Env = struct {
         return .v8;
     }
 
-    pub fn init(nat_ctx: *NativeContext) anyerror!Env {
+    pub fn init(alloc: std.mem.Allocator, loop: *public.Loop) anyerror!Env {
 
         // globals values
         // --------------
 
         // refs
         refs.map = refs.Map{};
+
+        // native context
+        // --------------
+
+        const nat_ctx = try alloc.create(NativeContext);
+        nat_ctx.* = .{
+            .alloc = alloc,
+            .loop = loop,
+        };
 
         // v8 values
         // ---------
@@ -133,6 +142,10 @@ pub const Env = struct {
 
         // params
         v8.destroyArrayBufferAllocator(self.isolate_params.array_buffer_allocator.?);
+
+        // native context
+        // --------------
+        self.nat_ctx.alloc.destroy(self.nat_ctx);
 
         // globals values
         // --------------
