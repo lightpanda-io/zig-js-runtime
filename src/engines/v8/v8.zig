@@ -76,7 +76,7 @@ pub const Env = struct {
     hscope: v8.HandleScope,
     globals: v8.ObjectTemplate,
 
-    context: ?v8.Context = null,
+    js_ctx: ?v8.Context = null,
 
     pub fn engine() public.engineType {
         return .v8;
@@ -165,9 +165,9 @@ pub const Env = struct {
     pub fn start(self: *Env, alloc: std.mem.Allocator, comptime apis: []API) anyerror!void {
 
         // context
-        self.context = v8.Context.init(self.isolate, self.globals, null);
-        const ctx = self.context.?;
-        ctx.enter();
+        self.js_ctx = v8.Context.init(self.isolate, self.globals, null);
+        const js_ctx = self.js_ctx.?;
+        js_ctx.enter();
 
         // TODO: ideally all this should disapear,
         // we shouldn't do anything at context startup time
@@ -184,9 +184,9 @@ pub const Env = struct {
             if (api.T_refl.proto_index) |proto_index| {
                 const cstr_tpl = gen.getTpl(i).tpl;
                 const proto_tpl = gen.getTpl(proto_index).tpl;
-                const cstr_obj = cstr_tpl.getFunction(ctx).toObject();
-                const proto_obj = proto_tpl.getFunction(ctx).toObject();
-                _ = cstr_obj.setPrototype(ctx, proto_obj);
+                const cstr_obj = cstr_tpl.getFunction(js_ctx).toObject();
+                const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
+                _ = cstr_obj.setPrototype(js_ctx, proto_obj);
             }
 
             // Custom exception
@@ -207,24 +207,24 @@ pub const Env = struct {
 
     // stop a Javascript context
     pub fn stop(self: *Env) void {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return; // no-op
         }
 
         // context
-        self.context.?.exit();
-        self.context = undefined;
+        self.js_ctx.?.exit();
+        self.js_ctx = undefined;
     }
     pub fn getGlobal(self: Env) anyerror!Object {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
-        return self.context.?.getGlobal();
+        return self.js_ctx.?.getGlobal();
     }
 
     // add a Native object in the Javascript context
     pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) anyerror!void {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
         return createJSObject(
@@ -232,20 +232,20 @@ pub const Env = struct {
             apis,
             obj,
             name,
-            self.context.?.getGlobal(),
-            self.context.?,
+            self.js_ctx.?.getGlobal(),
+            self.js_ctx.?,
             self.isolate,
         );
     }
 
     pub fn attachObject(self: Env, obj: Object, name: []const u8, to_obj: ?Object) anyerror!void {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
         const key = v8.String.initUtf8(self.isolate, name);
         // attach to globals if to_obj is not specified
         const to = to_obj orelse try self.getGlobal();
-        const res = to.setValue(self.context.?, key, obj);
+        const res = to.setValue(self.js_ctx.?, key, obj);
         if (!res) {
             return error.AttachObject;
         }
@@ -260,12 +260,12 @@ pub const Env = struct {
         name: ?[]const u8,
         try_catch: TryCatch,
     ) !JSResult {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
         var res = JSResult.init();
-        try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch.try_catch.*);
+        try res.exec(alloc, script, name, self.isolate, self.js_ctx.?, try_catch.try_catch.*);
         return res;
     }
 
@@ -293,7 +293,7 @@ pub const Env = struct {
         try_catch: v8.TryCatch,
         cbk_res: ?*JSResult,
     ) !void {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
@@ -302,7 +302,7 @@ pub const Env = struct {
             if (try_catch.hasCaught()) {
                 if (cbk_res) |res| {
                     res.success = false;
-                    return res.setError(alloc, self.isolate, self.context.?, try_catch);
+                    return res.setError(alloc, self.isolate, self.js_ctx.?, try_catch);
                 }
                 // otherwise ignore JS errors
             } else {
@@ -322,7 +322,7 @@ pub const Env = struct {
         res: *JSResult,
         cbk_res: ?*JSResult,
     ) anyerror!void {
-        if (self.context == null) {
+        if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
@@ -332,14 +332,14 @@ pub const Env = struct {
         defer try_catch.deinit();
 
         // exec script
-        try res.exec(alloc, script, name, self.isolate, self.context.?, try_catch);
+        try res.exec(alloc, script, name, self.isolate, self.js_ctx.?, try_catch);
 
         // run loop
         self.nat_ctx.loop.run() catch |err| {
             if (try_catch.hasCaught()) {
                 if (cbk_res) |r| {
                     r.success = false;
-                    return r.setError(alloc, self.isolate, self.context.?, try_catch);
+                    return r.setError(alloc, self.isolate, self.js_ctx.?, try_catch);
                 }
                 // otherwise ignore JS errors
             } else {
@@ -356,7 +356,7 @@ fn createJSObject(
     obj: anytype,
     name: []const u8,
     target: v8.Object,
-    ctx: v8.Context,
+    js_ctx: v8.Context,
     isolate: v8.Isolate,
 ) !void {
 
@@ -378,9 +378,9 @@ fn createJSObject(
 
     // instantiate JS object
     const instance_tpl = tpl.getInstanceTemplate();
-    const js_obj = instance_tpl.initInstance(ctx);
+    const js_obj = instance_tpl.initInstance(js_ctx);
     const key = v8.String.initUtf8(isolate, name);
-    if (!target.setValue(ctx, key, js_obj)) {
+    if (!target.setValue(js_ctx, key, js_obj)) {
         return error.CreateV8Object;
     }
 
@@ -396,14 +396,14 @@ fn createJSObject(
 }
 
 pub const JSObject = struct {
-    ctx: v8.Context,
+    js_ctx: v8.Context,
     js_obj: v8.Object,
 
     pub fn set(self: JSObject, key: []const u8, value: anytype) !void {
-        const isolate = self.ctx.getIsolate();
+        const isolate = self.js_ctx.getIsolate();
         const js_value = try nativeToJS(@TypeOf(value), value, isolate);
         const js_key = v8.String.initUtf8(isolate, key);
-        if (!self.js_obj.setValue(self.ctx, js_key, js_value)) {
+        if (!self.js_obj.setValue(self.js_ctx, js_key, js_value)) {
             return error.SetV8Object;
         }
     }
@@ -420,7 +420,7 @@ pub const TryCatch = struct {
 
     pub inline fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
         if (self.try_catch.getException()) |msg| {
-            return try valueToUtf8(alloc, msg, env.isolate, env.context.?);
+            return try valueToUtf8(alloc, msg, env.isolate, env.js_ctx.?);
         }
         return null;
     }
@@ -452,7 +452,7 @@ pub const JSResult = struct {
         script: []const u8,
         name: ?[]const u8,
         isolate: v8.Isolate,
-        context: v8.Context,
+        js_ctx: v8.Context,
         try_catch: v8.TryCatch,
     ) !void {
 
@@ -463,37 +463,37 @@ pub const JSResult = struct {
             origin = v8.ScriptOrigin.initDefault(isolate, scr_name.toValue());
         }
         const scr_js = v8.String.initUtf8(isolate, script);
-        const scr = v8.Script.compile(context, scr_js, origin) catch {
-            return self.setError(alloc, isolate, context, try_catch);
+        const scr = v8.Script.compile(js_ctx, scr_js, origin) catch {
+            return self.setError(alloc, isolate, js_ctx, try_catch);
         };
 
         // run
-        const res = scr.run(context) catch {
-            return self.setError(alloc, isolate, context, try_catch);
+        const res = scr.run(js_ctx) catch {
+            return self.setError(alloc, isolate, js_ctx, try_catch);
         };
         self.success = true;
-        self.result = try valueToUtf8(alloc, res, isolate, context);
+        self.result = try valueToUtf8(alloc, res, isolate, js_ctx);
     }
 
     pub fn setError(
         self: *JSResult,
         alloc: std.mem.Allocator,
         isolate: v8.Isolate,
-        context: v8.Context,
+        js_ctx: v8.Context,
         try_catch: v8.TryCatch,
     ) !void {
 
         // exception
         const except = try_catch.getException().?;
         self.success = false;
-        self.result = try valueToUtf8(alloc, except, isolate, context);
+        self.result = try valueToUtf8(alloc, except, isolate, js_ctx);
 
         // stack
         if (self.stack != null) {
             return;
         }
-        if (try_catch.getStackTrace(context)) |stack| {
-            self.stack = try valueToUtf8(alloc, stack, isolate, context);
+        if (try_catch.getStackTrace(js_ctx)) |stack| {
+            self.stack = try valueToUtf8(alloc, stack, isolate, js_ctx);
         }
     }
 };

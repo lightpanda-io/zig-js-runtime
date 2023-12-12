@@ -62,8 +62,8 @@ fn throwError(
     // So we have to use anyerror type here for now
     // and let the API implementation do the cast
     const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
-    const ctx = isolate.getCurrentContext();
-    const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(ctx);
+    const js_ctx = isolate.getCurrentContext();
+    const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(js_ctx);
     _ = setNativeObject(
         alloc,
         except.?,
@@ -167,7 +167,7 @@ fn getArg(
     this: v8.Object,
     js_val: ?v8.Value,
     isolate: v8.Isolate,
-    ctx: v8.Context,
+    js_ctx: v8.Context,
 ) arg.T {
     var value: arg.T = undefined;
 
@@ -184,7 +184,7 @@ fn getArg(
             arg.T,
             js_val.?,
             isolate,
-            ctx,
+            js_ctx,
         ) catch unreachable;
     } else {
 
@@ -193,13 +193,13 @@ fn getArg(
             std.mem.Allocator => alloc,
             *Loop => loop,
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
-            JSObject => JSObject{ .ctx = ctx, .js_obj = this },
+            JSObject => JSObject{ .js_ctx = js_ctx, .js_obj = this },
             else => jsToNative(
                 alloc,
                 arg.T,
                 js_val.?,
                 isolate,
-                ctx,
+                js_ctx,
             ) catch unreachable,
         };
     }
@@ -277,7 +277,7 @@ fn getArgs(
     cbk_info: CallbackInfo,
     raw_value: ?*const v8.C_Value,
     isolate: v8.Isolate,
-    ctx: v8.Context,
+    js_ctx: v8.Context,
 ) func.args_T {
     var args: func.args_T = undefined;
 
@@ -337,7 +337,7 @@ fn getArgs(
                         cbk_info.getThis(),
                         cbk_info.getArg(raw_value, i, func.index_offset),
                         isolate,
-                        ctx,
+                        js_ctx,
                     );
                 },
             };
@@ -358,7 +358,7 @@ fn getArgs(
                     cbk_info.getThis(),
                     cbk_info.getArg(raw_value, iter + i, func.index_offset),
                     isolate,
-                    ctx,
+                    js_ctx,
                 );
                 slice[iter] = slice_value;
                 iter += 1;
@@ -458,7 +458,7 @@ fn setReturnType(
     comptime func: refl.Func,
     res: anytype,
     js_res: v8.ReturnValue,
-    ctx: v8.Context,
+    js_ctx: v8.Context,
     isolate: v8.Isolate,
 ) !v8.Value {
     const info = @typeInfo(@TypeOf(res));
@@ -469,7 +469,7 @@ fn setReturnType(
             // if null just return JS null
             return isolate.initNull().toValue();
         }
-        return setReturnType(alloc, all_T, ret, func, res.?, js_res, ctx, isolate);
+        return setReturnType(alloc, all_T, ret, func, res.?, js_res, js_ctx, isolate);
     }
 
     // Union type
@@ -486,7 +486,7 @@ fn setReturnType(
                     func,
                     @field(res, tt.name.?),
                     js_res,
-                    ctx,
+                    js_ctx,
                     isolate,
                 );
             }
@@ -510,11 +510,11 @@ fn setReturnType(
                 func,
                 @field(res, name),
                 js_res,
-                ctx,
+                js_ctx,
                 isolate,
             );
             const key = v8.String.initUtf8(isolate, name);
-            if (!js_obj.setValue(ctx, key, js_val)) {
+            if (!js_obj.setValue(js_ctx, key, js_val)) {
                 return error.JSObjectSetValue;
             }
         }
@@ -527,7 +527,7 @@ fn setReturnType(
 
         // instantiate a JS object from template
         // and bind it to the native object
-        const js_obj = gen.getTpl(index).tpl.getInstanceTemplate().initInstance(ctx);
+        const js_obj = gen.getTpl(index).tpl.getInstanceTemplate().initInstance(js_ctx);
         const obj_ptr = setNativeObject(
             alloc,
             all_T[index],
@@ -549,7 +549,7 @@ fn setReturnType(
                 obj_ptr,
                 js_obj,
                 js_res,
-                ctx,
+                js_ctx,
                 isolate,
             );
         }
@@ -576,12 +576,12 @@ fn postAttach(
     obj_ptr: anytype,
     js_obj: v8.Object,
     js_res: v8.ReturnValue,
-    ctx: v8.Context,
+    js_ctx: v8.Context,
     isolate: v8.Isolate,
 ) void {
     var args: argsT = undefined;
     @field(args, "0") = obj_ptr;
-    @field(args, "1") = JSObject{ .ctx = ctx, .js_obj = js_obj };
+    @field(args, "1") = JSObject{ .js_ctx = js_ctx, .js_obj = js_obj };
     const f = @field(T_refl.T, "postAttach");
     const ret = comptime try refl.funcReturnType(@TypeOf(f));
     if (comptime refl.isErrorUnion(ret)) {
@@ -653,7 +653,7 @@ fn callFunc(
 
     // retrieve isolate and context
     const isolate = cbk_info.getIsolate();
-    const ctx = isolate.getCurrentContext();
+    const js_ctx = isolate.getCurrentContext();
 
     if (comptime func_kind == .constructor and !T_refl.has_constructor) {
         return throwTypeError("Illegal constructor", cbk_info.getReturnValue(), isolate);
@@ -679,7 +679,7 @@ fn callFunc(
         cbk_info,
         raw_value,
         isolate,
-        ctx,
+        js_ctx,
     );
 
     // free memory if required
@@ -740,7 +740,7 @@ fn callFunc(
                 &res,
                 cbk_info.getThis(),
                 cbk_info.getReturnValue(),
-                ctx,
+                js_ctx,
                 isolate,
             );
         }
@@ -754,7 +754,7 @@ fn callFunc(
             func,
             res,
             cbk_info.getReturnValue(),
-            ctx,
+            js_ctx,
             isolate,
         ) catch unreachable; // TODO: internal errors
         cbk_info.getReturnValue().setValueHandle(js_val.handle);
