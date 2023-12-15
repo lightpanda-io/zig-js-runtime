@@ -512,7 +512,7 @@ pub fn setNativeObject(
 
     // JS object post-creation
 
-    // if the object is an empty struct (ie. a kind of container)
+    // if the native object is an empty struct (ie. a kind of container)
     // no need to keep it's reference
     if (T_refl.isEmpty()) {
         return js_obj_under;
