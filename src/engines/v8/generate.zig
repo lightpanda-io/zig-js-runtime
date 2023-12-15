@@ -444,6 +444,47 @@ fn bindObjectJSToNative(
     try objects.put(alloc, nat_obj_ref, js_obj_ref);
 }
 
+fn bindObjectNativeAndJS(
+    alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
+    comptime T_refl: refl.Struct,
+    nat_obj: anytype,
+    js_obj: v8.Object,
+    js_ctx: v8.Context,
+    isolate: v8.Isolate,
+) !v8.Object {
+
+    // if the native object is an empty struct (ie. a kind of container)
+    // no need to keep it's reference
+    if (T_refl.isEmpty()) {
+        return js_obj;
+    }
+
+    // bind the Native object to the JS object
+    const js_obj_binded = try bindObjectNativeToJS(
+        alloc,
+        T_refl,
+        nat_obj,
+        js_obj,
+        isolate,
+    );
+
+    // bind the JS object to the Native object
+    try bindObjectJSToNative(alloc, objects, nat_obj, js_obj_binded);
+
+    // call postAttach func
+    if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
+        try postAttach(
+            T_refl,
+            piArgsT,
+            nat_obj,
+            js_obj_binded,
+            js_ctx,
+        );
+    }
+    return js_obj_binded;
+}
+
 inline fn initJSObject(index: usize, js_ctx: v8.Context) v8.Object {
     return gen.getTpl(index).tpl.getInstanceTemplate().initInstance(js_ctx);
 }
@@ -459,42 +500,41 @@ pub fn setNativeObject(
     js_ctx: v8.Context,
 ) !v8.Object {
 
-    // ensure obj pointer
+    // ensure Native object is a pointer
     var nat_obj_ptr: *T = undefined;
 
-    const is_ptr = comptime refl.isPointer(@TypeOf(nat_obj));
-    if (is_ptr) {
+    if (comptime refl.isPointer(@TypeOf(nat_obj))) {
 
         // Native object is a pointer of T
         // no need to create it in heap,
         // we assume it has been done already by the API
-        // just assign pointer to native object
+        // just assign pointer to Native object
         nat_obj_ptr = nat_obj;
     } else {
 
         // Native object is a value of T
         // create a pointer in heap
         // (otherwise on the stack it will be delete when the function returns),
-        // and assign pointer's dereference value to native object
+        // and assign pointer's dereference value to Native object
         nat_obj_ptr = try alloc.create(T);
         nat_obj_ptr.* = nat_obj;
     }
 
     // should we create the JS object?
-    const nat_obj_ref = @intFromPtr(nat_obj_ptr);
     var js_obj_under: v8.Object = undefined;
     if (js_obj) |o| {
 
-        // JS object is provided
+        // JS object is already provided
         js_obj_under = o;
-    } else if (!is_ptr) {
+    } else if (!comptime refl.isPointer(@TypeOf(nat_obj))) {
 
-        // Native object is a value, no need to use the objects map
-        // we can create directly the JS object from its template
+        // Native object is a value, we need to return a new JS object
+        // we can create it directly from its template
         js_obj_under = initJSObject(T_refl.index, js_ctx);
     } else {
 
         // JS object is not provided, check the objects map
+        const nat_obj_ref = @intFromPtr(nat_obj_ptr);
         if (objects.get(nat_obj_ref)) |js_obj_ref| {
 
             // a JS object is already linked to the current Native object
@@ -510,39 +550,16 @@ pub fn setNativeObject(
         }
     }
 
-    // JS object post-creation
-
-    // if the native object is an empty struct (ie. a kind of container)
-    // no need to keep it's reference
-    if (T_refl.isEmpty()) {
-        return js_obj_under;
-    }
-
-    // bind the Native object to the JS objects
-
-    const js_obj_binded = try bindObjectNativeToJS(
+    // bind Native and JS objects together
+    return try bindObjectNativeAndJS(
         alloc,
+        objects,
         T_refl,
         nat_obj_ptr,
         js_obj_under,
+        js_ctx,
         isolate,
     );
-
-    // link the JS object to the current Native object
-    try bindObjectJSToNative(alloc, objects, nat_obj_ptr, js_obj_binded);
-
-    // call postAttach func
-    if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
-        try postAttach(
-            T_refl,
-            piArgsT,
-            nat_obj_ptr,
-            js_obj_binded,
-            js_ctx,
-        );
-    }
-
-    return js_obj_binded;
 }
 
 fn setReturnType(
