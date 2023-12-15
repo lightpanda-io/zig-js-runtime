@@ -1461,6 +1461,11 @@ fn assertT(comptime T: type, comptime X: type, comptime opts: EqlOptions) !void 
     }
 }
 
+pub fn isPointer(comptime T: type) bool {
+    std.debug.assert(@inComptime());
+    return @typeInfo(T) == .Pointer;
+}
+
 // assert T is a supported container type
 // currently only Struct and Union
 fn assertApi(comptime T: type) !void {
