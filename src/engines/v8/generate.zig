@@ -22,14 +22,10 @@ const TPL = @import("v8.zig").TPL;
 // Utils functions
 // ---------------
 
-fn throwBasicError(
-    msg: []const u8,
-    js_res: v8.ReturnValue,
-    isolate: v8.Isolate,
-) void {
+fn throwBasicError(msg: []const u8, isolate: v8.Isolate) v8.Value {
     const except_msg = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initError(except_msg);
-    js_res.set(isolate.throwException(exception));
+    return isolate.throwException(exception);
 }
 
 fn throwError(
@@ -38,9 +34,8 @@ fn throwError(
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
     err: anyerror,
-    js_res: v8.ReturnValue,
     isolate: v8.Isolate,
-) void {
+) v8.Value {
     const ret = func.return_type;
 
     // Is the returned Type a custom Exception error?
@@ -50,10 +45,10 @@ fn throwError(
     // - the ErrorSet of the return type must be an error of Exception
     const except = comptime T_refl.exception(all_T);
     if (comptime ret.errorSet() == null or except == null) {
-        return throwBasicError(@errorName(err), js_res, isolate);
+        return throwBasicError(@errorName(err), isolate);
     }
     if (!ret.isErrorException(except.?, err)) {
-        return throwBasicError(@errorName(err), js_res, isolate);
+        return throwBasicError(@errorName(err), isolate);
     }
 
     // create custom error instance
@@ -73,17 +68,17 @@ fn throwError(
         isolate,
     ) catch unreachable;
 
-    // throw exeption
-    js_res.set(isolate.throwException(js_obj));
-
     // TODO: v8 does not throw a stack trace as Exception is not a prototype of Error
     // There is no way to change this with the current v8 public API
+
+    // throw exeption
+    return isolate.throwException(js_obj);
 }
 
-fn throwTypeError(msg: []const u8, js_res: v8.ReturnValue, isolate: v8.Isolate) void {
+fn throwTypeError(msg: []const u8, isolate: v8.Isolate) v8.Value {
     const err = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initTypeError(err);
-    js_res.set(isolate.throwException(exception));
+    return isolate.throwException(exception);
 }
 
 const not_enough_args = "{s}.{s}: At least {d} argument required, but only {d} passed";
@@ -123,7 +118,8 @@ fn checkArgsLen(
     };
     var buf: [100]u8 = undefined;
     const msg = std.fmt.bufPrint(buf[0..], not_enough_args, args) catch unreachable;
-    throwTypeError(msg, cbk_info.getReturnValue(), isolate);
+    const js_err = throwTypeError(msg, isolate);
+    cbk_info.getReturnValue().set(js_err);
     return false;
 }
 
@@ -540,18 +536,7 @@ fn setReturnType(
         // call postAttach func
         const T_refl = all_T[index];
         if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
-            postAttach(
-                alloc,
-                T_refl,
-                all_T,
-                func,
-                piArgsT,
-                obj_ptr,
-                js_obj,
-                js_res,
-                js_ctx,
-                isolate,
-            );
+            try postAttach(T_refl, piArgsT, obj_ptr, js_obj, js_ctx);
         }
 
         return js_obj.toValue();
@@ -568,34 +553,19 @@ fn setReturnType(
 }
 
 fn postAttach(
-    alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
-    comptime func: refl.Func,
     comptime argsT: type,
     obj_ptr: anytype,
     js_obj: v8.Object,
-    js_res: v8.ReturnValue,
     js_ctx: v8.Context,
-    isolate: v8.Isolate,
-) void {
+) !void {
     var args: argsT = undefined;
     @field(args, "0") = obj_ptr;
     @field(args, "1") = JSObject{ .js_ctx = js_ctx, .js_obj = js_obj };
     const f = @field(T_refl.T, "postAttach");
     const ret = comptime try refl.funcReturnType(@TypeOf(f));
     if (comptime refl.isErrorUnion(ret)) {
-        _ = @call(.auto, f, args) catch |err| {
-            return throwError(
-                alloc,
-                T_refl,
-                all_T,
-                func,
-                err,
-                js_res,
-                isolate,
-            );
-        };
+        _ = try @call(.auto, f, args);
     } else {
         _ = @call(
             .auto,
@@ -656,7 +626,9 @@ fn callFunc(
     const js_ctx = isolate.getCurrentContext();
 
     if (comptime func_kind == .constructor and !T_refl.has_constructor) {
-        return throwTypeError("Illegal constructor", cbk_info.getReturnValue(), isolate);
+        const js_err = throwTypeError("Illegal constructor", isolate);
+        cbk_info.getReturnValue().set(js_err);
+        return;
     }
 
     // check func params length
@@ -703,15 +675,16 @@ fn callFunc(
     if (comptime @typeInfo(func.return_type.T) == .ErrorUnion) {
         res = @call(.auto, function, args) catch |err| {
             // TODO: how to handle internal errors vs user errors
-            return throwError(
+            const js_err = throwError(
                 nat_ctx.alloc,
                 T_refl,
                 all_T,
                 func,
                 err,
-                cbk_info.getReturnValue(),
                 isolate,
             );
+            cbk_info.getReturnValue().setValueHandle(js_err.handle);
+            return;
         };
     } else {
         res = @call(.auto, function, args);
@@ -732,17 +705,23 @@ fn callFunc(
         // call postAttach func
         if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
             postAttach(
-                nat_ctx.alloc,
                 T_refl,
-                all_T,
-                func,
                 piArgsT,
                 &res,
                 cbk_info.getThis(),
-                cbk_info.getReturnValue(),
                 js_ctx,
-                isolate,
-            );
+            ) catch |err| {
+                const js_err = throwError(
+                    nat_ctx.alloc,
+                    T_refl,
+                    all_T,
+                    func,
+                    err,
+                    isolate,
+                );
+                cbk_info.getReturnValue().setValueHandle(js_err.handle);
+                return;
+            };
         }
     } else {
 
@@ -756,7 +735,16 @@ fn callFunc(
             cbk_info.getReturnValue(),
             js_ctx,
             isolate,
-        ) catch unreachable; // TODO: internal errors
+        ) catch |err| blk: {
+            break :blk throwError(
+                nat_ctx.alloc,
+                T_refl,
+                all_T,
+                func,
+                err,
+                isolate,
+            );
+        };
         cbk_info.getReturnValue().setValueHandle(js_val.handle);
     }
 
