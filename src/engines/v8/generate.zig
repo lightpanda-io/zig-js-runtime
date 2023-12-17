@@ -30,6 +30,7 @@ fn throwBasicError(msg: []const u8, isolate: v8.Isolate) v8.Value {
 
 fn throwError(
     alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
@@ -57,15 +58,15 @@ fn throwError(
     // So we have to use anyerror type here for now
     // and let the API implementation do the cast
     const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
-    const js_ctx = isolate.getCurrentContext();
-    const js_obj = gen.getTpl(except.?.index).tpl.getInstanceTemplate().initInstance(js_ctx);
-    _ = setNativeObject(
+    const js_obj = setNativeObject(
         alloc,
+        objects,
         except.?,
         @TypeOf(obj),
         obj,
-        js_obj,
+        null,
         isolate,
+        isolate.getCurrentContext(),
     ) catch unreachable;
 
     // TODO: v8 does not throw a stack trace as Exception is not a prototype of Error
@@ -396,59 +397,174 @@ fn freeArgs(alloc: std.mem.Allocator, comptime func: refl.Func, obj: anytype) !v
     }
 }
 
-pub fn setNativeObject(
+const PersistentObject = v8.Persistent(v8.Object);
+
+fn bindObjectNativeToJS(
     alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
-    comptime T: type,
-    obj: anytype,
+    nat_obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
-) !*T {
+) !v8.Object {
 
-    // assign and bind native obj to JS obj
-    var obj_ptr: *T = undefined;
+    // make this object persistent
+    // otherwise it's a local handle which can garbage-collected when
+    // the JS object is not reachable anymore
+    // TODO: add a GC finalizer to remove the JS object reference
+    // from the objects map
+    const pers = PersistentObject.init(isolate, js_obj);
+    const js_obj_pers = pers.castToObject();
 
-    if (@typeInfo(@TypeOf(obj)) == .Pointer) {
-
-        // obj is a pointer of T
-        // no need to create it in heap,
-        // we assume it has been done already by the API
-        // just assign pointer to native object
-        obj_ptr = obj;
-    } else {
-
-        // obj is a value of T
-        // create a pointer in heap
-        // (otherwise on the stack it will be delete when the function returns),
-        // and assign pointer's dereference value to native object
-        obj_ptr = try alloc.create(T);
-        obj_ptr.* = obj;
-    }
-
-    // if the object is an empty struct (ie. a kind of container)
-    // no need to keep it's reference
-    if (T_refl.isEmpty()) {
-        return obj_ptr;
-    }
-
-    // bind the native object pointer to JS obj
+    // bind the native object pointer to the JS object
     var ext: v8.External = undefined;
     if (comptime T_refl.is_mem_guarantied()) {
+
         // store directly the object pointer
-        ext = v8.External.init(isolate, obj_ptr);
+        ext = v8.External.init(isolate, nat_obj);
     } else {
+
         // use the refs mechanism
         const int_ptr = try alloc.create(usize);
-        int_ptr.* = @intFromPtr(obj_ptr);
+        int_ptr.* = @intFromPtr(nat_obj);
         ext = v8.External.init(isolate, int_ptr);
         try refs.addObject(alloc, int_ptr.*, T_refl.index);
     }
-    js_obj.setInternalField(0, ext);
-    return obj_ptr;
+    js_obj_pers.setInternalField(0, ext);
+    return js_obj_pers;
+}
+
+fn bindObjectJSToNative(
+    alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
+    nat_obj: anytype,
+    js_obj: v8.Object,
+) !void {
+    const nat_obj_ref = @intFromPtr(nat_obj);
+    const js_obj_ref = @intFromPtr(js_obj.handle);
+    try objects.put(alloc, nat_obj_ref, js_obj_ref);
+}
+
+fn bindObjectNativeAndJS(
+    alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
+    comptime T_refl: refl.Struct,
+    nat_obj: anytype,
+    js_obj: v8.Object,
+    js_ctx: v8.Context,
+    isolate: v8.Isolate,
+) !v8.Object {
+
+    // if the native object is an empty struct (ie. a kind of container)
+    // no need to keep it's reference
+    if (T_refl.isEmpty()) {
+        return js_obj;
+    }
+
+    // bind the Native object to the JS object
+    const js_obj_binded = try bindObjectNativeToJS(
+        alloc,
+        T_refl,
+        nat_obj,
+        js_obj,
+        isolate,
+    );
+
+    // bind the JS object to the Native object
+    try bindObjectJSToNative(alloc, objects, nat_obj, js_obj_binded);
+
+    // call postAttach func
+    if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
+        try postAttach(
+            T_refl,
+            piArgsT,
+            nat_obj,
+            js_obj_binded,
+            js_ctx,
+        );
+    }
+    return js_obj_binded;
+}
+
+inline fn initJSObject(index: usize, js_ctx: v8.Context) v8.Object {
+    return gen.getTpl(index).tpl.getInstanceTemplate().initInstance(js_ctx);
+}
+
+pub fn setNativeObject(
+    alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
+    comptime T_refl: refl.Struct,
+    comptime T: type,
+    nat_obj: anytype,
+    js_obj: ?v8.Object,
+    isolate: v8.Isolate,
+    js_ctx: v8.Context,
+) !v8.Object {
+
+    // ensure Native object is a pointer
+    var nat_obj_ptr: *T = undefined;
+
+    if (comptime refl.isPointer(@TypeOf(nat_obj))) {
+
+        // Native object is a pointer of T
+        // no need to create it in heap,
+        // we assume it has been done already by the API
+        // just assign pointer to Native object
+        nat_obj_ptr = nat_obj;
+    } else {
+
+        // Native object is a value of T
+        // create a pointer in heap
+        // (otherwise on the stack it will be delete when the function returns),
+        // and assign pointer's dereference value to Native object
+        nat_obj_ptr = try alloc.create(T);
+        nat_obj_ptr.* = nat_obj;
+    }
+
+    // should we create the JS object?
+    var js_obj_under: v8.Object = undefined;
+    if (js_obj) |o| {
+
+        // JS object is already provided
+        js_obj_under = o;
+    } else if (!comptime refl.isPointer(@TypeOf(nat_obj))) {
+
+        // Native object is a value, we need to return a new JS object
+        // we can create it directly from its template
+        js_obj_under = initJSObject(T_refl.index, js_ctx);
+    } else {
+
+        // JS object is not provided, check the objects map
+        const nat_obj_ref = @intFromPtr(nat_obj_ptr);
+        if (objects.get(nat_obj_ref)) |js_obj_ref| {
+
+            // a JS object is already linked to the current Native object
+            // return it
+            const js_obj_handle = @as(*v8.C_Object, @ptrFromInt(js_obj_ref));
+            js_obj_under = v8.Object{ .handle = js_obj_handle };
+            return js_obj_under;
+        } else {
+
+            // no JS object is linked to the current Native object
+            // let's create one from its template
+            js_obj_under = initJSObject(T_refl.index, js_ctx);
+        }
+    }
+
+    // bind Native and JS objects together
+    return try bindObjectNativeAndJS(
+        alloc,
+        objects,
+        T_refl,
+        nat_obj_ptr,
+        js_obj_under,
+        js_ctx,
+        isolate,
+    );
 }
 
 fn setReturnType(
     alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
     comptime all_T: []refl.Struct,
     comptime ret: refl.Type,
     comptime func: refl.Func,
@@ -465,7 +581,17 @@ fn setReturnType(
             // if null just return JS null
             return isolate.initNull().toValue();
         }
-        return setReturnType(alloc, all_T, ret, func, res.?, js_res, js_ctx, isolate);
+        return setReturnType(
+            alloc,
+            objects,
+            all_T,
+            ret,
+            func,
+            res.?,
+            js_res,
+            js_ctx,
+            isolate,
+        );
     }
 
     // Union type
@@ -477,6 +603,7 @@ fn setReturnType(
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setReturnType(
                     alloc,
+                    objects,
                     all_T,
                     tt,
                     func,
@@ -501,6 +628,7 @@ fn setReturnType(
             const name = field.name.?;
             const js_val = try setReturnType(
                 alloc,
+                objects,
                 all_T,
                 field,
                 func,
@@ -521,23 +649,16 @@ fn setReturnType(
 
         // return is a user defined type
 
-        // instantiate a JS object from template
-        // and bind it to the native object
-        const js_obj = gen.getTpl(index).tpl.getInstanceTemplate().initInstance(js_ctx);
-        const obj_ptr = setNativeObject(
+        const js_obj = try setNativeObject(
             alloc,
+            objects,
             all_T[index],
             ret.underT(),
             res,
-            js_obj,
+            null,
             isolate,
-        ) catch unreachable;
-
-        // call postAttach func
-        const T_refl = all_T[index];
-        if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
-            try postAttach(T_refl, piArgsT, obj_ptr, js_obj, js_ctx);
-        }
+            js_ctx,
+        );
 
         return js_obj.toValue();
     }
@@ -567,11 +688,7 @@ fn postAttach(
     if (comptime refl.isErrorUnion(ret)) {
         _ = try @call(.auto, f, args);
     } else {
-        _ = @call(
-            .auto,
-            f,
-            args,
-        );
+        _ = @call(.auto, f, args);
     }
 }
 
@@ -677,6 +794,7 @@ fn callFunc(
             // TODO: how to handle internal errors vs user errors
             const js_err = throwError(
                 nat_ctx.alloc,
+                nat_ctx.objects,
                 T_refl,
                 all_T,
                 func,
@@ -695,39 +813,21 @@ fn callFunc(
         // bind native object to JS object this
         _ = setNativeObject(
             nat_ctx.alloc,
+            nat_ctx.objects,
             T_refl,
             func.return_type.underT(),
             res,
             cbk_info.getThis(),
             isolate,
+            js_ctx,
         ) catch unreachable; // TODO: internal errors
 
-        // call postAttach func
-        if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
-            postAttach(
-                T_refl,
-                piArgsT,
-                &res,
-                cbk_info.getThis(),
-                js_ctx,
-            ) catch |err| {
-                const js_err = throwError(
-                    nat_ctx.alloc,
-                    T_refl,
-                    all_T,
-                    func,
-                    err,
-                    isolate,
-                );
-                cbk_info.getReturnValue().setValueHandle(js_err.handle);
-                return;
-            };
-        }
     } else {
 
         // return to javascript the result
         const js_val = setReturnType(
             nat_ctx.alloc,
+            nat_ctx.objects,
             all_T,
             func.return_type,
             func,
@@ -738,6 +838,7 @@ fn callFunc(
         ) catch |err| blk: {
             break :blk throwError(
                 nat_ctx.alloc,
+                nat_ctx.objects,
                 T_refl,
                 all_T,
                 func,

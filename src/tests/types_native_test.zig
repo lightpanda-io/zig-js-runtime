@@ -228,8 +228,16 @@ pub fn exec(
         // basic test for method
         .{ .src = "let brand2 = car.getBrand()", .ex = "undefined" },
         .{ .src = "brand2.name", .ex = "Renault" },
+        .{ .src = "brand2 !== brand1", .ex = "true" }, // return value, not equal
         .{ .src = "let brand2Ptr = car.getBrandPtr()", .ex = "undefined" },
         .{ .src = "brand2Ptr.name", .ex = "Renault" },
+        .{ .src = "brand2Ptr === brand1Ptr", .ex = "true" }, // return pointer, strict equal
+
+        // additional call for pointer, to ensure persistent
+        .{ .src = "let brand2BisPtr = car.getBrandPtr()", .ex = "undefined" },
+        .{ .src = "brand2BisPtr.name", .ex = "Renault" },
+        .{ .src = "brand2BisPtr === brand1Ptr", .ex = "true" }, // return pointer, strict equal
+        .{ .src = "brand2BisPtr === brand2Ptr", .ex = "true" }, // return pointer, strict equal
 
         // successive calls for getter value
         // check the set of a new name on brand1 (value) has no impact

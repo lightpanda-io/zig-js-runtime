@@ -93,10 +93,13 @@ pub const Env = struct {
         // native context
         // --------------
 
+        const objects_ptr = try alloc.create(NativeContext.Objects);
+        objects_ptr.* = NativeContext.Objects{};
         const nat_ctx = try alloc.create(NativeContext);
         nat_ctx.* = .{
             .alloc = alloc,
             .loop = loop,
+            .objects = objects_ptr,
         };
 
         // v8 values
@@ -145,6 +148,8 @@ pub const Env = struct {
 
         // native context
         // --------------
+        self.nat_ctx.objects.deinit(self.nat_ctx.alloc);
+        self.nat_ctx.alloc.destroy(self.nat_ctx.objects);
         self.nat_ctx.alloc.destroy(self.nat_ctx);
 
         // globals values
@@ -229,6 +234,7 @@ pub const Env = struct {
         }
         return createJSObject(
             self.nat_ctx.alloc,
+            self.nat_ctx.objects,
             apis,
             obj,
             name,
@@ -352,6 +358,7 @@ pub const Env = struct {
 
 fn createJSObject(
     alloc: std.mem.Allocator,
+    objects: *NativeContext.Objects,
     comptime apis: []API,
     obj: anytype,
     name: []const u8,
@@ -374,25 +381,24 @@ fn createJSObject(
         }
     }
     const T_refl = apis[obj_api_index].T_refl;
-    const tpl = gen.getTpl(obj_api_index).tpl;
 
-    // instantiate JS object
-    const instance_tpl = tpl.getInstanceTemplate();
-    const js_obj = instance_tpl.initInstance(js_ctx);
+    // bind Native and JS objects together
+    const js_obj = try setNativeObject(
+        alloc,
+        objects,
+        T_refl,
+        T_refl.value.underT(),
+        obj,
+        null,
+        isolate,
+        js_ctx,
+    );
+
+    // set JS object on target's key
     const key = v8.String.initUtf8(isolate, name);
     if (!target.setValue(js_ctx, key, js_obj)) {
         return error.CreateV8Object;
     }
-
-    // bind Native and JS objects together
-    _ = try setNativeObject(
-        alloc,
-        T_refl,
-        T_refl.value.underT(),
-        obj,
-        js_obj,
-        isolate,
-    );
 }
 
 pub const JSObject = struct {
