@@ -21,8 +21,6 @@ pub fn API(comptime T: type, comptime LoadFnType: type) void {
     assertDecl(T, "loadFn", fn (self: T) callconv(.Inline) LoadFnType);
 }
 
-pub fn TPL(comptime _: type) void {}
-
 pub fn VM(comptime T: type) void {
 
     // init()
@@ -35,7 +33,6 @@ pub fn VM(comptime T: type) void {
 pub fn Env(
     comptime T: type,
     comptime API_T: type,
-    comptime TPL_T: type,
     comptime JSResult_T: type,
     comptime Object_T: type,
 ) void {
@@ -53,7 +50,7 @@ pub fn Env(
     assertDecl(T, "load", fn (
         self: T,
         comptime apis: []API_T,
-        tpls: []TPL_T,
+        js_types: []usize,
     ) anyerror!void);
 
     // start()

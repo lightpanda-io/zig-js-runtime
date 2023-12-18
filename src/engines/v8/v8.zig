@@ -17,6 +17,7 @@ pub const CallbackArg = @import("callback.zig").Arg;
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
+const getTpl = @import("generate.zig").getTpl;
 
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
@@ -39,14 +40,6 @@ pub const TemplateType = v8.FunctionTemplate;
 pub const TPL = struct {
     tpl: v8.FunctionTemplate,
     index: usize,
-
-    pub inline fn template(self: TPL) v8.FunctionTemplate {
-        return self.tpl;
-    }
-
-    pub inline fn idx(self: TPL) usize {
-        return self.index;
-    }
 };
 
 pub const Object = v8.Object;
@@ -162,8 +155,13 @@ pub const Env = struct {
     }
 
     // load APIs into Javascript environement
-    pub fn load(self: Env, comptime apis: []API, tpls: []TPL) anyerror!void {
-        try gen.load(self.nat_ctx, self.isolate, self.globals, apis, tpls);
+    pub fn load(self: Env, comptime apis: []API, js_types: []usize) anyerror!void {
+        var tpls: [apis.len]TPL = undefined;
+        try gen.load(self.nat_ctx, self.isolate, self.globals, apis, TPL, &tpls);
+        for (tpls, 0..) |tpl, i| {
+            js_types[i] = @intFromPtr(tpl.tpl.handle);
+        }
+        self.nat_ctx.loadTypes(js_types);
     }
 
     // start a Javascript context
@@ -187,8 +185,8 @@ pub const Env = struct {
             // TODO: is there a better way to do it at the Template level?
             // see https://github.com/Browsercore/jsruntime-lib/issues/128
             if (api.T_refl.proto_index) |proto_index| {
-                const cstr_tpl = gen.getTpl(i).tpl;
-                const proto_tpl = gen.getTpl(proto_index).tpl;
+                const cstr_tpl = getTpl(self.nat_ctx, i);
+                const proto_tpl = getTpl(self.nat_ctx, proto_index);
                 const cstr_obj = cstr_tpl.getFunction(js_ctx).toObject();
                 const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
                 _ = cstr_obj.setPrototype(js_ctx, proto_obj);

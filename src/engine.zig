@@ -9,7 +9,6 @@ const NativeContext = internal.NativeContext;
 
 const public = @import("api.zig");
 const API = public.API;
-const TPL = public.TPL;
 const Env = public.Env;
 const Loop = public.Loop;
 
@@ -37,8 +36,8 @@ pub fn loadEnv(
     if (builtin.is_test) {
         load_start = try std.time.Instant.now();
     }
-    var tpls: [apis.len]TPL = undefined;
-    try js_env.load(apis, &tpls);
+    var types: [apis.len]usize = undefined;
+    try js_env.load(apis, &types);
 
     // execute JS function
     var exec_start: std.time.Instant = undefined;
