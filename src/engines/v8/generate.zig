@@ -475,6 +475,7 @@ fn bindObjectNativeAndJS(
     // call postAttach func
     if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
         try postAttach(
+            alloc,
             T_refl,
             piArgsT,
             nat_obj,
@@ -674,15 +675,28 @@ fn setReturnType(
 }
 
 fn postAttach(
+    alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime argsT: type,
     obj_ptr: anytype,
     js_obj: v8.Object,
     js_ctx: v8.Context,
 ) !void {
+
+    // get arguments
+    // TODO: merge with getArgs
     var args: argsT = undefined;
-    @field(args, "0") = obj_ptr;
-    @field(args, "1") = JSObject{ .js_ctx = js_ctx, .js_obj = js_obj };
+    inline for (comptime refl.tupleTypes(argsT), 0..) |field, i| {
+        const value = switch (field) {
+            @TypeOf(obj_ptr) => obj_ptr,
+            JSObject => JSObject{ .js_ctx = js_ctx, .js_obj = js_obj },
+            std.mem.Allocator => alloc,
+            else => unreachable,
+        };
+        @field(args, try refl.itoa(i)) = value;
+    }
+
+    // call function
     const f = @field(T_refl.T, "postAttach");
     const ret = comptime try refl.funcReturnType(@TypeOf(f));
     if (comptime refl.isErrorUnion(ret)) {

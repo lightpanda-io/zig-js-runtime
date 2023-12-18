@@ -10,7 +10,7 @@ pub const MyObject = struct {
         return .{ .val = do_set };
     }
 
-    pub fn postAttach(self: *MyObject, js_obj: public.JSObject) !void {
+    pub fn postAttach(self: *MyObject, js_obj: public.JSObject, _: std.mem.Allocator) !void {
         if (self.val) try js_obj.set("a", @as(u8, 1));
     }
 

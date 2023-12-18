@@ -35,6 +35,13 @@ const builtin_types = [_]type{
     bool,
 };
 
+fn isBuiltinType(comptime T: type) bool {
+    for (builtin_types) |t| {
+        if (T == t) return true;
+    }
+    return false;
+}
+
 const internal_types = [_]type{
     std.mem.Allocator,
     Loop,
@@ -43,6 +50,13 @@ const internal_types = [_]type{
     CallbackSync,
     CallbackArg,
 };
+
+fn isInternalType(comptime T: type) bool {
+    for (internal_types) |t| {
+        if (T == t or T == *t) return true;
+    }
+    return false;
+}
 
 // Type describes the reflect information of an individual value, either:
 // - an input parameter of a function
@@ -1496,11 +1510,18 @@ fn assertFuncIsMethod(comptime T: type, comptime func: type, comptime strict: bo
     return err;
 }
 
-// assert func has the correct number of parameters
-fn assertFuncParamsNb(comptime func: type, comptime nb: u8) !void {
+// assert func has the exact number of JS parameters
+// ie. excluding internal types
+fn assertFuncParamsJSNb(comptime func: type, comptime nb: u8) !void {
     try assertFunc(func);
     const info = @typeInfo(func).Fn;
-    if (info.params.len != nb) return error.AssertFuncParamsNb;
+    var js_params = 0;
+    for (info.params) |param| {
+        if (!isInternalType(param.type.?)) {
+            js_params += 1;
+        }
+    }
+    if (js_params != nb) return error.AssertFuncParamsNb;
 }
 
 // assert function parameter at index is of type T
@@ -1573,6 +1594,20 @@ fn argsT(comptime func: type) type {
 
 // public functions
 
+// tupleTypes return a list a types from a tuple
+pub fn tupleTypes(comptime tuple: type) []type {
+    std.debug.assert(@inComptime());
+    const info = @typeInfo(tuple);
+    const err = error.TupleTypes;
+    if (info != .Struct) return err;
+    if (!info.Struct.is_tuple) return err;
+    var fields: [info.Struct.fields.len]type = undefined;
+    for (info.Struct.fields, 0..) |field, i| {
+        fields[i] = field.type;
+    }
+    return &fields;
+}
+
 // funcReturnType retrieve the return type of a func
 pub fn funcReturnType(comptime func: type) !type {
     std.debug.assert(@inComptime());
@@ -1599,8 +1634,8 @@ pub fn postAttachFunc(comptime T: type) !?type {
 
     const func = @TypeOf(@field(T, name));
     try assertFuncIsMethod(*T, func, true);
-    try assertFuncParamsNb(func, 2);
-    try assertFuncParamIsT(func, JSObject, 1);
+    try assertFuncParamsJSNb(func, 1); // 1 JS param, self
+    try assertFuncHasParamT(func, JSObject);
     try assertFuncReturnT(func, void, .{ .err = true });
     return argsT(func);
 }
@@ -1638,11 +1673,9 @@ fn shortName(comptime T: type) []const u8 {
     return it.first();
 }
 
-fn itoa(comptime i: u8) ![]u8 {
-    comptime {
-        var buf: [1]u8 = undefined;
-        return try std.fmt.bufPrint(buf[0..], "{d}", .{i});
-    }
+pub fn itoa(i: u8) ![]u8 {
+    var buf: [1]u8 = undefined;
+    return try std.fmt.bufPrint(buf[0..], "{d}", .{i});
 }
 
 fn isStringLiteral(comptime T: type) bool {
