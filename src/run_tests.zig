@@ -18,7 +18,7 @@ const multiple_types = @import("tests/types_multiple_test.zig");
 const object_types = @import("tests/types_object.zig");
 const callback = @import("tests/cbk_test.zig");
 
-test {
+pub fn main() !void {
     std.debug.print("\n", .{});
 
     // reflect tests

@@ -101,6 +101,7 @@ pub fn build(b: *std.Build) !void {
     });
     try common(tests, mode, options);
     tests.single_threaded = true;
+    tests.test_runner = "src/test_runner.zig";
     const run_tests = b.addRunArtifact(tests);
 
     // step
