@@ -6,7 +6,6 @@ fn checkInterfaces(engine: anytype) void {
 
     // public api
     interfaces.API(engine.API, engine.LoadFnType);
-    interfaces.TPL(engine.TPL);
 
     interfaces.Callback(engine.Callback);
     interfaces.CallbackSync(engine.CallbackSync);
@@ -19,7 +18,6 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.Env(
         engine.Env,
         engine.API,
-        engine.TPL,
         engine.JSResult,
         engine.Object,
     );

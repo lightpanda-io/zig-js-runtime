@@ -30,7 +30,7 @@ fn throwBasicError(msg: []const u8, isolate: v8.Isolate) v8.Value {
 
 fn throwError(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
@@ -60,7 +60,7 @@ fn throwError(
     const obj = except.?.T.init(alloc, err, func.js_name) catch unreachable; // TODO
     const js_obj = setNativeObject(
         alloc,
-        objects,
+        nat_ctx,
         except.?,
         @TypeOf(obj),
         obj,
@@ -486,13 +486,23 @@ fn bindObjectNativeAndJS(
     return js_obj_binded;
 }
 
-inline fn initJSObject(index: usize, js_ctx: v8.Context) v8.Object {
-    return gen.getTpl(index).tpl.getInstanceTemplate().initInstance(js_ctx);
+pub fn getTpl(nat_ctx: *NativeContext, index: usize) v8.FunctionTemplate {
+    const handle = nat_ctx.getType(v8.C_FunctionTemplate, index);
+    return v8.FunctionTemplate{ .handle = handle };
+}
+
+inline fn initJSObject(
+    nat_ctx: *NativeContext,
+    index: usize,
+    js_ctx: v8.Context,
+) v8.Object {
+    const tpl = getTpl(nat_ctx, index);
+    return tpl.getInstanceTemplate().initInstance(js_ctx);
 }
 
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime T: type,
     nat_obj: anytype,
@@ -531,12 +541,12 @@ pub fn setNativeObject(
 
         // Native object is a value, we need to return a new JS object
         // we can create it directly from its template
-        js_obj_under = initJSObject(T_refl.index, js_ctx);
+        js_obj_under = initJSObject(nat_ctx, T_refl.index, js_ctx);
     } else {
 
         // JS object is not provided, check the objects map
         const nat_obj_ref = @intFromPtr(nat_obj_ptr);
-        if (objects.get(nat_obj_ref)) |js_obj_ref| {
+        if (nat_ctx.objects.get(nat_obj_ref)) |js_obj_ref| {
 
             // a JS object is already linked to the current Native object
             // return it
@@ -547,14 +557,14 @@ pub fn setNativeObject(
 
             // no JS object is linked to the current Native object
             // let's create one from its template
-            js_obj_under = initJSObject(T_refl.index, js_ctx);
+            js_obj_under = initJSObject(nat_ctx, T_refl.index, js_ctx);
         }
     }
 
     // bind Native and JS objects together
     return try bindObjectNativeAndJS(
         alloc,
-        objects,
+        nat_ctx.objects,
         T_refl,
         nat_obj_ptr,
         js_obj_under,
@@ -565,7 +575,7 @@ pub fn setNativeObject(
 
 fn setReturnType(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
+    nat_ctx: *NativeContext,
     comptime all_T: []refl.Struct,
     comptime ret: refl.Type,
     comptime func: refl.Func,
@@ -584,7 +594,7 @@ fn setReturnType(
         }
         return setReturnType(
             alloc,
-            objects,
+            nat_ctx,
             all_T,
             ret,
             func,
@@ -604,7 +614,7 @@ fn setReturnType(
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setReturnType(
                     alloc,
-                    objects,
+                    nat_ctx,
                     all_T,
                     tt,
                     func,
@@ -629,7 +639,7 @@ fn setReturnType(
             const name = field.name.?;
             const js_val = try setReturnType(
                 alloc,
-                objects,
+                nat_ctx,
                 all_T,
                 field,
                 func,
@@ -652,7 +662,7 @@ fn setReturnType(
 
         const js_obj = try setNativeObject(
             alloc,
-            objects,
+            nat_ctx,
             all_T[index],
             ret.underT(),
             res,
@@ -808,7 +818,7 @@ fn callFunc(
             // TODO: how to handle internal errors vs user errors
             const js_err = throwError(
                 nat_ctx.alloc,
-                nat_ctx.objects,
+                nat_ctx,
                 T_refl,
                 all_T,
                 func,
@@ -827,7 +837,7 @@ fn callFunc(
         // bind native object to JS object this
         _ = setNativeObject(
             nat_ctx.alloc,
-            nat_ctx.objects,
+            nat_ctx,
             T_refl,
             func.return_type.underT(),
             res,
@@ -841,7 +851,7 @@ fn callFunc(
         // return to javascript the result
         const js_val = setReturnType(
             nat_ctx.alloc,
-            nat_ctx.objects,
+            nat_ctx,
             all_T,
             func.return_type,
             func,
@@ -852,7 +862,7 @@ fn callFunc(
         ) catch |err| blk: {
             break :blk throwError(
                 nat_ctx.alloc,
-                nat_ctx.objects,
+                nat_ctx,
                 T_refl,
                 all_T,
                 func,

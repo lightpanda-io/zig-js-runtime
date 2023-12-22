@@ -41,7 +41,6 @@ pub const Console = @import("console.zig").Console;
 const Engine = @import("private_api.zig").Engine;
 
 pub const API = Engine.API;
-pub const TPL = Engine.TPL;
 
 pub const JSResult = Engine.JSResult;
 pub const JSObject = Engine.JSObject;
