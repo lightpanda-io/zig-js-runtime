@@ -26,7 +26,6 @@ const loadFn = @import("private_api.zig").loadFn;
 // and stored in a constant named `Types`
 pub fn reflect(comptime types: anytype) []refl.Struct {
     std.debug.assert(@inComptime());
-    @setEvalBranchQuota(100000);
 
     // call types reflection
     return refl.do(types) catch unreachable;
