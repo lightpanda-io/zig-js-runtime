@@ -2,6 +2,7 @@ const std = @import("std");
 
 const eng = @import("engine.zig");
 const ref = @import("reflect.zig");
+const gen = @import("generate.zig");
 
 const bench = @import("bench.zig");
 const pretty = @import("pretty.zig");
@@ -9,7 +10,7 @@ const pretty = @import("pretty.zig");
 const public = @import("api.zig");
 const VM = public.VM;
 
-// tests
+// tests imports
 const proto = @import("tests/proto_test.zig");
 const primitive_types = @import("tests/types_primitives_test.zig");
 const native_types = @import("tests/types_native_test.zig");
@@ -18,6 +19,39 @@ const multiple_types = @import("tests/types_multiple_test.zig");
 const object_types = @import("tests/types_object.zig");
 const callback = @import("tests/cbk_test.zig");
 
+// test to do
+const do_proto = true;
+const do_prim = true;
+const do_nat = true;
+const do_complex = true;
+const do_multi = true;
+const do_obj = true;
+const do_cbk = true;
+
+// tests nb
+const tests_nb = blk: {
+    comptime var nb = 0;
+    if (do_proto) nb += 1;
+    if (do_prim) nb += 1;
+    if (do_nat) nb += 1;
+    if (do_complex) nb += 1;
+    if (do_multi) nb += 1;
+    if (do_obj) nb += 1;
+    if (do_cbk) nb += 1;
+    break :blk nb;
+};
+
+// Types
+pub const Types = gen.reflect(gen.MergeTuple(.{
+    proto.Types,
+    primitive_types.Types,
+    native_types.Types,
+    complex_types.Types,
+    multiple_types.Types,
+    object_types.Types,
+    callback.Types,
+}));
+
 pub fn main() !void {
     std.debug.print("\n", .{});
 
@@ -25,16 +59,7 @@ pub fn main() !void {
     try comptime ref.tests();
     std.debug.print("Reflect tests: OK\n", .{});
 
-    // test to do
-    comptime var tests_nb: usize = 0;
-    const do_proto = true;
-    const do_prim = true;
-    const do_nat = true; // TODO: if enable alone we have "exceeded 1000 backwards branches" error
-    const do_complex = true;
-    const do_multi = true;
-    const do_obj = true;
-    const do_cbk = true;
-    if (!do_proto and !do_prim and !do_nat and !do_complex and !do_multi and !do_obj and !do_cbk) {
+    if (tests_nb == 0) {
         std.debug.print("\nWARNING: No end to end tests.\n", .{});
         return;
     }
@@ -46,78 +71,64 @@ pub fn main() !void {
     // base and prototype tests
     var proto_alloc: bench.Allocator = undefined;
     if (do_proto) {
-        tests_nb += 1;
-        const proto_apis = comptime proto.generate(); // stage1: we need comptime
         proto_alloc = bench.allocator(std.testing.allocator);
         var proto_arena = std.heap.ArenaAllocator.init(proto_alloc.allocator());
         defer proto_arena.deinit();
-        _ = try eng.loadEnv(&proto_arena, proto.exec, proto_apis);
+        _ = try eng.loadEnv(&proto_arena, proto.exec);
     }
 
     // primitive types tests
     var prim_alloc: bench.Allocator = undefined;
     if (do_prim) {
-        tests_nb += 1;
-        const prim_apis = comptime primitive_types.generate(); // stage1: we need to comptime
         prim_alloc = bench.allocator(std.testing.allocator);
         var prim_arena = std.heap.ArenaAllocator.init(prim_alloc.allocator());
         defer prim_arena.deinit();
-        _ = try eng.loadEnv(&prim_arena, primitive_types.exec, prim_apis);
+        _ = try eng.loadEnv(&prim_arena, primitive_types.exec);
     }
 
     // native types tests
     var nat_alloc: bench.Allocator = undefined;
     if (do_nat) {
-        tests_nb += 1;
-        const nat_apis = comptime native_types.generate(); // stage1: we need to comptime
         nat_alloc = bench.allocator(std.testing.allocator);
         var nat_arena = std.heap.ArenaAllocator.init(nat_alloc.allocator());
         defer nat_arena.deinit();
-        _ = try eng.loadEnv(&nat_arena, native_types.exec, nat_apis);
+        _ = try eng.loadEnv(&nat_arena, native_types.exec);
     }
 
     // complex types tests
     var complex_alloc: bench.Allocator = undefined;
     if (do_complex) {
-        tests_nb += 1;
-        const complex_apis = comptime complex_types.generate(); // stage1: we need to comptime
         complex_alloc = bench.allocator(std.testing.allocator);
         var complex_arena = std.heap.ArenaAllocator.init(complex_alloc.allocator());
         defer complex_arena.deinit();
-        _ = try eng.loadEnv(&complex_arena, complex_types.exec, complex_apis);
+        _ = try eng.loadEnv(&complex_arena, complex_types.exec);
     }
 
     // multiple types tests
     var multi_alloc: bench.Allocator = undefined;
     if (do_multi) {
-        tests_nb += 1;
-        const multi_apis = comptime multiple_types.generate(); // stage1: we need to comptime
         multi_alloc = bench.allocator(std.testing.allocator);
         var multi_arena = std.heap.ArenaAllocator.init(multi_alloc.allocator());
         defer multi_arena.deinit();
-        _ = try eng.loadEnv(&multi_arena, multiple_types.exec, multi_apis);
+        _ = try eng.loadEnv(&multi_arena, multiple_types.exec);
     }
 
     // object types tests
     var obj_alloc: bench.Allocator = undefined;
     if (do_obj) {
-        tests_nb += 1;
-        const obj_apis = comptime object_types.generate(); // stage1: we need to comptime
         obj_alloc = bench.allocator(std.testing.allocator);
         var obj_arena = std.heap.ArenaAllocator.init(obj_alloc.allocator());
         defer obj_arena.deinit();
-        _ = try eng.loadEnv(&obj_arena, object_types.exec, obj_apis);
+        _ = try eng.loadEnv(&obj_arena, object_types.exec);
     }
 
     // callback tests
     var cbk_alloc: bench.Allocator = undefined;
     if (do_cbk) {
-        tests_nb += 1;
-        const cbk_apis = comptime callback.generate(); // stage1: we need comptime
         cbk_alloc = bench.allocator(std.testing.allocator);
         var cbk_arena = std.heap.ArenaAllocator.init(cbk_alloc.allocator());
         defer cbk_arena.deinit();
-        _ = try eng.loadEnv(&cbk_arena, callback.exec, cbk_apis);
+        _ = try eng.loadEnv(&cbk_arena, callback.exec);
     }
 
     if (tests_nb == 0) {

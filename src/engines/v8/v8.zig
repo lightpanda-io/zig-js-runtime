@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
 const v8 = @import("v8");
 
@@ -154,10 +155,10 @@ pub const Env = struct {
         self.* = undefined;
     }
 
-    // load APIs into Javascript environement
-    pub fn load(self: Env, comptime apis: []API, js_types: []usize) anyerror!void {
-        var tpls: [apis.len]TPL = undefined;
-        try gen.load(self.nat_ctx, self.isolate, self.globals, apis, TPL, &tpls);
+    // load user-defined Types into Javascript environement
+    pub fn load(self: Env, js_types: []usize) anyerror!void {
+        var tpls: [gen.Types.len]TPL = undefined;
+        try gen.load(self.nat_ctx, self.isolate, self.globals, TPL, &tpls);
         for (tpls, 0..) |tpl, i| {
             js_types[i] = @intFromPtr(tpl.tpl.handle);
         }
@@ -165,7 +166,7 @@ pub const Env = struct {
     }
 
     // start a Javascript context
-    pub fn start(self: *Env, alloc: std.mem.Allocator, comptime apis: []API) anyerror!void {
+    pub fn start(self: *Env, alloc: std.mem.Allocator) anyerror!void {
 
         // context
         self.js_ctx = v8.Context.init(self.isolate, self.globals, null);
@@ -174,7 +175,7 @@ pub const Env = struct {
 
         // TODO: ideally all this should disapear,
         // we shouldn't do anything at context startup time
-        inline for (apis, 0..) |api, i| {
+        inline for (gen.Types, 0..) |T_refl, i| {
 
             // APIs prototype
             // set the prototype of each corresponding constructor Function
@@ -184,7 +185,7 @@ pub const Env = struct {
             // on FunctionTemplate.PrototypeTemplate
             // TODO: is there a better way to do it at the Template level?
             // see https://github.com/Browsercore/jsruntime-lib/issues/128
-            if (api.T_refl.proto_index) |proto_index| {
+            if (T_refl.proto_index) |proto_index| {
                 const cstr_tpl = getTpl(self.nat_ctx, i);
                 const proto_tpl = getTpl(self.nat_ctx, proto_index);
                 const cstr_obj = cstr_tpl.getFunction(js_ctx).toObject();
@@ -195,8 +196,8 @@ pub const Env = struct {
             // Custom exception
             // NOTE: there is no way in v8 to subclass the Error built-in type
             // TODO: this is an horrible hack
-            if (comptime api.T_refl.isException()) {
-                const script = api.T_refl.name ++ ".prototype.__proto__ = Error.prototype";
+            if (comptime T_refl.isException()) {
+                const script = T_refl.name ++ ".prototype.__proto__ = Error.prototype";
                 const res = try self.execTryCatch(
                     alloc,
                     script,
@@ -226,14 +227,13 @@ pub const Env = struct {
     }
 
     // add a Native object in the Javascript context
-    pub fn addObject(self: Env, comptime apis: []API, obj: anytype, name: []const u8) anyerror!void {
+    pub fn addObject(self: Env, obj: anytype, name: []const u8) anyerror!void {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
         return createJSObject(
             self.nat_ctx.alloc,
-            self.nat_ctx.objects,
-            apis,
+            self.nat_ctx,
             obj,
             name,
             self.js_ctx.?.getGlobal(),
@@ -356,8 +356,7 @@ pub const Env = struct {
 
 fn createJSObject(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
-    comptime apis: []API,
+    nat_ctx: *NativeContext,
     obj: anytype,
     name: []const u8,
     target: v8.Object,
@@ -365,25 +364,13 @@ fn createJSObject(
     isolate: v8.Isolate,
 ) !void {
 
-    // retrieve obj API and template
-    comptime var obj_api_index: comptime_int = undefined;
-    comptime {
-        const obj_T = @TypeOf(obj);
-        inline for (apis) |api| {
-            if (obj_T == api.T_refl.Self() or obj_T == *api.T_refl.Self()) {
-                obj_api_index = api.T_refl.index;
-                break;
-            }
-        } else {
-            @compileError("addOject type is not in apis");
-        }
-    }
-    const T_refl = apis[obj_api_index].T_refl;
+    // retrieve obj API
+    const T_refl = comptime gen.getType(@TypeOf(obj));
 
     // bind Native and JS objects together
     const js_obj = try setNativeObject(
         alloc,
-        objects,
+        nat_ctx,
         T_refl,
         T_refl.value.underT(),
         obj,
@@ -400,12 +387,30 @@ fn createJSObject(
 }
 
 pub const JSObject = struct {
+    nat_ctx: *NativeContext,
     js_ctx: v8.Context,
     js_obj: v8.Object,
 
     pub fn set(self: JSObject, key: []const u8, value: anytype) !void {
         const isolate = self.js_ctx.getIsolate();
-        const js_value = try nativeToJS(@TypeOf(value), value, isolate);
+        // const js_value = try nativeToJS(@TypeOf(value), value, isolate);
+        var js_value: v8.Value = undefined;
+        if (comptime refl.isBuiltinType(@TypeOf(value))) {
+            js_value = try nativeToJS(@TypeOf(value), value, isolate);
+        } else {
+            const T_refl = comptime gen.getType(@TypeOf(value));
+            const js_obj = try setNativeObject(
+                self.nat_ctx.alloc,
+                self.nat_ctx,
+                T_refl,
+                T_refl.Self(),
+                value,
+                null,
+                isolate,
+                self.js_ctx,
+            );
+            js_value = js_obj.toValue();
+        }
         const js_key = v8.String.initUtf8(isolate, key);
         if (!self.js_obj.setValue(self.js_ctx, js_key, js_value)) {
             return error.SetV8Object;

@@ -11,17 +11,18 @@ const proto = @import("tests/proto_test.zig");
 const kb = 1024;
 const us = std.time.ns_per_us;
 
+pub const Types = public.reflect(proto.Types);
+
 fn benchWithIsolate(
     bench_alloc: *bench.Allocator,
     arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: public.ContextExecFn,
-    comptime apis: []public.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
     const duration = try bench.call(
         public.loadEnv,
-        .{ arena_alloc, ctxExecFn, apis },
+        .{ arena_alloc, ctxExecFn },
         iter,
         warmup,
     );
@@ -40,7 +41,6 @@ fn benchWithoutIsolate(
     bench_alloc: *bench.Allocator,
     arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: public.ContextExecFn,
-    comptime apis: []public.API,
     comptime iter: comptime_int,
     comptime warmup: ?comptime_int,
 ) !bench.Result {
@@ -48,18 +48,17 @@ fn benchWithoutIsolate(
         fn do(
             alloc_func: std.mem.Allocator,
             js_env: *public.Env,
-            comptime apis_func: []public.API,
-        ) !void {
+        ) anyerror!void {
             const duration = try bench.call(
                 ctxExecFn,
-                .{ alloc_func, js_env, apis_func },
+                .{ alloc_func, js_env },
                 iter,
                 warmup,
             );
             duration_global = duration;
         }
     };
-    try public.loadEnv(arena_alloc, s.do, apis);
+    try public.loadEnv(arena_alloc, s.do);
     const alloc_stats = bench_alloc.stats();
     return bench.Result{
         .duration = duration_global,
@@ -97,9 +96,6 @@ pub fn main() !void {
         }
     }
 
-    // generate APIs
-    const apis = comptime proto.generate(); // stage1: we need comptime
-
     // create JS vm
     const vm = public.VM.init();
     defer vm.deinit();
@@ -120,8 +116,8 @@ pub fn main() !void {
     const title = try std.fmt.bufPrint(buf[0..], title_fmt, .{iter});
 
     // benchmark funcs
-    const res1 = try benchWithIsolate(&bench1, &arena1, proto.exec, apis, iter, warmup);
-    const res2 = try benchWithoutIsolate(&bench2, &arena2, proto.exec, apis, iter, warmup);
+    const res1 = try benchWithIsolate(&bench1, &arena1, proto.exec, iter, warmup);
+    const res2 = try benchWithoutIsolate(&bench2, &arena2, proto.exec, iter, warmup);
 
     // generate a json output with the bench result.
     if (json) {

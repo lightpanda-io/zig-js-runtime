@@ -32,7 +32,6 @@ pub fn VM(comptime T: type) void {
 
 pub fn Env(
     comptime T: type,
-    comptime API_T: type,
     comptime JSResult_T: type,
     comptime Object_T: type,
 ) void {
@@ -47,17 +46,12 @@ pub fn Env(
     assertDecl(T, "deinit", fn (self: *T) void);
 
     // load() native apis into js templates
-    assertDecl(T, "load", fn (
-        self: T,
-        comptime apis: []API_T,
-        js_types: []usize,
-    ) anyerror!void);
+    assertDecl(T, "load", fn (self: T, js_types: []usize) anyerror!void);
 
     // start()
     assertDecl(T, "start", fn (
         self: *T,
         alloc: std.mem.Allocator,
-        comptime apis: []API_T,
     ) anyerror!void);
 
     // stop()
@@ -69,7 +63,6 @@ pub fn Env(
     // addObject() from native api into JS
     assertDecl(T, "addObject", fn (
         self: T,
-        comptime apis: []API_T,
         obj: anytype,
         name: []const u8,
     ) anyerror!void);

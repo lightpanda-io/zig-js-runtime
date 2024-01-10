@@ -35,7 +35,8 @@ const builtin_types = [_]type{
     bool,
 };
 
-fn isBuiltinType(comptime T: type) bool {
+pub fn isBuiltinType(comptime T: type) bool {
+    std.debug.assert(@inComptime());
     for (builtin_types) |t| {
         if (T == t) return true;
     }

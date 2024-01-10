@@ -150,27 +150,23 @@ const MyTypeWithException = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{
-        MyIterable,
-        MyList,
-        MyVariadic,
-        MyErrorUnion,
-        MyException,
-        MyTypeWithException,
-    });
-}
+pub const Types = .{
+    MyIterable,
+    MyList,
+    MyVariadic,
+    MyErrorUnion,
+    MyException,
+    MyTypeWithException,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
     var iter = [_]tests.Case{

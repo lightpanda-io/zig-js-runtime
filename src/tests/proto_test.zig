@@ -230,28 +230,24 @@ const UserProtoCast = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{
-        User,
-        Person,
-        PersonPtr,
-        Entity,
-        UserContainer,
-        PersonProtoCast,
-        UserProtoCast,
-    });
-}
+pub const Types = .{
+    User,
+    Person,
+    PersonPtr,
+    Entity,
+    UserContainer,
+    PersonProtoCast,
+    UserProtoCast,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
     const ownBase = tests.engineOwnPropertiesDefault();
