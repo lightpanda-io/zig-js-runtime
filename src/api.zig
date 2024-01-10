@@ -9,7 +9,7 @@
 
 const internal = @import("internal_api.zig");
 
-pub const compile = internal.gen.compile;
+pub const reflect = internal.gen.reflect;
 pub const loadEnv = internal.eng.loadEnv;
 pub const ContextExecFn = internal.eng.ContextExecFn;
 
@@ -39,8 +39,6 @@ pub const Console = @import("console.zig").Console;
 // ---------
 
 const Engine = @import("private_api.zig").Engine;
-
-pub const API = Engine.API;
 
 pub const JSResult = Engine.JSResult;
 pub const JSObject = Engine.JSObject;

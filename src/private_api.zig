@@ -17,7 +17,6 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.VM(engine.VM);
     interfaces.Env(
         engine.Env,
-        engine.API,
         engine.JSResult,
         engine.Object,
     );
@@ -52,6 +51,8 @@ pub const Engine = blk: {
 
     @compileError("you need to specify a JS engine as a build option (-Dengine) or as a root file declaration (pub const JSEngine)");
 };
+
+pub const API = Engine.API;
 
 // loadFn is a function which generates
 // the loading and binding of the native API into the JS engine

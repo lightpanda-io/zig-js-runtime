@@ -35,7 +35,8 @@ const builtin_types = [_]type{
     bool,
 };
 
-fn isBuiltinType(comptime T: type) bool {
+pub fn isBuiltinType(comptime T: type) bool {
+    std.debug.assert(@inComptime());
     for (builtin_types) |t| {
         if (T == t) return true;
     }
@@ -1965,6 +1966,7 @@ const TestTypeLookup = struct {
 pub fn tests() !void {
     std.debug.assert(@inComptime());
     @setEvalBranchQuota(10000);
+    // we need to increase the default value in reflect tests
 
     // arg 'types' should be a tuple of types
     try ensureErr(TestBase, error.TypesNotTuple);

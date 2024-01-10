@@ -188,20 +188,20 @@ const Country = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{ Brand, Car, Country });
-}
+pub const Types = .{
+    Brand,
+    Car,
+    Country,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
     var nested_arg = [_]tests.Case{

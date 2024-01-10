@@ -4,10 +4,9 @@ const public = @import("api.zig");
 
 const Window = @import("tests/cbk_test.zig").Window;
 
-pub fn main() !void {
+pub const Types = public.reflect(.{ public.Console, Window });
 
-    // generate APIs
-    const apis = comptime public.compile(.{ public.Console, Window });
+pub fn main() !void {
 
     // create JS vm
     const vm = public.VM.init();
@@ -20,5 +19,5 @@ pub fn main() !void {
     defer arena.deinit();
 
     // launch shell
-    try public.shell(&arena, apis, null, .{ .app_name = "jsruntime-shell" });
+    try public.shell(&arena, null, .{ .app_name = "jsruntime-shell" });
 }

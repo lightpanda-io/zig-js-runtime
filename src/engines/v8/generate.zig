@@ -157,7 +157,7 @@ fn getNativeArg(
 
 fn getArg(
     alloc: std.mem.Allocator,
-    loop: *Loop,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime arg: refl.Type,
@@ -188,9 +188,9 @@ fn getArg(
         // builtin and internal types
         value = switch (arg.T) {
             std.mem.Allocator => alloc,
-            *Loop => loop,
+            *Loop => nat_ctx.loop,
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
-            JSObject => JSObject{ .js_ctx = js_ctx, .js_obj = this },
+            JSObject => JSObject{ .nat_ctx = nat_ctx, .js_ctx = js_ctx, .js_obj = this },
             else => jsToNative(
                 alloc,
                 arg.T,
@@ -267,7 +267,7 @@ const CallbackInfo = union(enum) {
 // in case of a setter raw_value is also required
 fn getArgs(
     alloc: std.mem.Allocator,
-    loop: *Loop,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime all_T: []refl.Struct,
     comptime func: refl.Func,
@@ -327,7 +327,7 @@ fn getArgs(
                 else => blk: {
                     break :blk getArg(
                         alloc,
-                        loop,
+                        nat_ctx,
                         T_refl,
                         all_T,
                         arg_real,
@@ -348,7 +348,7 @@ fn getArgs(
             while (iter < rest_nb) {
                 const slice_value = getArg(
                     alloc,
-                    loop,
+                    nat_ctx,
                     T_refl,
                     all_T,
                     arg_real,
@@ -446,7 +446,7 @@ fn bindObjectJSToNative(
 
 fn bindObjectNativeAndJS(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     nat_obj: anytype,
     js_obj: v8.Object,
@@ -470,12 +470,13 @@ fn bindObjectNativeAndJS(
     );
 
     // bind the JS object to the Native object
-    try bindObjectJSToNative(alloc, objects, nat_obj, js_obj_binded);
+    try bindObjectJSToNative(alloc, nat_ctx.objects, nat_obj, js_obj_binded);
 
     // call postAttach func
     if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
         try postAttach(
             alloc,
+            nat_ctx,
             T_refl,
             piArgsT,
             nat_obj,
@@ -564,7 +565,7 @@ pub fn setNativeObject(
     // bind Native and JS objects together
     return try bindObjectNativeAndJS(
         alloc,
-        nat_ctx.objects,
+        nat_ctx,
         T_refl,
         nat_obj_ptr,
         js_obj_under,
@@ -686,6 +687,7 @@ fn setReturnType(
 
 fn postAttach(
     alloc: std.mem.Allocator,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime argsT: type,
     obj_ptr: anytype,
@@ -699,7 +701,11 @@ fn postAttach(
     inline for (comptime refl.tupleTypes(argsT), 0..) |field, i| {
         const value = switch (field) {
             @TypeOf(obj_ptr) => obj_ptr,
-            JSObject => JSObject{ .js_ctx = js_ctx, .js_obj = js_obj },
+            JSObject => JSObject{
+                .nat_ctx = nat_ctx,
+                .js_ctx = js_ctx,
+                .js_obj = js_obj,
+            },
             std.mem.Allocator => alloc,
             else => unreachable,
         };
@@ -785,7 +791,7 @@ fn callFunc(
     // prepare args
     var args = getArgs(
         nat_ctx.alloc,
-        nat_ctx.loop,
+        nat_ctx,
         T_refl,
         all_T,
         func,

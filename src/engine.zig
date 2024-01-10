@@ -8,16 +8,14 @@ const refl = internal.refl;
 const NativeContext = internal.NativeContext;
 
 const public = @import("api.zig");
-const API = public.API;
 const Env = public.Env;
 const Loop = public.Loop;
 
-pub const ContextExecFn = (fn (std.mem.Allocator, *Env, comptime []API) anyerror!void);
+pub const ContextExecFn = (fn (std.mem.Allocator, *Env) anyerror!void);
 
 pub fn loadEnv(
     arena_alloc: *std.heap.ArenaAllocator,
     comptime ctxExecFn: ContextExecFn,
-    comptime apis: []API,
 ) !void {
     const alloc = arena_alloc.allocator();
 
@@ -36,15 +34,15 @@ pub fn loadEnv(
     if (builtin.is_test) {
         load_start = try std.time.Instant.now();
     }
-    var types: [apis.len]usize = undefined;
-    try js_env.load(apis, &types);
+    var js_types: [gen.Types.len]usize = undefined;
+    try js_env.load(&js_types);
 
     // execute JS function
     var exec_start: std.time.Instant = undefined;
     if (builtin.is_test) {
         exec_start = try std.time.Instant.now();
     }
-    try ctxExecFn(alloc, &js_env, apis);
+    try ctxExecFn(alloc, &js_env);
 
     // Stats
     // -----

@@ -46,20 +46,18 @@ pub const Window = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []jsruntime.API {
-    return jsruntime.compile(.{Window});
-}
+pub const Types = .{
+    Window,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *jsruntime.Env,
-    comptime apis: []jsruntime.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
     // constructor

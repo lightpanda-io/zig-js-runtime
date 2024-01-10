@@ -155,20 +155,18 @@ fn cmdCallback(
 fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
-    try shellExec(alloc, js_env, apis);
+    try shellExec(alloc, js_env);
 }
 
 pub fn shellExec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
 ) !void {
 
     // alias global as self
@@ -176,7 +174,7 @@ pub fn shellExec(
 
     // add console object
     const console = public.Console{};
-    try js_env.addObject(apis, console, "console");
+    try js_env.addObject(console, "console");
 
     // JS try cache
     var try_catch = public.TryCatch.init(js_env.*);
@@ -228,7 +226,6 @@ pub fn shellExec(
 
 pub fn shell(
     arena_alloc: *std.heap.ArenaAllocator,
-    comptime apis: []public.API,
     comptime ctxExecFn: ?public.ContextExecFn,
     comptime config: Config,
 ) !void {
@@ -266,7 +263,7 @@ pub fn shell(
     if (ctxExecFn) |func| {
         do_fn = func;
     }
-    try public.loadEnv(arena_alloc, do_fn, apis);
+    try public.loadEnv(arena_alloc, do_fn);
 }
 
 fn repl() !void {

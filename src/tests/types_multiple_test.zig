@@ -59,20 +59,21 @@ const Computer = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{ Windows, MacOS, Linux, Computer });
-}
+pub const Types = .{
+    Windows,
+    MacOS,
+    Linux,
+    Computer,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
 
     var cases = [_]tests.Case{

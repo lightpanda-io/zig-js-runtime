@@ -3,6 +3,18 @@ const std = @import("std");
 const public = @import("../api.zig");
 const tests = public.test_utils;
 
+pub const Other = struct {
+    val: u8,
+
+    fn init(val: u8) Other {
+        return .{ .val = val };
+    }
+
+    pub fn _val(self: Other) u8 {
+        return self.val;
+    }
+};
+
 pub const MyObject = struct {
     val: bool,
 
@@ -21,6 +33,10 @@ pub const MyObject = struct {
     pub fn set_val(self: *MyObject, val: bool) void {
         self.val = val;
     }
+
+    pub fn _other(_: MyObject, js_obj: public.JSObject, val: u8) !void {
+        try js_obj.set("b", Other{ .val = val });
+    }
 };
 
 pub const MyAPI = struct {
@@ -33,24 +49,24 @@ pub const MyAPI = struct {
     }
 };
 
-// generate API, comptime
-pub fn generate() []public.API {
-    return public.compile(.{
-        MyObject,
-        MyAPI,
-    });
-}
+pub const Types = .{
+    Other,
+    MyObject,
+    MyAPI,
+};
 
 // exec tests
 pub fn exec(
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    comptime apis: []public.API,
-) !void {
+) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc, apis);
+    try js_env.start(alloc);
     defer js_env.stop();
+
+    // const o = Other{ .val = 4 };
+    // try js_env.addObject(apis, o, "other");
 
     const ownBase = tests.engineOwnPropertiesDefault();
     const ownBaseStr = tests.intToStr(alloc, ownBase);
@@ -70,6 +86,10 @@ pub fn exec(
         .{ .src = "let myObj2 = new MyObject(false);", .ex = "undefined" },
         .{ .src = "myObj2.a", .ex = "undefined" },
         .{ .src = "Object.getOwnPropertyNames(myObj2).length;", .ex = "0" },
+        // setting a user-defined object
+        .{ .src = "myObj.other(3)", .ex = "undefined" },
+        .{ .src = "myObj.b.__proto__ === Other.prototype", .ex = "true" },
+        .{ .src = "myObj.b.val()", .ex = "3" },
     };
     try tests.checkCases(js_env, &direct);
 
