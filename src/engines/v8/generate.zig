@@ -609,8 +609,8 @@ pub fn setNativeType(
     // Union type
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
+        // NOTE: inspired by std.meta.TagPayloadByName
         const activeTag = @tagName(std.meta.activeTag(res));
-        // TODO: better algorythm?
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
                 return setNativeType(

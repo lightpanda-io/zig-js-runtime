@@ -424,6 +424,14 @@ pub const JSObject = struct {
         var js_value: v8.Value = undefined;
         if (comptime refl.isBuiltinType(@TypeOf(value))) {
             js_value = try nativeToJS(@TypeOf(value), value, isolate);
+        } else if (@typeInfo(@TypeOf(value)) == .Union) {
+            // NOTE: inspired by std.meta.TagPayloadByName
+            const activeTag = @tagName(std.meta.activeTag(value));
+            inline for (std.meta.fields(@TypeOf(value))) |field| {
+                if (std.mem.eql(u8, activeTag, field.name)) {
+                    return self.set(key, @field(value, field.name));
+                }
+            }
         } else {
             const T_refl = comptime gen.getType(@TypeOf(value));
             const js_obj = try setNativeObject(
