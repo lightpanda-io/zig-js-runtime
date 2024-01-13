@@ -291,7 +291,7 @@ fn getArgs(
         comptime var arg_real: refl.Type = undefined;
 
         comptime {
-            if (try refl.Type.variadic(arg.underT())) |arg_v| {
+            if (try refl.Type.variadic(arg.underT(), all_T)) |arg_v| {
                 arg_real = arg_v;
             } else {
                 arg_real = arg;
@@ -389,7 +389,7 @@ fn freeArgs(alloc: std.mem.Allocator, comptime func: refl.Func, obj: anytype) !v
         }
 
         // free varidadic slices
-        if (try refl.Type.variadic(arg_T.underT()) != null) {
+        if (try refl.Type.variadic(arg_T.underT(), null) != null) {
             const val = @field(obj, arg_T.name.?).?;
             // NOTE: variadic are optional by design
             alloc.free(@field(val, "slice"));

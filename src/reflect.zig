@@ -222,15 +222,19 @@ pub const Type = struct {
 
     // find if T is a VariadicType
     // and returns it as a reflect.Type
-    pub fn variadic(comptime T: type) !?Type {
+    pub fn variadic(comptime T: type, comptime structs: ?[]Struct) !?Type {
         std.debug.assert(@inComptime());
 
-        const tt = Type._variadic(T) orelse return null;
+        const TT = Type._variadic(T) orelse return null;
 
         // avoid infinite calls
-        if (Type._is_variadic(tt)) return error.TypeVariadicNested;
+        if (Type._is_variadic(TT)) return error.TypeVariadicNested;
 
-        return try Type.reflect(tt, null);
+        var tt = try Type.reflect(TT, null);
+        if (structs) |all| {
+            try tt.lookup(all);
+        }
+        return tt;
     }
 
     // check that user-defined types have been provided as an API
@@ -257,7 +261,7 @@ pub const Type = struct {
         }
 
         // if variadic, lookup the concrete type
-        var variadic_type = try Type.variadic(self.underT());
+        var variadic_type = try Type.variadic(self.underT(), null);
         if (variadic_type) |*tt| {
             return tt.lookup(structs);
         }
@@ -767,6 +771,7 @@ pub const Struct = struct {
     }
 
     fn lookupTypes(comptime self: *Struct, comptime structs: []Struct) Error!void {
+        try self.value.lookup(structs);
         if (self.has_constructor) {
             try self.constructor.lookupTypes(structs);
         }

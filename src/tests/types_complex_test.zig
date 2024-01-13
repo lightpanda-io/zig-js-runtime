@@ -54,6 +54,17 @@ const MyVariadic = struct {
         return true;
     }
 
+    const VariadicList = Variadic(MyList);
+
+    pub fn _myListLen(_: MyVariadic, variadic: ?VariadicList) u8 {
+        return @as(u8, @intCast(variadic.?.slice.len));
+    }
+
+    pub fn _myListFirst(_: MyVariadic, variadic: ?VariadicList) ?u8 {
+        if (variadic.?.slice.len == 0) return null;
+        return variadic.?.slice[0]._first();
+    }
+
     pub fn deinit(_: *MyVariadic, _: std.mem.Allocator) void {}
 };
 
@@ -189,6 +200,8 @@ pub fn exec(
         .{ .src = "myVariadic.first('a_str', true, false, true, false)", .ex = "true" },
         .{ .src = "myVariadic.last(true, false)", .ex = "false" },
         .{ .src = "myVariadic.empty()", .ex = "true" },
+        .{ .src = "myVariadic.myListLen(myList)", .ex = "1" },
+        .{ .src = "myVariadic.myListFirst(myList)", .ex = "1" },
     };
     try tests.checkCases(js_env, &variadic);
 
