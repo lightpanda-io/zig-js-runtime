@@ -667,6 +667,8 @@ pub const StructNested = struct {
             return false;
         } else if (std.mem.eql(u8, decl.name, "mem_guarantied")) {
             return false;
+        } else if (std.mem.eql(u8, decl.name, "Exception")) {
+            return false;
         }
 
         // exclude declarations who are not types
@@ -776,6 +778,11 @@ pub const Struct = struct {
         }
         inline for (self.methods) |*method| {
             try method.lookupTypes(structs);
+        }
+        inline for (self.nested) |nested| {
+            inline for (nested.fields) |*field| {
+                try field.lookup(structs);
+            }
         }
     }
 
