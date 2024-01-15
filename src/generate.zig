@@ -52,7 +52,7 @@ fn generate(comptime types: []refl.Struct) []API {
 
     var apis: [types.len]API = undefined;
     inline for (types, 0..) |T_refl, i| {
-        const loader = loadFn(T_refl, types);
+        const loader = loadFn(T_refl);
         apis[i] = API{ .T_refl = T_refl, .load = loader };
     }
     return &apis;
