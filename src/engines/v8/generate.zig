@@ -567,13 +567,12 @@ pub fn setNativeObject(
     );
 }
 
-fn setReturnType(
+fn setNativeType(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime ret: refl.Type,
     comptime func: refl.Func,
     res: anytype,
-    js_res: v8.ReturnValue,
     js_ctx: v8.Context,
     isolate: v8.Isolate,
 ) !v8.Value {
@@ -585,13 +584,12 @@ fn setReturnType(
             // if null just return JS null
             return isolate.initNull().toValue();
         }
-        return setReturnType(
+        return setNativeType(
             alloc,
             nat_ctx,
             ret,
             func,
             res.?,
-            js_res,
             js_ctx,
             isolate,
         );
@@ -604,13 +602,12 @@ fn setReturnType(
         // TODO: better algorythm?
         inline for (union_types) |tt| {
             if (std.mem.eql(u8, activeTag, tt.name.?)) {
-                return setReturnType(
+                return setNativeType(
                     alloc,
                     nat_ctx,
                     tt,
                     func,
                     @field(res, tt.name.?),
-                    js_res,
                     js_ctx,
                     isolate,
                 );
@@ -623,18 +620,17 @@ fn setReturnType(
         // return is a user defined nested type
 
         // create a JS object
-        // and call setReturnType on each object fields
+        // and call setNativeType on each object fields
         const js_obj = v8.Object.init(isolate);
         const nested = gen.Types[ret.T_refl_index.?].nested[nested_index];
         inline for (nested.fields) |field| {
             const name = field.name.?;
-            const js_val = try setReturnType(
+            const js_val = try setNativeType(
                 alloc,
                 nat_ctx,
                 field,
                 func,
                 @field(res, name),
-                js_res,
                 js_ctx,
                 isolate,
             );
@@ -840,13 +836,12 @@ fn callFunc(
     } else {
 
         // return to javascript the result
-        const js_val = setReturnType(
+        const js_val = setNativeType(
             nat_ctx.alloc,
             nat_ctx,
             func.return_type,
             func,
             res,
-            cbk_info.getReturnValue(),
             js_ctx,
             isolate,
         ) catch |err| blk: {
