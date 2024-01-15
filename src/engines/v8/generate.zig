@@ -32,7 +32,6 @@ fn throwError(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime func: refl.Func,
     err: anyerror,
     isolate: v8.Isolate,
@@ -44,7 +43,7 @@ fn throwError(
     // - the return type must be an ErrorUnion
     // - the API must define a custom Exception
     // - the ErrorSet of the return type must be an error of Exception
-    const except = comptime T_refl.exception(all_T);
+    const except = comptime T_refl.exception(gen.Types);
     if (comptime ret.errorSet() == null or except == null) {
         return throwBasicError(@errorName(err), isolate);
     }
@@ -126,7 +125,6 @@ fn checkArgsLen(
 
 fn getNativeArg(
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime arg_T: refl.Type,
     js_value: v8.Value,
 ) arg_T.T {
@@ -144,7 +142,6 @@ fn getNativeArg(
     // JS object
     const ptr = getNativeObject(
         T_refl,
-        all_T,
         js_value.castTo(v8.Object),
     ) catch unreachable; // TODO: throw js exception
     if (arg_T.underPtr() != null) {
@@ -159,7 +156,6 @@ fn getArg(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime arg: refl.Type,
     this: v8.Object,
     js_val: ?v8.Value,
@@ -171,7 +167,7 @@ fn getArg(
     if (arg.isNative()) {
 
         // native types
-        value = getNativeArg(all_T[arg.T_refl_index.?], all_T, arg, js_val.?);
+        value = getNativeArg(gen.Types[arg.T_refl_index.?], arg, js_val.?);
     } else if (arg.nested_index) |index| {
 
         // nested types (ie. JS anonymous objects)
@@ -269,7 +265,6 @@ fn getArgs(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime func: refl.Func,
     cbk_info: CallbackInfo,
     raw_value: ?*const v8.C_Value,
@@ -291,7 +286,7 @@ fn getArgs(
         comptime var arg_real: refl.Type = undefined;
 
         comptime {
-            if (try refl.Type.variadic(arg.underT(), all_T)) |arg_v| {
+            if (try refl.Type.variadic(arg.underT(), gen.Types)) |arg_v| {
                 arg_real = arg_v;
             } else {
                 arg_real = arg;
@@ -329,7 +324,6 @@ fn getArgs(
                         alloc,
                         nat_ctx,
                         T_refl,
-                        all_T,
                         arg_real,
                         cbk_info.getThis(),
                         cbk_info.getArg(raw_value, i, func.index_offset),
@@ -350,7 +344,6 @@ fn getArgs(
                     alloc,
                     nat_ctx,
                     T_refl,
-                    all_T,
                     arg_real,
                     cbk_info.getThis(),
                     cbk_info.getArg(raw_value, iter + i, func.index_offset),
@@ -577,7 +570,6 @@ pub fn setNativeObject(
 fn setReturnType(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
-    comptime all_T: []refl.Struct,
     comptime ret: refl.Type,
     comptime func: refl.Func,
     res: anytype,
@@ -596,7 +588,6 @@ fn setReturnType(
         return setReturnType(
             alloc,
             nat_ctx,
-            all_T,
             ret,
             func,
             res.?,
@@ -616,7 +607,6 @@ fn setReturnType(
                 return setReturnType(
                     alloc,
                     nat_ctx,
-                    all_T,
                     tt,
                     func,
                     @field(res, tt.name.?),
@@ -635,13 +625,12 @@ fn setReturnType(
         // create a JS object
         // and call setReturnType on each object fields
         const js_obj = v8.Object.init(isolate);
-        const nested = all_T[ret.T_refl_index.?].nested[nested_index];
+        const nested = gen.Types[ret.T_refl_index.?].nested[nested_index];
         inline for (nested.fields) |field| {
             const name = field.name.?;
             const js_val = try setReturnType(
                 alloc,
                 nat_ctx,
-                all_T,
                 field,
                 func,
                 @field(res, name),
@@ -664,7 +653,7 @@ fn setReturnType(
         const js_obj = try setNativeObject(
             alloc,
             nat_ctx,
-            all_T[index],
+            gen.Types[index],
             ret.underT(),
             res,
             null,
@@ -724,7 +713,6 @@ fn postAttach(
 
 fn getNativeObject(
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     js_obj: v8.Object,
 ) !*T_refl.Self() {
     const T = T_refl.Self();
@@ -753,7 +741,7 @@ fn getNativeObject(
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(T, all_T, ext);
+            obj_ptr = try refs.getObject(T, gen.Types, ext);
         }
     }
     return obj_ptr;
@@ -761,7 +749,6 @@ fn getNativeObject(
 
 fn callFunc(
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime func: refl.Func,
     comptime func_kind: refl.FuncKind,
     cbk_info: CallbackInfo,
@@ -793,7 +780,6 @@ fn callFunc(
         nat_ctx.alloc,
         nat_ctx,
         T_refl,
-        all_T,
         func,
         cbk_info,
         raw_value,
@@ -806,7 +792,7 @@ fn callFunc(
 
     // retrieve the zig object
     if (comptime func_kind != .constructor and !T_refl.isEmpty()) {
-        const obj_ptr = getNativeObject(T_refl, all_T, cbk_info.getThis()) catch unreachable;
+        const obj_ptr = getNativeObject(T_refl, cbk_info.getThis()) catch unreachable;
         const self_T = @TypeOf(@field(args, "0"));
         if (self_T == T_refl.Self()) {
             @field(args, "0") = obj_ptr.*;
@@ -826,7 +812,6 @@ fn callFunc(
                 nat_ctx.alloc,
                 nat_ctx,
                 T_refl,
-                all_T,
                 func,
                 err,
                 isolate,
@@ -858,7 +843,6 @@ fn callFunc(
         const js_val = setReturnType(
             nat_ctx.alloc,
             nat_ctx,
-            all_T,
             func.return_type,
             func,
             res,
@@ -870,7 +854,6 @@ fn callFunc(
                 nat_ctx.alloc,
                 nat_ctx,
                 T_refl,
-                all_T,
                 func,
                 err,
                 isolate,
@@ -895,7 +878,6 @@ fn callFunc(
 
 fn generateConstructor(
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime func: refl.Func,
 ) v8.FunctionCallback {
     return struct {
@@ -905,7 +887,6 @@ fn generateConstructor(
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             callFunc(
                 T_refl,
-                all_T,
                 func,
                 .constructor,
                 CallbackInfo{ .func_cbk = info },
@@ -918,7 +899,6 @@ fn generateConstructor(
 fn generateGetter(
     comptime T_refl: refl.Struct,
     comptime func: refl.Func,
-    comptime all_T: []refl.Struct,
 ) v8.AccessorNameGetterCallback {
     return struct {
         fn getter(
@@ -930,7 +910,6 @@ fn generateGetter(
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             callFunc(
                 T_refl,
-                all_T,
                 func,
                 .getter,
                 CallbackInfo{ .prop_cbk = info },
@@ -943,7 +922,6 @@ fn generateGetter(
 fn generateSetter(
     comptime T_refl: refl.Struct,
     comptime func: refl.Func,
-    comptime all_T: []refl.Struct,
 ) v8.AccessorNameSetterCallback {
     return struct {
         fn setter(
@@ -956,7 +934,6 @@ fn generateSetter(
             const info = v8.PropertyCallbackInfo.initFromV8(raw_info);
             callFunc(
                 T_refl,
-                all_T,
                 func,
                 .setter,
                 CallbackInfo{ .prop_cbk = info },
@@ -968,7 +945,6 @@ fn generateSetter(
 
 fn generateMethod(
     comptime T_refl: refl.Struct,
-    comptime all_T: []refl.Struct,
     comptime func: refl.Func,
 ) v8.FunctionCallback {
     return struct {
@@ -978,7 +954,6 @@ fn generateMethod(
             const info = v8.FunctionCallbackInfo.initFromV8(raw_info);
             callFunc(
                 T_refl,
-                all_T,
                 func,
                 .method,
                 CallbackInfo{ .func_cbk = info },
@@ -1048,7 +1023,7 @@ fn setStaticAttrs(
 
 pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.ObjectTemplate, ?TPL) anyerror!TPL);
 
-pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadFnType {
+pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
     return struct {
 
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
@@ -1073,7 +1048,7 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
             // create a v8 FunctionTemplate for the T constructor function,
             // with the corresponding zig callback,
             // and attach it to the global namespace
-            const cstr_func = generateConstructor(T_refl, all_T, T_refl.constructor);
+            const cstr_func = generateConstructor(T_refl, T_refl.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallbackData(isolate, cstr_func, nat_ctx_data);
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
@@ -1133,7 +1108,7 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
             // set getters for the v8 ObjectTemplate,
             // with the corresponding zig callbacks
             inline for (T_refl.getters) |getter| {
-                const getter_func = generateGetter(T_refl, getter, all_T);
+                const getter_func = generateGetter(T_refl, getter);
                 var key: v8.Name = undefined;
                 if (getter.symbol) |symbol| {
                     key = switch (symbol) {
@@ -1147,7 +1122,7 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
                     prototype.setGetterData(key, getter_func, nat_ctx_data);
                 } else {
                     const setter = T_refl.setters[getter.setter_index.?];
-                    const setter_func = generateSetter(T_refl, setter, all_T);
+                    const setter_func = generateSetter(T_refl, setter);
                     prototype.setGetterAndSetterData(key, getter_func, setter_func, nat_ctx_data);
                 }
             }
@@ -1166,7 +1141,7 @@ pub fn loadFn(comptime T_refl: refl.Struct, comptime all_T: []refl.Struct) LoadF
             // with the corresponding zig callbacks,
             // and attach them to the object template
             inline for (T_refl.methods) |method| {
-                const func = generateMethod(T_refl, all_T, method);
+                const func = generateMethod(T_refl, method);
                 const func_tpl = v8.FunctionTemplate.initCallbackData(isolate, func, nat_ctx_data);
                 var key: v8.Name = undefined;
                 if (method.symbol) |symbol| {
