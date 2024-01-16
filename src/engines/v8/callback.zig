@@ -186,6 +186,13 @@ pub const Func = struct {
     ) anyerror!void {
         defer self.deinit(alloc);
 
+        // ensure Native args and JS args are not both provided
+        const info = @typeInfo(@TypeOf(nat_args));
+        if (comptime info != .Null) {
+            // TODO: could be a compile error if we use generics for JS args
+            std.debug.assert(self.js_args_pers.len == 0);
+        }
+
         // retrieve context
         // TODO: should we instead store the original context in the Func object?
         // in this case we need to have a permanent handle (Global ?) on it.
@@ -195,7 +202,6 @@ pub const Func = struct {
         const js_func = self.js_func_pers.castToFunction();
 
         // retrieve arguments
-        const info = @typeInfo(@TypeOf(nat_args));
         var args = try alloc.alloc(v8.Value, self.js_args_pers.len);
         defer alloc.free(args);
         if (comptime info == .Struct) {
