@@ -238,7 +238,8 @@ pub const Type = struct {
     }
 
     // check that user-defined types have been provided as an API
-    fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
+    pub fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
+        std.debug.assert(@inComptime());
 
         // lookup unecessary
         for (builtin_types) |builtin_T| {
@@ -309,7 +310,9 @@ pub const Type = struct {
         return &union_types;
     }
 
-    fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
+    pub fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
+        std.debug.assert(@inComptime());
+
         const info = @typeInfo(Type._underT(T));
 
         // union T
