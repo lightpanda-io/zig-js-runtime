@@ -99,8 +99,8 @@ pub const Func = struct {
     // at the end of the JS calling function execution.
     js_func_pers: PersistentFunction,
 
-    // TODO: as we know this information at comptime we could
-    // change this to generics function with JS args len as param
+    // TODO: as we know this information at comptime
+    // we could change this to a generics function with JS args len as param
     // avoiding the need to allocate/free js_args_pers
     js_args_pers: []PersistentValue,
 
@@ -161,7 +161,7 @@ pub const Func = struct {
         };
     }
 
-    fn deinit(self: Func, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: Func, alloc: std.mem.Allocator) void {
 
         // cleanup persistent references in v8
         var js_func_pers = self.js_func_pers; // TODO: why do we need var here?
@@ -180,7 +180,6 @@ pub const Func = struct {
         self: Func,
         nat_args: anytype,
     ) anyerror!void {
-        defer self.deinit(self.nat_ctx.alloc);
 
         // ensure Native args and JS args are not both provided
         const info = @typeInfo(@TypeOf(nat_args));
