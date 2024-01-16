@@ -97,7 +97,7 @@ pub const Func = struct {
     // NOTE: we use persistent handles here
     // to ensure the references are not garbage collected
     // at the end of the JS calling function execution.
-    js_func_pers: *PersistentFunction,
+    js_func_pers: PersistentFunction,
 
     // TODO: as we know this information at comptime we could
     // change this to generics function with JS args len as param
@@ -123,9 +123,7 @@ pub const Func = struct {
         }
         const js_func = js_func_val.castTo(v8.Function);
 
-        // const js_func_pers = PersistentFunction.init(isolate, js_func);
-        const js_func_pers = try alloc.create(PersistentFunction);
-        js_func_pers.* = PersistentFunction.init(isolate, js_func);
+        const js_func_pers = PersistentFunction.init(isolate, js_func);
 
         // NOTE: we need to store the JS callback arguments on the heap
         // as the call method will be executed in another stack frame,
@@ -176,7 +174,6 @@ pub const Func = struct {
 
         // free heap
         alloc.free(self.js_args_pers);
-        alloc.destroy(self.js_func_pers);
     }
 
     pub fn call(
