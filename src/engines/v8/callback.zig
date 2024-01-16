@@ -178,10 +178,9 @@ pub const Func = struct {
 
     pub fn call(
         self: Func,
-        alloc: std.mem.Allocator,
         nat_args: anytype,
     ) anyerror!void {
-        defer self.deinit(alloc);
+        defer self.deinit(self.nat_ctx.alloc);
 
         // ensure Native args and JS args are not both provided
         const info = @typeInfo(@TypeOf(nat_args));
@@ -199,13 +198,13 @@ pub const Func = struct {
         const js_func = self.js_func_pers.castToFunction();
 
         // retrieve arguments
-        var args = try alloc.alloc(v8.Value, self.js_args_pers.len);
-        defer alloc.free(args);
+        var args = try self.nat_ctx.alloc.alloc(v8.Value, self.js_args_pers.len);
+        defer self.nat_ctx.alloc.free(args);
         if (comptime info == .Struct) {
 
             // - Native arguments provided on function call
             std.debug.assert(info.Struct.is_tuple);
-            args = try alloc.alloc(v8.Value, info.Struct.fields.len);
+            args = try self.nat_ctx.alloc.alloc(v8.Value, info.Struct.fields.len);
             comptime var i = 0;
             inline while (i < info.Struct.fields.len) {
                 comptime var ret: refl.Type = undefined;

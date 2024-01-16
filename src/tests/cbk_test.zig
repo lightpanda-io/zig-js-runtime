@@ -53,13 +53,9 @@ pub const Window = struct {
         loop.timeout(n * std.time.ns_per_ms, callback);
     }
 
-    pub fn _cbkAsyncWithNatArg(
-        _: Window,
-        alloc: std.mem.Allocator,
-        callback: Callback,
-    ) !void {
+    pub fn _cbkAsyncWithNatArg(_: Window, callback: Callback) !void {
         const other = OtherCbk{ .val = 5 };
-        callback.call(alloc, .{other}) catch {};
+        callback.call(.{other}) catch {};
         // ignore the error to let the JS msg
     }
 
