@@ -2,9 +2,12 @@ const std = @import("std");
 
 const public = @import("api.zig");
 
-const Window = @import("tests/cbk_test.zig").Window;
+const WindowTypes = @import("tests/cbk_test.zig").Types;
 
-pub const Types = public.reflect(.{ public.Console, Window });
+pub const Types = public.reflect(public.MergeTuple(.{
+    .{public.Console},
+    WindowTypes,
+}));
 
 pub fn main() !void {
 

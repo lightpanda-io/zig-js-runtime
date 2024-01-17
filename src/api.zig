@@ -16,6 +16,8 @@ pub const ContextExecFn = internal.eng.ContextExecFn;
 // Utils
 // -----
 
+pub const MergeTuple = internal.gen.MergeTuple;
+
 pub const shell = @import("shell.zig").shell;
 pub const shellExec = @import("shell.zig").shellExec;
 
