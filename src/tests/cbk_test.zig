@@ -9,6 +9,14 @@ const CallbackArg = jsruntime.CallbackArg;
 
 const tests = jsruntime.test_utils;
 
+pub const OtherCbk = struct {
+    val: u8,
+
+    pub fn get_val(self: OtherCbk) u8 {
+        return self.val;
+    }
+};
+
 pub const Window = struct {
     pub fn constructor() Window {
         return Window{};
@@ -33,7 +41,7 @@ pub const Window = struct {
         loop.timeout(n * std.time.ns_per_ms, callback);
     }
 
-    pub fn _cbkAsyncWithArg(
+    pub fn _cbkAsyncWithJSArg(
         _: Window,
         loop: *jsruntime.Loop,
         callback: Callback,
@@ -44,9 +52,18 @@ pub const Window = struct {
         // TODO: check this value can be holded in u63
         loop.timeout(n * std.time.ns_per_ms, callback);
     }
+
+    pub fn _cbkAsyncWithNatArg(_: Window, callback: Callback) !void {
+        const other = OtherCbk{ .val = 5 };
+        callback.call(.{other}) catch {};
+        // ignore the error to let the JS msg
+    }
+
+    pub fn deinit(_: *Window, _: std.mem.Allocator) void {}
 };
 
 pub const Types = .{
+    OtherCbk,
     Window,
 };
 
@@ -142,8 +159,8 @@ pub fn exec(
     };
     try tests.checkCases(js_env, &cases_cbk_async);
 
-    // cbkAsyncWithArg
-    var cases_cbk_async_with_arg = [_]tests.Case{
+    // cbkAsyncWithJSArg
+    var cases_cbk_async_with_js_arg = [_]tests.Case{
         // traditional anonymous function
         .{
             .src =
@@ -152,7 +169,7 @@ pub fn exec(
             \\i = i + a;
             \\if (i != 3) {throw Error('i is not equal to 3');}
             \\};
-            \\window.cbkAsyncWithArg(f, 100, 2); // 0.1 second
+            \\window.cbkAsyncWithJSArg(f, 100, 2); // 0.1 second
             ,
             .ex = "undefined",
         },
@@ -160,7 +177,7 @@ pub fn exec(
         .{
             .src =
             \\let j = 1;
-            \\window.cbkAsyncWithArg((a) => {
+            \\window.cbkAsyncWithJSArg((a) => {
             \\j = j + a;
             \\if (j != 3) {throw Error('j is not equal to 3');}
             \\}, 100, 2); // 0.1 second
@@ -168,5 +185,31 @@ pub fn exec(
             .ex = "undefined",
         },
     };
-    try tests.checkCases(js_env, &cases_cbk_async_with_arg);
+    try tests.checkCases(js_env, &cases_cbk_async_with_js_arg);
+
+    // cbkAsyncWithNatArg
+    var cases_cbk_async_with_nat_arg = [_]tests.Case{
+        .{ .src = "let exp = 5", .ex = "undefined" },
+
+        // traditional anonymous function
+        .{
+            .src =
+            \\function f(other) {
+            \\if (other.val != exp) {throw Error('other.val expected ' + exp + ', got ' + other.val);}
+            \\};
+            \\window.cbkAsyncWithNatArg(f);
+            ,
+            .ex = "undefined",
+        },
+        // arrow functional
+        .{
+            .src =
+            \\window.cbkAsyncWithNatArg((other) => {
+            \\if (other.val != exp) {throw Error('other.val expected ' + exp + ', got ' + other.val);}
+            \\});
+            ,
+            .ex = "undefined",
+        },
+    };
+    try tests.checkCases(js_env, &cases_cbk_async_with_nat_arg);
 }

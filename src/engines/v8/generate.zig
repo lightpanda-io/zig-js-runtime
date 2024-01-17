@@ -306,6 +306,7 @@ fn getArgs(
                 // (getters and setters)
                 cbk.Func => cbk.Func.init(
                     alloc,
+                    nat_ctx,
                     func,
                     cbk_info.func_cbk,
                     isolate,
@@ -567,7 +568,7 @@ pub fn setNativeObject(
     );
 }
 
-fn setNativeType(
+pub fn setNativeType(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime ret: refl.Type,

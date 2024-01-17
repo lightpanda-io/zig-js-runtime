@@ -103,8 +103,9 @@ pub const SingleThreaded = struct {
         }
 
         // js callback
-        if (ctx.js_cbk != null) {
-            ctx.js_cbk.?.call(ctx.loop.alloc) catch {
+        if (ctx.js_cbk) |js_cbk| {
+            defer js_cbk.deinit(ctx.loop.alloc);
+            js_cbk.call(null) catch {
                 ctx.loop.cbk_error = true;
             };
         }
