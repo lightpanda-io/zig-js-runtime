@@ -166,12 +166,22 @@ pub fn jsToObject(
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) !T {
+    const info = @typeInfo(T);
+
+    // JS Null or Undefined value
+    if (js_val.isNull() or js_val.isUndefined()) {
+        // if Native optional type return null
+        if (comptime info == .Optional) {
+            return null;
+        }
+    }
+
+    // check it's a JS object
     if (!js_val.isObject()) {
         return error.JSNotObject;
     }
 
     // unwrap Optional
-    const info = @typeInfo(T);
     if (comptime info == .Optional) {
         return try jsToObject(alloc, nested_T, info.Optional.child, js_val, isolate, ctx);
     }
