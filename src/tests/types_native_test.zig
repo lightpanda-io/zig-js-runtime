@@ -288,4 +288,13 @@ pub fn exec(
         .{ .src = "car.brandPtr.name === 'Ford'", .ex = "true" },
     };
     try tests.checkCases(js_env, &separate_cases);
+
+    // Test for the bug #185: native func expects a object but the js value is
+    // not.
+    // https://github.com/lightpanda-io/jsruntime-lib/issues/185
+    var bug_native_obj = [_]tests.Case{
+        .{ .src = "let car = new Car();", .ex = "undefined" },
+        .{ .src = "car.changeBrand('foo');", .ex = "true" },
+    };
+    try tests.checkCases(js_env, &bug_native_obj);
 }
