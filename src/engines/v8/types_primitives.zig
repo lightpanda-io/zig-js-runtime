@@ -166,19 +166,29 @@ pub fn jsToObject(
     isolate: v8.Isolate,
     ctx: v8.Context,
 ) !T {
+    const info = @typeInfo(T);
+
+    // JS Null or Undefined value
+    if (js_val.isNull() or js_val.isUndefined()) {
+        // if Native optional type return null
+        if (comptime info == .Optional) {
+            return null;
+        }
+    }
+
+    // check it's a JS object
     if (!js_val.isObject()) {
         return error.JSNotObject;
     }
 
     // unwrap Optional
-    const info = @typeInfo(T);
     if (comptime info == .Optional) {
         return try jsToObject(alloc, nested_T, info.Optional.child, js_val, isolate, ctx);
     }
 
     const js_obj = js_val.castTo(v8.Object);
     var obj: T = undefined;
-    inline for (nested_T.fields) |field| {
+    inline for (nested_T.fields, 0..) |field, i| {
         const name = field.name.?;
         const key = v8.String.initUtf8(isolate, name);
         if (js_obj.has(ctx, key.toValue())) {
@@ -188,7 +198,7 @@ pub fn jsToObject(
         } else {
             if (comptime field.underOpt() != null) {
                 @field(obj, name) = null;
-            } else {
+            } else if (comptime !refl.hasDefaultValue(nested_T.T, i)) {
                 return error.JSWrongObject;
             }
         }

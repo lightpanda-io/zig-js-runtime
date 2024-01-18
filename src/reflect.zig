@@ -1656,6 +1656,11 @@ pub fn postAttachFunc(comptime T: type) !?type {
     return argsT(func);
 }
 
+pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
+    std.debug.assert(@inComptime());
+    return @typeInfo(T).Struct.fields[index].default_value != null;
+}
+
 // Utils funcs
 // -----------
 
