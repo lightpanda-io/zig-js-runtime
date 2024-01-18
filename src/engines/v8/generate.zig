@@ -150,10 +150,7 @@ fn getNativeArg(
     if (!js_value.isObject()) return JSError.InvalidArgument;
 
     // JS object
-    const ptr = getNativeObject(
-        T_refl,
-        js_value.castTo(v8.Object),
-    ) catch unreachable; // TODO: throw js exception
+    const ptr = try getNativeObject(T_refl, js_value.castTo(v8.Object));
     if (arg_T.underPtr() != null) {
         value = ptr;
     } else {
