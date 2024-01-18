@@ -139,6 +139,8 @@ fn getNativeArg(
         // TODO: else return error "Argument x is not an object"
     }
 
+    if (!js_value.isObject()) unreachable; // TODO: throw js exception
+
     // JS object
     const ptr = getNativeObject(
         T_refl,
