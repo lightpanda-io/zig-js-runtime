@@ -22,6 +22,10 @@ const TPL = @import("v8.zig").TPL;
 // Utils functions
 // ---------------
 
+const JSError = error{
+    InvalidArgument,
+};
+
 fn throwBasicError(msg: []const u8, isolate: v8.Isolate) v8.Value {
     const except_msg = v8.String.initUtf8(isolate, msg);
     const exception = v8.Exception.initError(except_msg);
@@ -36,6 +40,11 @@ fn throwError(
     err: anyerror,
     isolate: v8.Isolate,
 ) v8.Value {
+    // well known error.
+    switch (err) {
+        JSError.InvalidArgument => return throwTypeError("invalid argument", isolate),
+        else => {},
+    }
     const ret = func.return_type;
 
     // Is the returned Type a custom Exception error?
@@ -136,10 +145,9 @@ fn getNativeArg(
         if (comptime arg_T.underOpt() != null) {
             return null;
         }
-        // TODO: else return error "Argument x is not an object"
     }
 
-    if (!js_value.isObject()) unreachable; // TODO: throw js exception
+    if (!js_value.isObject()) return JSError.InvalidArgument;
 
     // JS object
     const ptr = getNativeObject(

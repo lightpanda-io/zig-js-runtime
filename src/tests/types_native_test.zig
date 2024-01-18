@@ -293,8 +293,7 @@ pub fn exec(
     // not.
     // https://github.com/lightpanda-io/jsruntime-lib/issues/185
     var bug_native_obj = [_]tests.Case{
-        .{ .src = "let car = new Car();", .ex = "undefined" },
-        .{ .src = "car.changeBrand('foo');", .ex = "true" },
+        .{ .src = "try { car.changeBrand('foo'); false; } catch(e) { e instanceof TypeError; }", .ex = "true" },
     };
     try tests.checkCases(js_env, &bug_native_obj);
 }
