@@ -188,7 +188,7 @@ pub fn jsToObject(
 
     const js_obj = js_val.castTo(v8.Object);
     var obj: T = undefined;
-    inline for (nested_T.fields) |field| {
+    inline for (nested_T.fields, 0..) |field, i| {
         const name = field.name.?;
         const key = v8.String.initUtf8(isolate, name);
         if (js_obj.has(ctx, key.toValue())) {
@@ -198,7 +198,7 @@ pub fn jsToObject(
         } else {
             if (comptime field.underOpt() != null) {
                 @field(obj, name) = null;
-            } else {
+            } else if (comptime !refl.hasDefaultValue(nested_T.T, i)) {
                 return error.JSWrongObject;
             }
         }
