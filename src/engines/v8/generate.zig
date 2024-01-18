@@ -127,7 +127,7 @@ fn getNativeArg(
     comptime T_refl: refl.Struct,
     comptime arg_T: refl.Type,
     js_value: v8.Value,
-) arg_T.T {
+) !arg_T.T {
     var value: arg_T.T = undefined;
 
     // JS Null or Undefined value
@@ -163,13 +163,13 @@ fn getArg(
     js_val: ?v8.Value,
     isolate: v8.Isolate,
     js_ctx: v8.Context,
-) arg.T {
+) !arg.T {
     var value: arg.T = undefined;
 
     if (arg.isNative()) {
 
         // native types
-        value = getNativeArg(gen.Types[arg.T_refl_index.?], arg, js_val.?);
+        value = try getNativeArg(gen.Types[arg.T_refl_index.?], arg, js_val.?);
     } else if (arg.nested_index) |index| {
 
         // nested types (ie. JS anonymous objects)
@@ -272,7 +272,7 @@ fn getArgs(
     raw_value: ?*const v8.C_Value,
     isolate: v8.Isolate,
     js_ctx: v8.Context,
-) func.args_T {
+) !func.args_T {
     var args: func.args_T = undefined;
 
     const js_args_nb = cbk_info.length(raw_value);
@@ -322,7 +322,7 @@ fn getArgs(
 
                 // normal cases
                 else => blk: {
-                    break :blk getArg(
+                    break :blk try getArg(
                         alloc,
                         nat_ctx,
                         T_refl,
@@ -342,7 +342,7 @@ fn getArgs(
             const slice = alloc.alloc(arg_real.T, rest_nb) catch unreachable;
             var iter: usize = 0;
             while (iter < rest_nb) {
-                const slice_value = getArg(
+                const slice_value = try getArg(
                     alloc,
                     nat_ctx,
                     T_refl,
@@ -779,7 +779,19 @@ fn callFunc(
         raw_value,
         isolate,
         js_ctx,
-    );
+    ) catch |err| {
+        // TODO: how to handle internal errors vs user errors
+        const js_err = throwError(
+            nat_ctx.alloc,
+            nat_ctx,
+            T_refl,
+            func,
+            err,
+            isolate,
+        );
+        cbk_info.getReturnValue().setValueHandle(js_err.handle);
+        return;
+    };
 
     // free memory if required
     defer freeArgs(nat_ctx.alloc, func, args) catch unreachable;
