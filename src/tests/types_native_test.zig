@@ -289,11 +289,15 @@ pub fn exec(
     };
     try tests.checkCases(js_env, &separate_cases);
 
-    // Test for the bug #185: native func expects an object
-    // but the js value is not.
-    // https://github.com/lightpanda-io/jsruntime-lib/issues/185
     var bug_native_obj = [_]tests.Case{
+        // Test for the bug #185: native func expects a object but the js value is
+        // not.
+        // https://github.com/lightpanda-io/jsruntime-lib/issues/185
         .{ .src = "try { car.changeBrand('foo'); false; } catch(e) { e instanceof TypeError; }", .ex = "true" },
+        // Test for the bug #187: native func expects a native object but the js value is
+        // not.
+        // https://github.com/lightpanda-io/jsruntime-lib/issues/187
+        .{ .src = "try { car.changeBrand({'foo': 'bar'}); false; } catch(e) { e instanceof TypeError; }", .ex = "true" },
     };
     try tests.checkCases(js_env, &bug_native_obj);
 }
