@@ -724,6 +724,12 @@ fn getNativeObject(
         obj_ptr.* = T{};
     } else {
         // retrieve the zig object from it's javascript counterpart
+
+        // check if the js object has a least one internal field.
+        if (js_obj.internalFieldCount() == 0) return JSError.InvalidArgument;
+
+        // TODO ensure the js object corresponds to the expected native type.
+
         const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
         if (comptime T_refl.is_mem_guarantied()) {
             // memory is fixed
