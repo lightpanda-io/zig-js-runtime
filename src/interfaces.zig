@@ -125,6 +125,10 @@ pub fn TryCatch(comptime T: type, comptime env: type) void {
 }
 
 pub fn Callback(comptime T: type) void {
+
+    // id()
+    assertDecl(T, "id", fn (T: T) usize);
+
     // call()
     assertDecl(T, "call", fn (T: T, nat_args: anytype) anyerror!void);
 }
