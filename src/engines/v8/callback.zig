@@ -93,6 +93,7 @@ const PersistentFunction = v8.Persistent(v8.Function);
 const PersistentValue = v8.Persistent(v8.Value);
 
 pub const Func = struct {
+    js_func_ptr: usize,
 
     // NOTE: we use persistent handles here
     // to ensure the references are not garbage collected
@@ -154,6 +155,7 @@ pub const Func = struct {
         }
 
         return Func{
+            .js_func_ptr = @intFromPtr(js_func.handle),
             .js_func_pers = js_func_pers,
             .js_args_pers = js_args_pers,
             .nat_ctx = nat_ctx,
@@ -174,6 +176,10 @@ pub const Func = struct {
 
         // free heap
         alloc.free(self.js_args_pers);
+    }
+
+    pub fn id(self: Func) usize {
+        return self.js_func_ptr;
     }
 
     pub fn call(
