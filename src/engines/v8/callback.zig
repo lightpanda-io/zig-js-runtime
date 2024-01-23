@@ -93,7 +93,7 @@ const PersistentFunction = v8.Persistent(v8.Function);
 const PersistentValue = v8.Persistent(v8.Value);
 
 pub const Func = struct {
-    js_func_ptr: usize,
+    _id: usize,
 
     // NOTE: we use persistent handles here
     // to ensure the references are not garbage collected
@@ -155,7 +155,7 @@ pub const Func = struct {
         }
 
         return Func{
-            .js_func_ptr = @intFromPtr(js_func.handle),
+            ._id = js_func_val.castTo(v8.Object).getIdentityHash(),
             .js_func_pers = js_func_pers,
             .js_args_pers = js_args_pers,
             .nat_ctx = nat_ctx,
@@ -179,7 +179,7 @@ pub const Func = struct {
     }
 
     pub fn id(self: Func) usize {
-        return self.js_func_ptr;
+        return self._id;
     }
 
     pub fn call(
