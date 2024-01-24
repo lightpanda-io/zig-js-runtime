@@ -108,6 +108,12 @@ pub fn JSResult(comptime T: type) void {
     // TODO: how to get the result?
 }
 
+pub fn JSObjectID(comptime T: type) void {
+
+    // get()
+    assertDecl(T, "get", fn (self: T) usize);
+}
+
 pub fn TryCatch(comptime T: type, comptime env: type) void {
 
     // init()

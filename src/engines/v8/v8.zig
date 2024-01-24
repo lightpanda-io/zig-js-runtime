@@ -386,6 +386,18 @@ fn createJSObject(
     }
 }
 
+pub const JSObjectID = struct {
+    id: usize,
+
+    pub fn set(obj: v8.Object) JSObjectID {
+        return .{ .id = obj.getIdentityHash() };
+    }
+
+    pub fn get(self: JSObjectID) usize {
+        return self.id;
+    }
+};
+
 pub const JSObject = struct {
     nat_ctx: *NativeContext,
     js_ctx: v8.Context,
