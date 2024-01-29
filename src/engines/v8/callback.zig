@@ -7,6 +7,7 @@ const refl = internal.refl;
 const gen = internal.gen;
 const NativeContext = internal.NativeContext;
 
+const JSObjectID = @import("v8.zig").JSObjectID;
 const setNativeType = @import("generate.zig").setNativeType;
 
 // TODO: Make this JS engine agnostic
@@ -93,7 +94,7 @@ const PersistentFunction = v8.Persistent(v8.Function);
 const PersistentValue = v8.Persistent(v8.Value);
 
 pub const Func = struct {
-    _id: usize,
+    _id: JSObjectID,
 
     // NOTE: we use persistent handles here
     // to ensure the references are not garbage collected
@@ -123,7 +124,6 @@ pub const Func = struct {
             return error.JSWrongType;
         }
         const js_func = js_func_val.castTo(v8.Function);
-
         const js_func_pers = PersistentFunction.init(isolate, js_func);
 
         // NOTE: we need to store the JS callback arguments on the heap
@@ -155,7 +155,7 @@ pub const Func = struct {
         }
 
         return Func{
-            ._id = js_func_val.castTo(v8.Object).getIdentityHash(),
+            ._id = JSObjectID.set(js_func_val.castTo(v8.Object)),
             .js_func_pers = js_func_pers,
             .js_args_pers = js_args_pers,
             .nat_ctx = nat_ctx,
@@ -179,7 +179,7 @@ pub const Func = struct {
     }
 
     pub fn id(self: Func) usize {
-        return self._id;
+        return self._id.get();
     }
 
     pub fn call(

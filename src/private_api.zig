@@ -12,6 +12,8 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.CallbackArg(engine.CallbackArg);
 
     interfaces.JSResult(engine.JSResult);
+    interfaces.JSObjectID(engine.JSObjectID);
+
     interfaces.TryCatch(engine.TryCatch, engine.Env);
 
     interfaces.VM(engine.VM);

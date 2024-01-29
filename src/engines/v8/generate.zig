@@ -10,7 +10,6 @@ const NativeContext = internal.NativeContext;
 
 const public = @import("../../api.zig");
 const Loop = public.Loop;
-const JSObject = public.JSObject;
 
 const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
@@ -18,6 +17,8 @@ const jsToNative = @import("types_primitives.zig").jsToNative;
 const jsToObject = @import("types_primitives.zig").jsToObject;
 
 const TPL = @import("v8.zig").TPL;
+const JSObject = @import("v8.zig").JSObject;
+const JSObjectID = @import("v8.zig").JSObjectID;
 
 // Utils functions
 // ---------------
@@ -194,6 +195,7 @@ fn getArg(
             *Loop => nat_ctx.loop,
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
             JSObject => JSObject{ .nat_ctx = nat_ctx, .js_ctx = js_ctx, .js_obj = this },
+            JSObjectID => JSObjectID.set(js_val.?.castTo(v8.Object)),
             else => jsToNative(
                 alloc,
                 arg.T,

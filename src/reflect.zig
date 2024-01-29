@@ -8,6 +8,7 @@ const Loop = public.Loop;
 const Callback = public.Callback;
 const CallbackSync = public.CallbackSync;
 const CallbackArg = public.CallbackArg;
+const JSObjectID = public.JSObjectID;
 
 const JSObject = public.JSObject;
 
@@ -50,6 +51,7 @@ const internal_types = [_]type{
     Callback,
     CallbackSync,
     CallbackArg,
+    JSObjectID,
 };
 
 fn isInternalType(comptime T: type) bool {
