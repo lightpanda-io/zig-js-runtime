@@ -58,6 +58,10 @@ pub const SingleThreaded = struct {
         }
     }
 
+    pub fn tick(self: *Self) !void {
+        try self.io.tick();
+    }
+
     // Register events atomically
     // - add 1 event and return previous value
     fn addEvent(self: *Self) usize {
@@ -124,5 +128,150 @@ pub const SingleThreaded = struct {
         if (builtin.is_test) {
             report("start timeout {d} for {d} nanoseconds", .{ old_events_nb + 1, nanoseconds });
         }
+    }
+
+    // Network
+    pub fn open(self: *Self, family: u32, sock_type: u32, protocol: u32) !std.os.socket_t {
+        return self.io.open_socket(family, sock_type, protocol);
+    }
+
+    // Connect
+    const ContextConnect = struct {
+        loop: *Self,
+        context: *anyopaque,
+        callback: *const fn (context: *anyopaque, handle: std.os.socket_t, err: ?anyerror) void,
+        handle: std.os.socket_t,
+    };
+
+    fn connectCallback(
+        ctx: *ContextConnect,
+        completion: *IO.Completion,
+        result: IO.ConnectError!void,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+        _ = ctx.loop.removeEvent();
+
+        _ = result catch |err| {
+            return ctx.callback(ctx.context, ctx.handle, err);
+        };
+
+        return ctx.callback(ctx.context, ctx.handle, null);
+    }
+
+    pub fn connect(
+        self: *Self,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context, handle: std.os.socket_t, err: ?anyerror) void,
+        handle: std.os.socket_t,
+        address: std.net.Address,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctx = self.alloc.create(ContextConnect) catch unreachable;
+        ctx.* = ContextConnect{
+            .loop = self,
+            .context = context,
+            .callback = struct {
+                fn wrapper(cctx: *anyopaque, hdle: std.os.socket_t, err: ?anyerror) void {
+                    callback(@as(Context, @ptrFromInt(@intFromPtr(cctx))), hdle, err);
+                }
+            }.wrapper,
+            .handle = handle,
+        };
+        _ = self.addEvent();
+        self.io.connect(*ContextConnect, ctx, connectCallback, completion, handle, address);
+    }
+
+    // Receive
+    const ContextReceive = struct {
+        loop: *Self,
+        context: *anyopaque,
+        buffer: []u8,
+        callback: *const fn (context: *anyopaque, buffer: []const u8, err: ?anyerror, res: usize) void,
+    };
+
+    fn receiveCallback(
+        ctx: *ContextReceive,
+        completion: *IO.Completion,
+        result: IO.RecvError!usize,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+        _ = ctx.loop.removeEvent();
+
+        const len = result catch |err| {
+            return ctx.callback(ctx.context, ctx.buffer, err, 0);
+        };
+        return ctx.callback(ctx.context, ctx.buffer, null, len);
+    }
+
+    pub fn receive(
+        self: *Self,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context, buffer: []const u8, err: ?anyerror, res: usize) void,
+        handle: std.os.socket_t,
+        buffer: []u8,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctx = self.alloc.create(ContextReceive) catch unreachable;
+        ctx.* = ContextReceive{
+            .loop = self,
+            .context = context,
+            .buffer = buffer,
+            .callback = struct {
+                fn wrapper(cctx: *anyopaque, buf: []const u8, err: ?anyerror, res: usize) void {
+                    callback(@as(Context, @ptrFromInt(@intFromPtr(cctx))), buf, err, res);
+                }
+            }.wrapper,
+        };
+        _ = self.addEvent();
+        self.io.recv(*ContextReceive, ctx, receiveCallback, completion, handle, buffer);
+    }
+
+    // Send
+    const ContextSend = struct {
+        loop: *Self,
+        context: *anyopaque,
+        callback: *const fn (context: *anyopaque, err: ?anyerror, res: usize) void,
+    };
+
+    fn sendCallback(
+        ctx: *ContextSend,
+        completion: *IO.Completion,
+        result: IO.SendError!usize,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+        _ = ctx.loop.removeEvent();
+
+        const len = result catch |err| {
+            return ctx.callback(ctx.context, err, 0);
+        };
+        return ctx.callback(ctx.context, null, len);
+    }
+
+    pub fn send(
+        self: *Self,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context, err: ?anyerror, res: usize) void,
+        handle: std.os.socket_t,
+        buffer: []const u8,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctx = self.alloc.create(ContextSend) catch unreachable;
+        ctx.* = ContextSend{
+            .loop = self,
+            .context = context,
+            .callback = struct {
+                fn wrapper(cctx: *anyopaque, err: ?anyerror, res: usize) void {
+                    callback(@as(Context, @ptrFromInt(@intFromPtr(cctx))), err, res);
+                }
+            }.wrapper,
+        };
+        _ = self.addEvent();
+        self.io.send(*ContextSend, ctx, sendCallback, completion, handle, buffer);
     }
 };
