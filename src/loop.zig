@@ -130,6 +130,50 @@ pub const SingleThreaded = struct {
         }
     }
 
+    // Yield
+    const ContextYield = struct {
+        loop: *Self,
+        context: *anyopaque,
+        callback: *const fn (context: *anyopaque, err: ?anyerror) void,
+    };
+
+    fn yieldCallback(
+        ctx: *ContextYield,
+        completion: *IO.Completion,
+        result: IO.TimeoutError!void,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+        _ = ctx.loop.removeEvent();
+
+        _ = result catch |err| {
+            return ctx.callback(ctx.context, err);
+        };
+
+        return ctx.callback(ctx.context, null);
+    }
+
+    pub fn yield(
+        self: *Self,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context, err: ?anyerror) void,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctx = self.alloc.create(ContextYield) catch unreachable;
+        ctx.* = ContextYield{
+            .loop = self,
+            .context = context,
+            .callback = struct {
+                fn wrapper(cctx: *anyopaque, err: ?anyerror) void {
+                    callback(@as(Context, @ptrFromInt(@intFromPtr(cctx))), err);
+                }
+            }.wrapper,
+        };
+        _ = self.addEvent();
+        self.io.timeout(*ContextYield, ctx, yieldCallback, completion, 0);
+    }
+
     // Network
     pub fn open(self: *Self, family: u32, sock_type: u32, protocol: u32) !std.os.socket_t {
         return self.io.open_socket(family, sock_type, protocol);
