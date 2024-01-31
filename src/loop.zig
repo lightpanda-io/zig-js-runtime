@@ -129,19 +129,20 @@ pub const SingleThreaded = struct {
     // Yield
     pub fn Yield(comptime Ctx: type) type {
         // TODO check ctx interface funcs:
-        // - onYield(?anyerror) void
+        // - onYield(ctx: *Ctx, ?anyerror) void
         return struct {
             const YieldImpl = @This();
             const Loop = Self;
 
             loop: *Loop,
             ctx: *Ctx,
-            completion: IO.Completion = undefined,
+            completion: IO.Completion,
 
-            pub fn init(loop: *Loop, ctx: *Ctx) YieldImpl {
+            pub fn init(loop: *Loop) YieldImpl {
                 return .{
-                    .ctx = ctx,
                     .loop = loop,
+                    .completion = undefined,
+                    .ctx = undefined,
                 };
             }
 
@@ -149,7 +150,8 @@ pub const SingleThreaded = struct {
                 return try self.loop.io.tick();
             }
 
-            pub fn yield(self: *YieldImpl) void {
+            pub fn yield(self: *YieldImpl, ctx: *Ctx) void {
+                self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.timeout(*YieldImpl, self, YieldImpl.yieldCbk, &self.completion, 0);
             }
@@ -166,9 +168,9 @@ pub const SingleThreaded = struct {
     pub fn Network(comptime Ctx: type) type {
 
         // TODO check ctx interface funcs:
-        // - onConnect(?anyerror) void
-        // - onReceive(usize, ?anyerror) void
-        // - onSend(usize, ?anyerror) void
+        // - onConnect(ctx: *Ctx, ?anyerror) void
+        // - onReceive(ctx: *Ctx, usize, ?anyerror) void
+        // - onSend(ctx: *Ctx, usize, ?anyerror) void
 
         return struct {
             const NetworkImpl = @This();
@@ -176,12 +178,13 @@ pub const SingleThreaded = struct {
 
             loop: *Loop,
             ctx: *Ctx,
-            completion: IO.Completion = undefined,
+            completion: IO.Completion,
 
-            pub fn init(loop: *Loop, ctx: *Ctx) NetworkImpl {
+            pub fn init(loop: *Loop) NetworkImpl {
                 return .{
-                    .ctx = ctx,
                     .loop = loop,
+                    .completion = undefined,
+                    .ctx = undefined,
                 };
             }
 
@@ -189,7 +192,8 @@ pub const SingleThreaded = struct {
                 return try self.loop.io.tick();
             }
 
-            pub fn connect(self: *NetworkImpl, socket: std.os.socket_t, address: std.net.Address) void {
+            pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, address: std.net.Address) void {
+                self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.connect(*NetworkImpl, self, NetworkImpl.connectCbk, &self.completion, socket, address);
             }
@@ -200,7 +204,8 @@ pub const SingleThreaded = struct {
                 return self.ctx.onConnect(null);
             }
 
-            pub fn receive(self: *NetworkImpl, socket: std.os.socket_t, buffer: []u8) void {
+            pub fn receive(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []u8) void {
+                self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.recv(*NetworkImpl, self, NetworkImpl.receiveCbk, &self.completion, socket, buffer);
             }
@@ -211,7 +216,8 @@ pub const SingleThreaded = struct {
                 return self.ctx.onReceive(ln, null);
             }
 
-            pub fn send(self: *NetworkImpl, socket: std.os.socket_t, buffer: []const u8) void {
+            pub fn send(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []const u8) void {
+                self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.send(*NetworkImpl, self, NetworkImpl.sendCbk, &self.completion, socket, buffer);
             }
