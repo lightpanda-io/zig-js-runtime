@@ -2,7 +2,7 @@ const std = @import("std");
 
 const public = @import("../api.zig");
 
-const js_response_size = 200;
+const js_response_size = 220;
 
 fn isTypeError(expected: []const u8, msg: []const u8) bool {
     if (!std.mem.eql(u8, expected, "TypeError")) {
@@ -56,16 +56,21 @@ fn caseError(src: []const u8, exp: []const u8, res: []const u8, stack: ?[]const 
     }
 }
 
-pub fn checkCases(
-    js_env: *public.Env,
-    cases: []Case,
-) !void {
-    var has_error = false;
-
+pub fn checkCases(js_env: *public.Env, cases: []Case) !void {
     // res buf
     var res_buf: [js_response_size]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&res_buf);
     const fba_alloc = fba.allocator();
+
+    try checkCasesAlloc(fba_alloc, js_env, cases);
+}
+
+pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases: []Case) !void {
+    var arena = std.heap.ArenaAllocator.init(allocator);
+    const alloc = arena.allocator();
+    defer arena.deinit();
+
+    var has_error = false;
 
     // cases
     for (cases, 0..) |case, i| {
@@ -82,7 +87,7 @@ pub fn checkCases(
         };
         // no need to deinit on a FixBufferAllocator
 
-        try js_env.run(fba_alloc, case.src, name, &res, &cbk_res);
+        try js_env.run(alloc, case.src, name, &res, &cbk_res);
 
         // check script error
         var case_error = false;
@@ -123,7 +128,7 @@ pub fn checkCases(
             caseError(case.src, case.cbk_ex, cbk_res.result, cbk_res.stack);
         }
 
-        fba.reset();
+        _ = arena.reset(.retain_capacity);
     }
 
     if (has_error) {
