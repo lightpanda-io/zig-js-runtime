@@ -1663,6 +1663,12 @@ pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     return @typeInfo(T).Struct.fields[index].default_value != null;
 }
 
+pub fn Proxy(comptime T: type) type {
+    return struct {
+        base: *T,
+    };
+}
+
 // Utils funcs
 // -----------
 

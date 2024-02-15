@@ -3,7 +3,6 @@ const std = @import("std");
 const v8 = @import("v8");
 
 const internal = @import("../../internal_api.zig");
-const refs = internal.refs;
 const refl = internal.refl;
 const gen = internal.gen;
 const NativeContext = internal.NativeContext;
@@ -422,12 +421,11 @@ fn bindObjectNativeToJS(
         // store directly the object pointer
         ext = v8.External.init(isolate, nat_obj);
     } else {
-
-        // use the refs mechanism
-        const int_ptr = try alloc.create(usize);
-        int_ptr.* = @intFromPtr(nat_obj);
-        ext = v8.External.init(isolate, int_ptr);
-        try refs.addObject(alloc, int_ptr.*, T_refl.index);
+        // use a proxy
+        const proxy_T = comptime refl.Proxy(T_refl.Self());
+        const proxy = try alloc.create(proxy_T);
+        proxy.* = .{ .base = nat_obj };
+        ext = v8.External.init(isolate, proxy);
     }
     js_obj_pers.setInternalField(0, ext);
     return js_obj_pers;
@@ -730,11 +728,12 @@ fn getNativeObject(
         // TODO ensure the js object corresponds to the expected native type.
 
         const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
+        // ensure the pointer is aligned (no-op at runtime)
+        // as External is a ?*anyopaque (ie. *void) with alignment 1
+        const ptr: *align(@alignOf(*T)) anyopaque = @alignCast(ext);
+
         if (comptime T_refl.is_mem_guarantied()) {
             // memory is fixed
-            // ensure the pointer is aligned (no-op at runtime)
-            // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(ext);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
                 obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
@@ -745,8 +744,10 @@ fn getNativeObject(
                 obj_ptr = @as(*T, @ptrCast(ptr));
             }
         } else {
-            // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(T, gen.Types, ext);
+            // proxy mechanism
+            const proxy_T = comptime refl.Proxy(T);
+            const proxy = @as(*proxy_T, @ptrCast(ptr));
+            obj_ptr = proxy.base;
         }
     }
     return obj_ptr;

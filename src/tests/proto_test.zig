@@ -172,7 +172,7 @@ const UserContainer = struct {
         first_name: []u8,
         last_name: []u8,
         age: u32,
-    ) User {
+    ) UserForContainer {
         const proto = Person.constructor(alloc, first_name, last_name, age);
         return .{ .proto = proto, .role = 1 };
     }
