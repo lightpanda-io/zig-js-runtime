@@ -209,7 +209,7 @@ fn getArg(
     return value;
 }
 
-const CallbackInfo = union(enum) {
+pub const CallbackInfo = union(enum) {
     func_cbk: v8.FunctionCallbackInfo,
     prop_cbk: v8.PropertyCallbackInfo,
 
@@ -241,7 +241,7 @@ const CallbackInfo = union(enum) {
         };
     }
 
-    fn getArg(
+    pub fn getArg(
         self: CallbackInfo,
         raw_value: ?*const v8.C_Value,
         index: usize,
@@ -308,22 +308,19 @@ fn getArgs(
 
             // non-variadic arg
             value = switch (arg.T) {
-
-                // special cases for callback arguments
-                // TODO: because thoses functions requires a v8.FunctionCallbackInfo
-                // they will not be available for generators with v8.PropertyCallbackInfo
-                // (getters and setters)
                 cbk.Func => cbk.Func.init(
                     alloc,
                     nat_ctx,
                     func,
-                    cbk_info.func_cbk,
+                    raw_value,
+                    cbk_info,
                     isolate,
                 ) catch unreachable,
                 cbk.FuncSync => cbk.FuncSync.init(
                     alloc,
                     func,
-                    cbk_info.func_cbk,
+                    raw_value,
+                    cbk_info,
                     isolate,
                 ) catch unreachable,
                 cbk.Arg => cbk.Arg{}, // stage1: we need type

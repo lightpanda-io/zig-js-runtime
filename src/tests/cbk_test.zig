@@ -59,6 +59,12 @@ pub const Window = struct {
         // ignore the error to let the JS msg
     }
 
+    pub fn get_cbk(_: Window) void {}
+
+    pub fn set_cbk(_: *Window, callback: Callback) !void {
+        callback.call(.{}) catch {};
+    }
+
     pub fn deinit(_: *Window, _: std.mem.Allocator) void {}
 };
 
@@ -212,4 +218,12 @@ pub fn exec(
         },
     };
     try tests.checkCases(js_env, &cases_cbk_async_with_nat_arg);
+
+    // setter cbk
+    var cases_cbk_setter_arg = [_]tests.Case{
+        .{ .src = "let v = 0", .ex = "undefined" },
+        .{ .src = "window.cbk =  () => {v++};", .ex = "() => {v++}" },
+        .{ .src = "v", .ex = "1" },
+    };
+    try tests.checkCases(js_env, &cases_cbk_setter_arg);
 }

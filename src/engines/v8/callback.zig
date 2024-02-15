@@ -9,6 +9,7 @@ const NativeContext = internal.NativeContext;
 
 const JSObjectID = @import("v8.zig").JSObjectID;
 const setNativeType = @import("generate.zig").setNativeType;
+const CallbackInfo = @import("generate.zig").CallbackInfo;
 
 // TODO: Make this JS engine agnostic
 // by providing a common interface
@@ -35,7 +36,8 @@ pub const FuncSync = struct {
     pub fn init(
         alloc: std.mem.Allocator,
         comptime func: refl.Func,
-        info: v8.FunctionCallbackInfo,
+        raw_value: ?*const v8.C_Value,
+        info: CallbackInfo,
         isolate: v8.Isolate,
     ) !FuncSync {
 
@@ -54,12 +56,24 @@ pub const FuncSync = struct {
         // var js_args: [func.args_callback_nb]v8.Value = undefined;
         var js_args = try alloc.alloc(v8.Value, func.args_callback_nb);
         for (js_args_indexes, 0..) |index, i| {
-            js_args[i] = info.getArg(@as(u32, @intCast(index - func.index_offset)));
+            js_args[i] = info.getArg(raw_value, index, func.index_offset) orelse unreachable;
         }
 
+        var idx = func.callback_index.?;
+        if (idx > 0) idx = idx - 1; // -1 because of self
+
         // retrieve callback function
-        const js_func_index = func.callback_index.? - func.index_offset - 1; // -1 because of self
-        const js_func_val = info.getArg(js_func_index);
+        const js_func_val = info.getArg(
+            raw_value,
+            idx,
+            func.index_offset,
+        ) orelse unreachable;
+
+        std.debug.print("idx: {d}, offset: {d}, {any}\n", .{
+            func.callback_index.?,
+            idx,
+            js_func_val,
+        });
         if (!js_func_val.isFunction()) {
             return error.JSWrongType;
         }
@@ -113,13 +127,19 @@ pub const Func = struct {
         alloc: std.mem.Allocator,
         nat_ctx: *NativeContext,
         comptime func: refl.Func,
-        info: v8.FunctionCallbackInfo,
+        raw_value: ?*const v8.C_Value,
+        info: CallbackInfo,
         isolate: v8.Isolate,
     ) !Func {
+        var idx = func.callback_index.?;
+        if (idx > 0) idx = idx - 1; // -1 because of self
 
         // retrieve callback function
-        const js_func_index = func.callback_index.? - func.index_offset - 1; // -1 because of self
-        const js_func_val = info.getArg(js_func_index);
+        const js_func_val = info.getArg(
+            raw_value,
+            idx,
+            func.index_offset,
+        ) orelse unreachable;
         if (!js_func_val.isFunction()) {
             return error.JSWrongType;
         }
@@ -148,7 +168,7 @@ pub const Func = struct {
 
             // retrieve callback arguments
             for (js_args_indexes, 0..) |index, i| {
-                const js_arg = info.getArg(@as(u32, @intCast(index - func.index_offset)));
+                const js_arg = info.getArg(raw_value, index, func.index_offset) orelse unreachable;
                 const js_arg_pers = PersistentValue.init(isolate, js_arg);
                 js_args_pers[i] = js_arg_pers;
             }
