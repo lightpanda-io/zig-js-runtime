@@ -125,4 +125,108 @@ pub const SingleThreaded = struct {
             report("start timeout {d} for {d} nanoseconds", .{ old_events_nb + 1, nanoseconds });
         }
     }
+
+    // Yield
+    pub fn Yield(comptime Ctx: type) type {
+        // TODO check ctx interface funcs:
+        // - onYield(ctx: *Ctx, ?anyerror) void
+        return struct {
+            const YieldImpl = @This();
+            const Loop = Self;
+
+            loop: *Loop,
+            ctx: *Ctx,
+            completion: IO.Completion,
+
+            pub fn init(loop: *Loop) YieldImpl {
+                return .{
+                    .loop = loop,
+                    .completion = undefined,
+                    .ctx = undefined,
+                };
+            }
+
+            pub fn tick(self: *YieldImpl) !void {
+                return try self.loop.io.tick();
+            }
+
+            pub fn yield(self: *YieldImpl, ctx: *Ctx) void {
+                self.ctx = ctx;
+                _ = self.loop.addEvent();
+                self.loop.io.timeout(*YieldImpl, self, YieldImpl.yieldCbk, &self.completion, 0);
+            }
+
+            fn yieldCbk(self: *YieldImpl, _: *IO.Completion, result: IO.TimeoutError!void) void {
+                _ = self.loop.removeEvent();
+                _ = result catch |err| return self.ctx.onYield(err);
+                return self.ctx.onYield(null);
+            }
+        };
+    }
+
+    // Network
+    pub fn Network(comptime Ctx: type) type {
+
+        // TODO check ctx interface funcs:
+        // - onConnect(ctx: *Ctx, ?anyerror) void
+        // - onReceive(ctx: *Ctx, usize, ?anyerror) void
+        // - onSend(ctx: *Ctx, usize, ?anyerror) void
+
+        return struct {
+            const NetworkImpl = @This();
+            const Loop = Self;
+
+            loop: *Loop,
+            ctx: *Ctx,
+            completion: IO.Completion,
+
+            pub fn init(loop: *Loop) NetworkImpl {
+                return .{
+                    .loop = loop,
+                    .completion = undefined,
+                    .ctx = undefined,
+                };
+            }
+
+            pub fn tick(self: *NetworkImpl) !void {
+                return try self.loop.io.tick();
+            }
+
+            pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, address: std.net.Address) void {
+                self.ctx = ctx;
+                _ = self.loop.addEvent();
+                self.loop.io.connect(*NetworkImpl, self, NetworkImpl.connectCbk, &self.completion, socket, address);
+            }
+
+            fn connectCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.ConnectError!void) void {
+                _ = self.loop.removeEvent();
+                _ = result catch |err| return self.ctx.onConnect(err);
+                return self.ctx.onConnect(null);
+            }
+
+            pub fn receive(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []u8) void {
+                self.ctx = ctx;
+                _ = self.loop.addEvent();
+                self.loop.io.recv(*NetworkImpl, self, NetworkImpl.receiveCbk, &self.completion, socket, buffer);
+            }
+
+            fn receiveCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.RecvError!usize) void {
+                _ = self.loop.removeEvent();
+                const ln = result catch |err| return self.ctx.onReceive(0, err);
+                return self.ctx.onReceive(ln, null);
+            }
+
+            pub fn send(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []const u8) void {
+                self.ctx = ctx;
+                _ = self.loop.addEvent();
+                self.loop.io.send(*NetworkImpl, self, NetworkImpl.sendCbk, &self.completion, socket, buffer);
+            }
+
+            fn sendCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.SendError!usize) void {
+                _ = self.loop.removeEvent();
+                const ln = result catch |err| return self.ctx.onSend(0, err);
+                return self.ctx.onSend(ln, null);
+            }
+        };
+    }
 };
