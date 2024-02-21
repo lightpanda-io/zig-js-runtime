@@ -34,6 +34,7 @@ const builtin_types = [_]type{
     u64,
     u64Num,
     bool,
+    std.json.Value,
 };
 
 pub fn isBuiltinType(comptime T: type) bool {

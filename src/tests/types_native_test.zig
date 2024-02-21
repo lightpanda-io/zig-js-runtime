@@ -188,10 +188,36 @@ const Country = struct {
     }
 };
 
+const JSONGen = struct {
+    jsobj: std.json.Parsed(std.json.Value),
+
+    pub fn constructor(alloc: std.mem.Allocator) !JSONGen {
+        return .{
+            .jsobj = try std.json.parseFromSlice(std.json.Value, alloc,
+                \\{
+                \\   "str": "bar",
+                \\   "int": 123,
+                \\   "float": 123.456,
+                \\   "array": [1,2,3]
+                \\}
+            , .{}),
+        };
+    }
+
+    pub fn _object(self: JSONGen) std.json.Value {
+        return self.jsobj.value;
+    }
+
+    pub fn deinit(self: *JSONGen, _: std.mem.Allocator) void {
+        self.jsobj.deinit();
+    }
+};
+
 pub const Types = .{
     Brand,
     Car,
     Country,
+    JSONGen,
 };
 
 // exec tests
@@ -300,4 +326,14 @@ pub fn exec(
         .{ .src = "try { car.changeBrand({'foo': 'bar'}); false; } catch(e) { e instanceof TypeError; }", .ex = "true" },
     };
     try tests.checkCases(js_env, &bug_native_obj);
+
+    var json_native = [_]tests.Case{
+        .{ .src = "let json = (new JSONGen()).object()", .ex = "undefined" },
+        .{ .src = "json.str", .ex = "bar" },
+        .{ .src = "json.int", .ex = "123" },
+        .{ .src = "json.float", .ex = "123.456" },
+        .{ .src = "json.array.length", .ex = "3" },
+        .{ .src = "json.array[0]", .ex = "1" },
+    };
+    try tests.checkCases(js_env, &json_native);
 }
