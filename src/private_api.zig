@@ -33,15 +33,14 @@ pub const Engine = blk: {
     // - as a build option
     const build_opts = @import("jsruntime_build_options");
     if (@hasDecl(build_opts, "engine")) {
-        if (build_opts.engine) |eng| {
-            if (std.mem.eql(u8, eng, "v8")) {
-                const engine = @import("engines/v8/v8.zig");
-                checkInterfaces(engine);
-                break :blk engine;
-            }
-            @compileError("unknwon -Dengine '" ++ eng ++ "'");
+        // use v8 by default.
+        const eng = build_opts.engine orelse "v8";
+        if (std.mem.eql(u8, eng, "v8")) {
+            const engine = @import("engines/v8/v8.zig");
+            checkInterfaces(engine);
+            break :blk engine;
         }
-        @compileError("empty -Dengine");
+        @compileError("unknwon -Dengine '" ++ eng ++ "'");
     }
 
     // - as a root declaration
