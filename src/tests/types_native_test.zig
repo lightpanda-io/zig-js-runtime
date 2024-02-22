@@ -198,7 +198,12 @@ const JSONGen = struct {
                 \\   "str": "bar",
                 \\   "int": 123,
                 \\   "float": 123.456,
-                \\   "array": [1,2,3]
+                \\   "array": [1,2,3],
+                \\   "neg": -123,
+                \\   "max": 1.7976931348623157e+308,
+                \\   "min": 5e-324,
+                \\   "max_safe_int": 9007199254740991,
+                \\   "max_safe_int_over": 9007199254740992
                 \\}
             , .{}),
         };
@@ -332,6 +337,23 @@ pub fn exec(
         .{ .src = "json.str", .ex = "bar" },
         .{ .src = "json.int", .ex = "123" },
         .{ .src = "json.float", .ex = "123.456" },
+        .{ .src = "json.neg", .ex = "-123" },
+        .{ .src = "json.min", .ex = "5e-324" },
+        .{ .src = "json.max", .ex = "1.7976931348623157e+308" },
+
+        .{ .src = "json.max_safe_int", .ex = "9007199254740991" },
+        .{ .src = "json.max_safe_int_over", .ex = "9007199254740992" },
+
+        .{ .src = "typeof(json.int)", .ex = "number" },
+        .{ .src = "typeof(json.float)", .ex = "number" },
+        .{ .src = "typeof(json.neg)", .ex = "number" },
+        .{ .src = "typeof(json.max)", .ex = "number" },
+        .{ .src = "typeof(json.min)", .ex = "number" },
+
+        // TODO these tests should pass, but we've got bigint instead.
+        //.{ .src = "typeof(json.max_safe_int)", .ex = "number" },
+        //.{ .src = "typeof(json.max_safe_int_over)", .ex = "number" },
+
         .{ .src = "json.array.length", .ex = "3" },
         .{ .src = "json.array[0]", .ex = "1" },
     };

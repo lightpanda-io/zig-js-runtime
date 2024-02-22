@@ -681,10 +681,27 @@ pub fn nativeJSONToJS(v: std.json.Value, js_ctx: v8.Context, isolate: v8.Isolate
     return switch (v) {
         .bool => |vv| nativeToJS(bool, vv, isolate),
         .float => |vv| nativeToJS(f64, vv, isolate),
-        .integer => |vv| nativeToJS(i64, vv, isolate),
+        .integer => |vv| {
+            if (vv >= 0) {
+                if (vv <= std.math.maxInt(u32)) {
+                    return nativeToJS(u32, @intCast(vv), isolate);
+                }
+                return nativeToJS(u64, @intCast(vv), isolate);
+            }
+
+            if (vv >= std.math.minInt(i32)) {
+                return nativeToJS(i32, @intCast(vv), isolate);
+            }
+
+            return nativeToJS(i64, vv, isolate);
+        },
         .string => |vv| nativeToJS([]const u8, vv, isolate),
         .null => isolate.initNull().toValue(),
+
+        // TODO handle number_string.
+        // It is used to represent too big numbers.
         .number_string => return error.TODO,
+
         .array => |vv| {
             var a = v8.Array.init(isolate, @intCast(vv.items.len));
             var obj = a.castTo(v8.Object);
