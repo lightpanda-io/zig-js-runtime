@@ -174,7 +174,7 @@ pub fn shellExec(
 
     // add console object
     const console = public.Console{};
-    try js_env.addObject(console, "console");
+    _ = try js_env.addObject(console, "console");
 
     // JS try cache
     var try_catch = public.TryCatch.init(js_env.*);

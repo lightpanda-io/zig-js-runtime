@@ -65,7 +65,7 @@ pub fn Env(
         self: T,
         obj: anytype,
         name: []const u8,
-    ) anyerror!void);
+    ) anyerror!Object_T);
 
     // attachObject() from JS to another JS object
     // if to_obj is null, globals is implied

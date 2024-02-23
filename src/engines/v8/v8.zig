@@ -227,7 +227,7 @@ pub const Env = struct {
     }
 
     // add a Native object in the Javascript context
-    pub fn addObject(self: Env, obj: anytype, name: []const u8) anyerror!void {
+    pub fn addObject(self: Env, obj: anytype, name: []const u8) anyerror!Object {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
@@ -362,7 +362,7 @@ fn createJSObject(
     target: v8.Object,
     js_ctx: v8.Context,
     isolate: v8.Isolate,
-) !void {
+) !v8.Object {
 
     // retrieve obj API
     const T_refl = comptime gen.getType(@TypeOf(obj));
@@ -384,6 +384,8 @@ fn createJSObject(
     if (!target.setValue(js_ctx, key, js_obj)) {
         return error.CreateV8Object;
     }
+
+    return js_obj;
 }
 
 pub const JSObjectID = struct {

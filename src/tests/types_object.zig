@@ -66,7 +66,7 @@ pub fn exec(
     defer js_env.stop();
 
     // const o = Other{ .val = 4 };
-    // try js_env.addObject(apis, o, "other");
+    // _ = try js_env.addObject(apis, o, "other");
 
     const ownBase = tests.engineOwnPropertiesDefault();
     const ownBaseStr = tests.intToStr(alloc, ownBase);
