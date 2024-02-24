@@ -50,7 +50,7 @@ pub fn Env(
 
     assertDecl(T, "loadGlobalT", fn (self: T, globalT: type) anyerror!void);
 
-    assertDecl(T, "bindGlobal", fn (self: T, comptime globalT: type, ob: anytype) anyerror!void);
+    assertDecl(T, "bindGlobal", fn (self: T, ob: anytype) anyerror!void);
 
     // start()
     assertDecl(T, "start", fn (

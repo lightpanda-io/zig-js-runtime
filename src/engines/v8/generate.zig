@@ -444,7 +444,7 @@ fn bindObjectJSToNative(
     try objects.put(alloc, nat_obj_ref, js_obj_ref);
 }
 
-fn bindObjectNativeAndJS(
+pub fn bindObjectNativeAndJS(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,

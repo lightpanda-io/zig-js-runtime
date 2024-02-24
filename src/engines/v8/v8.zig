@@ -19,6 +19,7 @@ pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
 const loadObjectTemplate = @import("generate.zig").loadObjectTemplate;
+const bindObjectNativeAndJS = @import("generate.zig").bindObjectNativeAndJS;
 const getTpl = @import("generate.zig").getTpl;
 
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
@@ -231,6 +232,41 @@ pub const Env = struct {
             return error.EnvNotStarted;
         }
         return self.js_ctx.?.getGlobal();
+    }
+
+    pub fn bindGlobal(self: Env, obj: anytype) anyerror!void {
+        const T_refl = comptime gen.getType(@TypeOf(obj));
+        const T = T_refl.Self();
+
+        // ensure Native object is a pointer
+        var nat_obj_ptr: *T = undefined;
+
+        if (comptime refl.isPointer(@TypeOf(obj))) {
+
+            // Native object is a pointer of T
+            // no need to create it in heap,
+            // we assume it has been done already by the API
+            // just assign pointer to Native object
+            nat_obj_ptr = obj;
+        } else {
+
+            // Native object is a value of T
+            // create a pointer in heap
+            // (otherwise on the stack it will be delete when the function returns),
+            // and assign pointer's dereference value to Native object
+            nat_obj_ptr = try self.nat_ctx.alloc.create(T);
+            nat_obj_ptr.* = obj;
+        }
+
+        _ = try bindObjectNativeAndJS(
+            self.nat_ctx.alloc,
+            self.nat_ctx,
+            T_refl,
+            nat_obj_ptr,
+            self.js_ctx.?.getGlobal(),
+            self.js_ctx.?,
+            self.isolate,
+        );
     }
 
     // add a Native object in the Javascript context
