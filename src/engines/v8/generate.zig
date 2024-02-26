@@ -703,8 +703,8 @@ pub fn nativeJSONToJS(v: std.json.Value, js_ctx: v8.Context, isolate: v8.Isolate
         .number_string => return error.TODO,
 
         .array => |vv| {
-            var a = v8.Array.init(isolate, @intCast(vv.items.len));
-            var obj = a.castTo(v8.Object);
+            const a = v8.Array.init(isolate, @intCast(vv.items.len));
+            const obj = a.castTo(v8.Object);
             for (vv.items, 0..) |vvv, i| {
                 const js_val = try nativeJSONToJS(vvv, js_ctx, isolate);
                 if (!obj.setValueAtIndex(js_ctx, @intCast(i), js_val)) {
