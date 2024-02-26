@@ -18,7 +18,7 @@ pub const CallbackArg = @import("callback.zig").Arg;
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
-const loadObjectTemplate = @import("generate.zig").loadObjectTemplate;
+const loadFunctionTemplate = @import("generate.zig").loadFunctionTemplate;
 const bindObjectNativeAndJS = @import("generate.zig").bindObjectNativeAndJS;
 const getTpl = @import("generate.zig").getTpl;
 
@@ -70,7 +70,7 @@ pub const Env = struct {
     isolate: v8.Isolate,
     isolate_params: v8.CreateParams,
     hscope: v8.HandleScope,
-    globals: v8.ObjectTemplate,
+    globals: v8.FunctionTemplate,
 
     js_ctx: ?v8.Context = null,
 
@@ -114,7 +114,7 @@ pub const Env = struct {
         hscope.init(isolate);
 
         // ObjectTemplate for the global namespace
-        const globals = v8.ObjectTemplate.initDefault(isolate);
+        const globals = v8.FunctionTemplate.initDefault(isolate);
 
         return Env{
             .nat_ctx = nat_ctx,
@@ -160,7 +160,7 @@ pub const Env = struct {
     // load user-defined Types into Javascript environement
     pub fn load(self: Env, js_types: []usize) anyerror!void {
         var tpls: [gen.Types.len]TPL = undefined;
-        try gen.load(self.nat_ctx, self.isolate, self.globals, TPL, &tpls);
+        try gen.load(self.nat_ctx, self.isolate, self.globals.getInstanceTemplate(), TPL, &tpls);
         for (tpls, 0..) |tpl, i| {
             js_types[i] = @intFromPtr(tpl.tpl.handle);
         }
@@ -168,9 +168,11 @@ pub const Env = struct {
 
         if (gen.GlobalType) |T| {
             const T_refl = comptime gen.getType(T);
-            self.globals.setInternalFieldCount(1);
-            self.globals.setInternalFieldCount(1);
-            loadObjectTemplate(T_refl, self.globals, self.nat_ctx, self.isolate);
+            var proto: ?TPL = null;
+            if (T_refl.proto_index) |index| {
+                proto = tpls[index];
+            }
+            try loadFunctionTemplate(T_refl, self.globals, self.nat_ctx, self.isolate, proto);
         }
     }
 
@@ -178,7 +180,7 @@ pub const Env = struct {
     pub fn start(self: *Env, alloc: std.mem.Allocator) anyerror!void {
 
         // context
-        self.js_ctx = v8.Context.init(self.isolate, self.globals, null);
+        self.js_ctx = v8.Context.init(self.isolate, self.globals.getInstanceTemplate(), null);
         const js_ctx = self.js_ctx.?;
         js_ctx.enter();
 
@@ -214,16 +216,6 @@ pub const Env = struct {
                 );
                 defer res.deinit(alloc);
                 if (!res.success) return error.errorSubClass;
-            }
-        }
-
-        if (gen.GlobalType) |T| {
-            const T_refl = comptime gen.getType(T);
-            if (T_refl.proto_index) |proto_index| {
-                const global = try self.getGlobal();
-                const proto_tpl = getTpl(self.nat_ctx, proto_index);
-                const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
-                _ = global.setPrototype(self.js_ctx.?, proto_obj);
             }
         }
     }

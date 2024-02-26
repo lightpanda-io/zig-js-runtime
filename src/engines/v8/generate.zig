@@ -1099,16 +1099,16 @@ fn setStaticAttrs(
 
 pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.ObjectTemplate, ?TPL) anyerror!TPL);
 
+const LoadError = error{
+    NoPrototypeTemplateProvided,
+    WrongPrototypeTemplateProvided,
+};
+
 pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
     return struct {
 
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
-
-        const LoadError = error{
-            NoPrototypeTemplateProvided,
-            WrongPrototypeTemplateProvided,
-        };
 
         pub fn load(
             nat_ctx: *NativeContext,
@@ -1129,63 +1129,7 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
             globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
-            // static attributes keys and values
-            comptime var static_nb: usize = undefined;
-            if (T_refl.static_attrs_T) |attr_T| {
-                static_nb = @typeInfo(attr_T).Struct.fields.len;
-            } else {
-                static_nb = 0;
-            }
-            var static_keys: [static_nb]v8.Name = undefined;
-            var static_values: [static_nb]v8.Value = undefined;
-            staticAttrsKeys(T_refl, &static_keys, isolate);
-            staticAttrsValues(T_refl, &static_values, isolate);
-
-            // set static attributes on the v8 FunctionTemplate
-            setStaticAttrs(T_refl, cstr_tpl, &static_keys, &static_values);
-
-            // set the optional prototype of the constructor
-            if (comptime T_refl.proto_index != null) {
-                if (proto_tpl == null) {
-                    return LoadError.NoPrototypeTemplateProvided;
-                }
-                if (T_refl.proto_index.? != proto_tpl.?.index) {
-                    return LoadError.WrongPrototypeTemplateProvided;
-                }
-                // at instance level, inherit from proto template
-                // ie. an instance of the Child function has all properties
-                // on Parent's instance template
-                // ie. <Child>.prototype.__proto__ === <Parent>.prototype
-                cstr_tpl.inherit(proto_tpl.?.tpl);
-            }
-
-            // NOTE: There is 2 different ObjectTemplate
-            // attached to the FunctionTemplate of the constructor:
-            // - The PrototypeTemplate which represents the template
-            // of the protype of the constructor.
-            // All getter/setter/methods must be set on it.
-            // - The InstanceTemplate wich represents the template
-            // of the instance created by the constructor.
-            // This template holds the internal field count.
-
-            // get the v8 InstanceTemplate attached to the constructor
-            // and set 1 internal field to bind the counterpart zig object
-            const obj_tpl = cstr_tpl.getInstanceTemplate();
-            if (!T_refl.isEmpty()) {
-                // if the object is an empty struct (ie. a kind of container)
-                // no need to keep it's reference
-                obj_tpl.setInternalFieldCount(1);
-            }
-
-            // get the v8 Prototypetemplate attached to the constructor
-            // to set getter/setter/methods
-            const prototype = cstr_tpl.getPrototypeTemplate();
-
-            // set static attributes on the v8 ObjectTemplate
-            // so each instance will get them
-            setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
-
-            loadObjectTemplate(T_refl, prototype, nat_ctx, isolate);
+            try loadFunctionTemplate(T_refl, cstr_tpl, nat_ctx, isolate, proto_tpl);
 
             // return the FunctionTemplate of the constructor
             return TPL{ .tpl = cstr_tpl, .index = T_refl.index };
@@ -1193,7 +1137,74 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
     }.load;
 }
 
-pub fn loadObjectTemplate(
+pub fn loadFunctionTemplate(
+    comptime T_refl: refl.Struct,
+    tpl: v8.FunctionTemplate,
+    nat_ctx: *NativeContext,
+    isolate: v8.Isolate,
+    proto_tpl: ?TPL,
+) LoadError!void {
+
+    // static attributes keys and values
+    comptime var static_nb: usize = undefined;
+    if (T_refl.static_attrs_T) |attr_T| {
+        static_nb = @typeInfo(attr_T).Struct.fields.len;
+    } else {
+        static_nb = 0;
+    }
+    var static_keys: [static_nb]v8.Name = undefined;
+    var static_values: [static_nb]v8.Value = undefined;
+    staticAttrsKeys(T_refl, &static_keys, isolate);
+    staticAttrsValues(T_refl, &static_values, isolate);
+
+    // set static attributes on the v8 FunctionTemplate
+    setStaticAttrs(T_refl, tpl, &static_keys, &static_values);
+
+    // set the optional prototype of the constructor
+    if (comptime T_refl.proto_index != null) {
+        if (proto_tpl == null) {
+            return LoadError.NoPrototypeTemplateProvided;
+        }
+        if (T_refl.proto_index.? != proto_tpl.?.index) {
+            return LoadError.WrongPrototypeTemplateProvided;
+        }
+        // at instance level, inherit from proto template
+        // ie. an instance of the Child function has all properties
+        // on Parent's instance template
+        // ie. <Child>.prototype.__proto__ === <Parent>.prototype
+        tpl.inherit(proto_tpl.?.tpl);
+    }
+
+    // NOTE: There is 2 different ObjectTemplate
+    // attached to the FunctionTemplate of the constructor:
+    // - The PrototypeTemplate which represents the template
+    // of the protype of the constructor.
+    // All getter/setter/methods must be set on it.
+    // - The InstanceTemplate wich represents the template
+    // of the instance created by the constructor.
+    // This template holds the internal field count.
+
+    // get the v8 InstanceTemplate attached to the constructor
+    // and set 1 internal field to bind the counterpart zig object
+    const obj_tpl = tpl.getInstanceTemplate();
+    if (!T_refl.isEmpty()) {
+        // if the object is an empty struct (ie. a kind of container)
+        // no need to keep it's reference
+        obj_tpl.setInternalFieldCount(1);
+    }
+
+    // get the v8 Prototypetemplate attached to the constructor
+    // to set getter/setter/methods
+    const prototype = tpl.getPrototypeTemplate();
+
+    // set static attributes on the v8 ObjectTemplate
+    // so each instance will get them
+    setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
+
+    loadObjectTemplate(T_refl, prototype, nat_ctx, isolate);
+}
+
+fn loadObjectTemplate(
     comptime T_refl: refl.Struct,
     tpl: v8.ObjectTemplate,
     nat_ctx: *NativeContext,
