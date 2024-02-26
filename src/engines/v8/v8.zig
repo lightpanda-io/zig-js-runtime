@@ -18,6 +18,7 @@ pub const CallbackArg = @import("callback.zig").Arg;
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
+const loadObjectTemplate = @import("generate.zig").loadObjectTemplate;
 const getTpl = @import("generate.zig").getTpl;
 
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
@@ -163,6 +164,13 @@ pub const Env = struct {
             js_types[i] = @intFromPtr(tpl.tpl.handle);
         }
         self.nat_ctx.loadTypes(js_types);
+
+        if (gen.GlobalType) |T| {
+            const T_refl = comptime gen.getType(T);
+            self.globals.setInternalFieldCount(1);
+            self.globals.setInternalFieldCount(1);
+            loadObjectTemplate(T_refl, self.globals, self.nat_ctx, self.isolate);
+        }
     }
 
     // start a Javascript context
@@ -205,6 +213,16 @@ pub const Env = struct {
                 );
                 defer res.deinit(alloc);
                 if (!res.success) return error.errorSubClass;
+            }
+        }
+
+        if (gen.GlobalType) |T| {
+            const T_refl = comptime gen.getType(T);
+            if (T_refl.proto_index) |proto_index| {
+                const global = try self.getGlobal();
+                const proto_tpl = getTpl(self.nat_ctx, proto_index);
+                const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
+                _ = global.setPrototype(self.js_ctx.?, proto_obj);
             }
         }
     }

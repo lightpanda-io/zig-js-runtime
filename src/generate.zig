@@ -33,6 +33,7 @@ pub fn reflect(comptime types: anytype) []refl.Struct {
 
 // Import user-defined types
 pub const Types: []refl.Struct = @import("root").Types;
+pub const GlobalType: ?type = @import("root").GlobalType;
 
 // retrieved the reflected type of a user-defined native type
 pub fn getType(comptime T: type) refl.Struct {
