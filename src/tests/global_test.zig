@@ -36,11 +36,16 @@ pub fn exec(
 
     // global
     const global = Global{};
-    try js_env.addObject(global, "global");
+    try js_env.bindGlobal(global);
+    try js_env.attachObject(try js_env.getGlobal(), "global", null);
 
     var globals = [_]tests.Case{
+        .{ .src = "self()", .ex = "true" },
+        .{ .src = "parent()", .ex = "true" },
         .{ .src = "global.self()", .ex = "true" },
         .{ .src = "global.parent()", .ex = "true" },
+        .{ .src = "global.foo = () => true; foo()", .ex = "true" },
+        .{ .src = "bar = () => true; global.bar()", .ex = "true" },
     };
     try tests.checkCases(js_env, &globals);
 }
