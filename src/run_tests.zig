@@ -18,6 +18,7 @@ const complex_types = @import("tests/types_complex_test.zig");
 const multiple_types = @import("tests/types_multiple_test.zig");
 const object_types = @import("tests/types_object.zig");
 const callback = @import("tests/cbk_test.zig");
+const global = @import("tests/global_test.zig");
 
 // test to do
 const do_proto = true;
@@ -27,6 +28,7 @@ const do_complex = true;
 const do_multi = true;
 const do_obj = true;
 const do_cbk = true;
+const do_global = true;
 
 // tests nb
 const tests_nb = blk: {
@@ -38,6 +40,7 @@ const tests_nb = blk: {
     if (do_multi) nb += 1;
     if (do_obj) nb += 1;
     if (do_cbk) nb += 1;
+    if (do_global) nb += 1;
     break :blk nb;
 };
 
@@ -50,7 +53,9 @@ pub const Types = gen.reflect(gen.MergeTuple(.{
     multiple_types.Types,
     object_types.Types,
     callback.Types,
+    global.Types,
 }));
+pub const GlobalType = global.Global;
 
 pub fn main() !void {
     std.debug.print("\n", .{});
@@ -129,6 +134,15 @@ pub fn main() !void {
         var cbk_arena = std.heap.ArenaAllocator.init(cbk_alloc.allocator());
         defer cbk_arena.deinit();
         _ = try eng.loadEnv(&cbk_arena, callback.exec);
+    }
+
+    // global tests
+    var global_alloc: bench.Allocator = undefined;
+    if (do_global) {
+        global_alloc = bench.allocator(std.testing.allocator);
+        var global_arena = std.heap.ArenaAllocator.init(global_alloc.allocator());
+        defer global_arena.deinit();
+        _ = try eng.loadEnv(&global_arena, global.exec);
     }
 
     if (tests_nb == 0) {
@@ -210,6 +224,15 @@ pub fn main() !void {
             .value = cbk_alloc_stats.alloc_size,
         };
         try t.addRow(.{ "Callbacks", cbk_alloc.alloc_nb, cbk_alloc_size });
+    }
+
+    if (do_global) {
+        const global_alloc_stats = global_alloc.stats();
+        const global_alloc_size = pretty.Measure{
+            .unit = "b",
+            .value = global_alloc_stats.alloc_size,
+        };
+        try t.addRow(.{ "Global", global_alloc.alloc_nb, global_alloc_size });
     }
 
     const out = std.io.getStdErr().writer();
