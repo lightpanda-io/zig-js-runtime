@@ -1181,58 +1181,71 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
             // to set getter/setter/methods
             const prototype = cstr_tpl.getPrototypeTemplate();
 
-            // set getters for the v8 ObjectTemplate,
-            // with the corresponding zig callbacks
-            inline for (T_refl.getters) |getter| {
-                const getter_func = generateGetter(T_refl, getter);
-                var key: v8.Name = undefined;
-                if (getter.symbol) |symbol| {
-                    key = switch (symbol) {
-                        .string_tag => v8.Symbol.getToStringTag(isolate),
-                        else => unreachable,
-                    }.toName();
-                } else {
-                    key = v8.String.initUtf8(isolate, getter.js_name).toName();
-                }
-                if (getter.setter_index == null) {
-                    prototype.setGetterData(key, getter_func, nat_ctx_data);
-                } else {
-                    const setter = T_refl.setters[getter.setter_index.?];
-                    const setter_func = generateSetter(T_refl, setter);
-                    prototype.setGetterAndSetterData(key, getter_func, setter_func, nat_ctx_data);
-                }
-            }
-
             // set static attributes on the v8 ObjectTemplate
             // so each instance will get them
             setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
 
-            // add string tag if not provided
-            if (!T_refl.string_tag) {
-                const key = v8.Symbol.getToStringTag(isolate).toName();
-                prototype.setGetter(key, generateStringTag(T_refl.name));
-            }
-
-            // create a v8 FunctionTemplate for each T methods,
-            // with the corresponding zig callbacks,
-            // and attach them to the object template
-            inline for (T_refl.methods) |method| {
-                const func = generateMethod(T_refl, method);
-                const func_tpl = v8.FunctionTemplate.initCallbackData(isolate, func, nat_ctx_data);
-                var key: v8.Name = undefined;
-                if (method.symbol) |symbol| {
-                    key = switch (symbol) {
-                        .iterator => v8.Symbol.getIterator(isolate),
-                        else => unreachable,
-                    }.toName();
-                } else {
-                    key = v8.String.initUtf8(isolate, method.js_name).toName();
-                }
-                prototype.set(key, func_tpl, v8.PropertyAttribute.None);
-            }
+            loadObjectTemplate(T_refl, prototype, nat_ctx, isolate);
 
             // return the FunctionTemplate of the constructor
             return TPL{ .tpl = cstr_tpl, .index = T_refl.index };
         }
     }.load;
+}
+
+pub fn loadObjectTemplate(
+    comptime T_refl: refl.Struct,
+    tpl: v8.ObjectTemplate,
+    nat_ctx: *NativeContext,
+    isolate: v8.Isolate,
+) void {
+    // native context
+    const nat_ctx_num = @as(u64, @intCast(@intFromPtr(nat_ctx)));
+    const nat_ctx_data = isolate.initBigIntU64(nat_ctx_num);
+
+    // set getters for the v8 ObjectTemplate,
+    // with the corresponding zig callbacks
+    inline for (T_refl.getters) |getter| {
+        const getter_func = generateGetter(T_refl, getter);
+        var key: v8.Name = undefined;
+        if (getter.symbol) |symbol| {
+            key = switch (symbol) {
+                .string_tag => v8.Symbol.getToStringTag(isolate),
+                else => unreachable,
+            }.toName();
+        } else {
+            key = v8.String.initUtf8(isolate, getter.js_name).toName();
+        }
+        if (getter.setter_index == null) {
+            tpl.setGetterData(key, getter_func, nat_ctx_data);
+        } else {
+            const setter = T_refl.setters[getter.setter_index.?];
+            const setter_func = generateSetter(T_refl, setter);
+            tpl.setGetterAndSetterData(key, getter_func, setter_func, nat_ctx_data);
+        }
+    }
+
+    // add string tag if not provided
+    if (!T_refl.string_tag) {
+        const key = v8.Symbol.getToStringTag(isolate).toName();
+        tpl.setGetter(key, generateStringTag(T_refl.name));
+    }
+
+    // create a v8 FunctionTemplate for each T methods,
+    // with the corresponding zig callbacks,
+    // and attach them to the object template
+    inline for (T_refl.methods) |method| {
+        const func = generateMethod(T_refl, method);
+        const func_tpl = v8.FunctionTemplate.initCallbackData(isolate, func, nat_ctx_data);
+        var key: v8.Name = undefined;
+        if (method.symbol) |symbol| {
+            key = switch (symbol) {
+                .iterator => v8.Symbol.getIterator(isolate),
+                else => unreachable,
+            }.toName();
+        } else {
+            key = v8.String.initUtf8(isolate, method.js_name).toName();
+        }
+        tpl.set(key, func_tpl, v8.PropertyAttribute.None);
+    }
 }
