@@ -600,6 +600,9 @@ pub fn setNativeType(
         );
     }
 
+    // std.json.Value
+    if (ret.T == std.json.Value) return nativeJSONToJS(res, js_ctx, isolate);
+
     // Union type
     if (comptime ret.union_T) |union_types| {
         // retrieve the active field and setReturntype accordingly
@@ -671,6 +674,64 @@ pub fn setNativeType(
         isolate,
     ) catch unreachable; // NOTE: should not happen has types have been checked at reflect
     return js_val;
+}
+
+// nativeJSONToJS converts a native json value into a JS value.
+pub fn nativeJSONToJS(v: std.json.Value, js_ctx: v8.Context, isolate: v8.Isolate) !v8.Value {
+    return switch (v) {
+        .bool => |vv| nativeToJS(bool, vv, isolate),
+        .float => |vv| nativeToJS(f64, vv, isolate),
+        .integer => |vv| {
+            if (vv >= 0) {
+                if (vv <= std.math.maxInt(u32)) {
+                    return nativeToJS(u32, @intCast(vv), isolate);
+                }
+                return nativeToJS(u64, @intCast(vv), isolate);
+            }
+
+            if (vv >= std.math.minInt(i32)) {
+                return nativeToJS(i32, @intCast(vv), isolate);
+            }
+
+            return nativeToJS(i64, vv, isolate);
+        },
+        .string => |vv| nativeToJS([]const u8, vv, isolate),
+        .null => isolate.initNull().toValue(),
+
+        // TODO handle number_string.
+        // It is used to represent too big numbers.
+        .number_string => return error.TODO,
+
+        .array => |vv| {
+            const a = v8.Array.init(isolate, @intCast(vv.items.len));
+            const obj = a.castTo(v8.Object);
+            for (vv.items, 0..) |vvv, i| {
+                const js_val = try nativeJSONToJS(vvv, js_ctx, isolate);
+                if (!obj.setValueAtIndex(js_ctx, @intCast(i), js_val)) {
+                    return error.JSObjectSetValue;
+                }
+            }
+
+            return obj.toValue();
+        },
+        .object => |vv| {
+            var obj = v8.Object.init(isolate);
+            for (vv.keys()) |k| {
+                var js_val: v8.Value = undefined;
+                if (vv.get(k)) |vvv| {
+                    js_val = try nativeJSONToJS(vvv, js_ctx, isolate);
+                } else {
+                    // value is null
+                    js_val = isolate.initNull().toValue();
+                }
+                const key = v8.String.initUtf8(isolate, k);
+                if (!obj.setValue(js_ctx, key, js_val)) {
+                    return error.JSObjectSetValue;
+                }
+            }
+            return obj.toValue();
+        },
+    };
 }
 
 fn postAttach(

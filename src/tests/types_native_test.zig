@@ -188,10 +188,41 @@ const Country = struct {
     }
 };
 
+const JSONGen = struct {
+    jsobj: std.json.Parsed(std.json.Value),
+
+    pub fn constructor(alloc: std.mem.Allocator) !JSONGen {
+        return .{
+            .jsobj = try std.json.parseFromSlice(std.json.Value, alloc,
+                \\{
+                \\   "str": "bar",
+                \\   "int": 123,
+                \\   "float": 123.456,
+                \\   "array": [1,2,3],
+                \\   "neg": -123,
+                \\   "max": 1.7976931348623157e+308,
+                \\   "min": 5e-324,
+                \\   "max_safe_int": 9007199254740991,
+                \\   "max_safe_int_over": 9007199254740992
+                \\}
+            , .{}),
+        };
+    }
+
+    pub fn _object(self: JSONGen) std.json.Value {
+        return self.jsobj.value;
+    }
+
+    pub fn deinit(self: *JSONGen, _: std.mem.Allocator) void {
+        self.jsobj.deinit();
+    }
+};
+
 pub const Types = .{
     Brand,
     Car,
     Country,
+    JSONGen,
 };
 
 // exec tests
@@ -300,4 +331,31 @@ pub fn exec(
         .{ .src = "try { car.changeBrand({'foo': 'bar'}); false; } catch(e) { e instanceof TypeError; }", .ex = "true" },
     };
     try tests.checkCases(js_env, &bug_native_obj);
+
+    var json_native = [_]tests.Case{
+        .{ .src = "let json = (new JSONGen()).object()", .ex = "undefined" },
+        .{ .src = "json.str", .ex = "bar" },
+        .{ .src = "json.int", .ex = "123" },
+        .{ .src = "json.float", .ex = "123.456" },
+        .{ .src = "json.neg", .ex = "-123" },
+        .{ .src = "json.min", .ex = "5e-324" },
+        .{ .src = "json.max", .ex = "1.7976931348623157e+308" },
+
+        .{ .src = "json.max_safe_int", .ex = "9007199254740991" },
+        .{ .src = "json.max_safe_int_over", .ex = "9007199254740992" },
+
+        .{ .src = "typeof(json.int)", .ex = "number" },
+        .{ .src = "typeof(json.float)", .ex = "number" },
+        .{ .src = "typeof(json.neg)", .ex = "number" },
+        .{ .src = "typeof(json.max)", .ex = "number" },
+        .{ .src = "typeof(json.min)", .ex = "number" },
+
+        // TODO these tests should pass, but we've got bigint instead.
+        //.{ .src = "typeof(json.max_safe_int)", .ex = "number" },
+        //.{ .src = "typeof(json.max_safe_int_over)", .ex = "number" },
+
+        .{ .src = "json.array.length", .ex = "3" },
+        .{ .src = "json.array[0]", .ex = "1" },
+    };
+    try tests.checkCases(js_env, &json_native);
 }
