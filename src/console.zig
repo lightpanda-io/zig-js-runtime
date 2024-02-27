@@ -1,9 +1,11 @@
 const std = @import("std");
 
+const log = std.log.scoped(.console);
+
 pub const Console = struct {
     // TODO: configurable writer
 
     pub fn _log(_: Console, str: []const u8) void {
-        std.debug.print("== JS console: {s} ==\n", .{str});
+        log.debug("{s}\n", .{str});
     }
 };
