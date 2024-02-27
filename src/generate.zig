@@ -34,6 +34,22 @@ pub fn reflect(comptime types: anytype) []refl.Struct {
 // Import user-defined types
 pub const Types: []refl.Struct = @import("root").Types;
 
+pub const ProxyTypes = blk: {
+    var i: usize = 0;
+    for (Types) |t| {
+        if (!refl.isProxyType(t.Self())) continue;
+        i += 1;
+    }
+    var l: [i]refl.Struct = undefined;
+    var index: usize = 0;
+    for (Types) |t| {
+        if (!refl.isProxyType(t.Self())) continue;
+        l[index] = t;
+        index += 1;
+    }
+    break :blk &l;
+};
+
 // retrieved the reflected type of a user-defined native type
 pub fn getType(comptime T: type) refl.Struct {
     std.debug.assert(@inComptime());
@@ -43,6 +59,24 @@ pub fn getType(comptime T: type) refl.Struct {
         }
     }
     @compileError("NativeTypeNotHandled: " ++ @typeName(T));
+}
+
+// retrieved the proto field matching the type
+// recursively on the prototype chain
+pub fn getProto(comptime T: type, target_ptr: anytype) !*T {
+    const T_target = @TypeOf(target_ptr.*);
+    if (T_target == T) {
+        return target_ptr;
+    }
+    if (@hasField(T_target, "proto")) {
+        // here we retun the "right" pointer: &(field(...))
+        // ie. the direct pointer to the field
+        // and not a pointer to a new const/var holding the field
+
+        // TODO: check if we have more than 2 types in the chain
+        return getProto(T, &(@field(target_ptr, "proto")));
+    }
+    return error.Reference;
 }
 
 // generate APIs from reflected types

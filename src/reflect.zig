@@ -1663,8 +1663,16 @@ pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     return @typeInfo(T).Struct.fields[index].default_value != null;
 }
 
+pub fn isProxyType(comptime T: type) bool {
+    std.debug.assert(@inComptime());
+    if (@hasField(T, "mem_guarantied")) return false;
+    if (!@hasField(T, "proto")) return false;
+    return true;
+}
+
 pub fn Proxy(comptime T: type) type {
     return struct {
+        index: usize,
         base: *T,
     };
 }

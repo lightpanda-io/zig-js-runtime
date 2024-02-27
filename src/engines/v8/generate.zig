@@ -424,7 +424,7 @@ fn bindObjectNativeToJS(
         // use a proxy
         const proxy_T = comptime refl.Proxy(T_refl.Self());
         const proxy = try alloc.create(proxy_T);
-        proxy.* = .{ .base = nat_obj };
+        proxy.* = .{ .index = T_refl.index, .base = nat_obj };
         ext = v8.External.init(isolate, proxy);
     }
     js_obj_pers.setInternalField(0, ext);
@@ -745,9 +745,37 @@ fn getNativeObject(
             }
         } else {
             // proxy mechanism
-            const proxy_T = comptime refl.Proxy(T);
-            const proxy = @as(*proxy_T, @ptrCast(ptr));
-            obj_ptr = proxy.base;
+            // ---------------
+            // At this stage we cast the pointer as a virtual proxy,
+            // as we do not know the real object type (ie. parent or some child)
+            // NOTE: we only care of the index of the virtual proxy,
+            // not his base type which could be wrong (ie. garbage).
+            // It's safe because all proxy types have the same memory representation
+            // ie. an index and a pointer to the base type
+            const virtual_proxy_T = comptime refl.Proxy(T);
+            const virtual_proxy = @as(*virtual_proxy_T, @ptrCast(ptr));
+            // we can then check the index of the virtual proxy
+            if (virtual_proxy.index == T_refl.index) {
+                // if the index is the same as the target type,
+                // the real object type is the parent,
+                // so we can just return it from the virtual proxy
+                obj_ptr = virtual_proxy.base;
+            } else {
+                // otherwise let's compare the index with eligible types
+                // to find the right child type
+                inline for (gen.ProxyTypes) |t| {
+                    if (t.index == virtual_proxy.index) {
+                        // now we know the right child type,
+                        // we can cast the pointer to the real proxy
+                        const real_proxy_T = comptime refl.Proxy(t.Self());
+                        const real_proxy = @as(*real_proxy_T, @ptrCast(ptr));
+                        // and return the proto from its base,
+                        // going recursively on the proto chain
+                        // until matching the parent type
+                        obj_ptr = try gen.getProto(T, real_proxy.base);
+                    }
+                }
+            }
         }
     }
     return obj_ptr;
