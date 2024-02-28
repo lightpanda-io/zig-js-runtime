@@ -1664,6 +1664,17 @@ pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     return @typeInfo(T).Struct.fields[index].default_value != null;
 }
 
+pub fn hasParent(comptime T: type, comptime parent: type) bool {
+    if (!@hasField(T, "proto")) return false;
+    for (std.meta.fields(T)) |field| {
+        if (std.mem.eql(u8, field.name, "proto")) {
+            if (field.type == parent) return true;
+            return hasParent(field.type, parent);
+        }
+    }
+    return false;
+}
+
 // Utils funcs
 // -----------
 

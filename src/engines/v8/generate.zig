@@ -134,9 +134,11 @@ fn checkArgsLen(
 }
 
 fn getNativeArg(
+    alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     comptime arg_T: refl.Type,
     js_value: v8.Value,
+    isolate: v8.Isolate,
 ) !arg_T.T {
     var value: arg_T.T = undefined;
 
@@ -151,7 +153,7 @@ fn getNativeArg(
     if (!js_value.isObject()) return JSError.InvalidArgument;
 
     // JS object
-    const ptr = try getNativeObject(T_refl, js_value.castTo(v8.Object));
+    const ptr = try getNativeObject(alloc, T_refl, js_value.castTo(v8.Object), isolate);
     if (arg_T.underPtr() != null) {
         value = ptr;
     } else {
@@ -175,7 +177,13 @@ fn getArg(
     if (arg.isNative()) {
 
         // native types
-        value = try getNativeArg(gen.Types[arg.T_refl_index.?], arg, js_val.?);
+        value = try getNativeArg(
+            alloc,
+            gen.Types[arg.T_refl_index.?],
+            arg,
+            js_val.?,
+            isolate,
+        );
     } else if (arg.nested_index) |index| {
 
         // nested types (ie. JS anonymous objects)
@@ -400,8 +408,6 @@ fn freeArgs(alloc: std.mem.Allocator, comptime func: refl.Func, obj: anytype) !v
 const PersistentObject = v8.Persistent(v8.Object);
 
 fn bindObjectNativeToJS(
-    alloc: std.mem.Allocator,
-    comptime T_refl: refl.Struct,
     nat_obj: anytype,
     js_obj: v8.Object,
     isolate: v8.Isolate,
@@ -416,19 +422,7 @@ fn bindObjectNativeToJS(
     const js_obj_pers = pers.castToObject();
 
     // bind the native object pointer to the JS object
-    var ext: v8.External = undefined;
-    if (comptime T_refl.is_mem_guarantied()) {
-
-        // store directly the object pointer
-        ext = v8.External.init(isolate, nat_obj);
-    } else {
-
-        // use the refs mechanism
-        const int_ptr = try alloc.create(usize);
-        int_ptr.* = @intFromPtr(nat_obj);
-        ext = v8.External.init(isolate, int_ptr);
-        try refs.addObject(alloc, int_ptr.*, T_refl.index);
-    }
+    const ext = v8.External.init(isolate, nat_obj);
     js_obj_pers.setInternalField(0, ext);
     return js_obj_pers;
 }
@@ -461,13 +455,7 @@ fn bindObjectNativeAndJS(
     }
 
     // bind the Native object to the JS object
-    const js_obj_binded = try bindObjectNativeToJS(
-        alloc,
-        T_refl,
-        nat_obj,
-        js_obj,
-        isolate,
-    );
+    const js_obj_binded = try bindObjectNativeToJS(nat_obj, js_obj, isolate);
 
     // bind the JS object to the Native object
     try bindObjectJSToNative(alloc, nat_ctx.objects, nat_obj, js_obj_binded);
@@ -772,8 +760,10 @@ fn postAttach(
 }
 
 fn getNativeObject(
+    alloc: std.mem.Allocator,
     comptime T_refl: refl.Struct,
     js_obj: v8.Object,
+    isolate: v8.Isolate,
 ) !*T_refl.Self() {
     const T = T_refl.Self();
 
@@ -791,11 +781,11 @@ fn getNativeObject(
         // TODO ensure the js object corresponds to the expected native type.
 
         const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
+        // ensure the pointer is aligned (no-op at runtime)
+        // as External is a ?*anyopaque (ie. *void) with alignment 1
+        const ptr: *align(@alignOf(T)) anyopaque = @alignCast(ext);
         if (comptime T_refl.is_mem_guarantied()) {
             // memory is fixed
-            // ensure the pointer is aligned (no-op at runtime)
-            // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(ext);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
                 obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
@@ -806,8 +796,28 @@ fn getNativeObject(
                 obj_ptr = @as(*T, @ptrCast(ptr));
             }
         } else {
-            // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(T, gen.Types, ext);
+            // retrieve the name of the constructor of the object
+            // to find it's orignal type (ie. parent or one of its children)
+            const str = try js_obj.getConstructorName();
+            const len = str.lenUtf8(isolate);
+            const name = try alloc.alloc(u8, len);
+            _ = str.writeUtf8(isolate, name);
+            defer alloc.free(name);
+            if (std.mem.eql(u8, name, T_refl.name)) {
+                obj_ptr = @as(*T, @ptrCast(ptr));
+            } else {
+                inline for (gen.children(T)) |t| {
+                    if (std.mem.eql(u8, name, t.name)) {
+                        const p: *align(8) anyopaque = @alignCast(ext);
+                        const real_obj = @as(*t.Self(), @ptrCast(p));
+                        obj_ptr = try gen.getProtoObject(T, real_obj);
+                        break;
+                    }
+                }
+                if (obj_ptr == undefined) {
+                    return error.Reference;
+                }
+            }
         }
     }
     return obj_ptr;
@@ -870,7 +880,12 @@ fn callFunc(
 
     // retrieve the zig object
     if (comptime func_kind != .constructor and !T_refl.isEmpty()) {
-        const obj_ptr = getNativeObject(T_refl, cbk_info.getThis()) catch unreachable;
+        const obj_ptr = getNativeObject(
+            nat_ctx.alloc,
+            T_refl,
+            cbk_info.getThis(),
+            isolate,
+        ) catch unreachable;
         const self_T = @TypeOf(@field(args, "0"));
         if (self_T == T_refl.Self()) {
             @field(args, "0") = obj_ptr.*;

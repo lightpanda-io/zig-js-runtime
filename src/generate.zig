@@ -45,6 +45,41 @@ pub fn getType(comptime T: type) refl.Struct {
     @compileError("NativeTypeNotHandled: " ++ @typeName(T));
 }
 
+pub fn children(comptime T: type) []refl.Struct {
+    std.debug.assert(@inComptime());
+    var nb: usize = 0;
+    for (Types) |t| {
+        if (refl.hasParent(t.Self(), T)) {
+            nb += 1;
+        }
+    }
+    var l: [nb]refl.Struct = undefined;
+    var index = 0;
+    for (Types) |t| {
+        if (refl.hasParent(t.Self(), T)) {
+            l[index] = t;
+            index += 1;
+        }
+    }
+    return &l;
+}
+
+pub fn getProtoObject(comptime T: type, target_ptr: anytype) !*T {
+    const T_target = @TypeOf(target_ptr.*);
+    if (T_target == T) {
+        return target_ptr;
+    }
+    if (@hasField(T_target, "proto")) {
+        // here we retun the "right" pointer: &(field(...))
+        // ie. the direct pointer to the field
+        // and not a pointer to a new const/var holding the field
+
+        // TODO: and what if we have more than 2 types in the chain?
+        return getProtoObject(T, &(@field(target_ptr, "proto")));
+    }
+    return error.Reference;
+}
+
 // generate APIs from reflected types
 // which can be later loaded in JS.
 fn generate(comptime types: []refl.Struct) []API {

@@ -4,7 +4,6 @@ const builtin = @import("builtin");
 const v8 = @import("v8");
 
 const internal = @import("../../internal_api.zig");
-const refs = internal.refs;
 const refl = internal.refl;
 const gen = internal.gen;
 const NativeContext = internal.NativeContext;
@@ -78,12 +77,6 @@ pub const Env = struct {
 
     pub fn init(alloc: std.mem.Allocator, loop: *public.Loop) anyerror!Env {
 
-        // globals values
-        // --------------
-
-        // refs
-        refs.map = refs.Map{};
-
         // native context
         // --------------
 
@@ -145,12 +138,6 @@ pub const Env = struct {
         self.nat_ctx.objects.deinit(self.nat_ctx.alloc);
         self.nat_ctx.alloc.destroy(self.nat_ctx.objects);
         self.nat_ctx.alloc.destroy(self.nat_ctx);
-
-        // globals values
-        // --------------
-
-        // unset globals
-        refs.map = undefined;
 
         self.* = undefined;
     }
