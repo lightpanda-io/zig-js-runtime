@@ -103,7 +103,7 @@ install-dev: install-submodule install-v8-dev
 ## Install and build v8 engine for release
 install-v8: _install-v8
 install-v8: mode=release
-install-v8: zig_opts=--Doptimize=ReleaseSafe
+install-v8: zig_opts=-Doptimize=ReleaseSafe
 
 ## Install and build v8 engine for dev
 install-v8-dev: _install-v8
