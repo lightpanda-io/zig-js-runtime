@@ -134,6 +134,7 @@ fn checkArgsLen(
 }
 
 fn getNativeArg(
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     comptime arg_T: refl.Type,
     js_value: v8.Value,
@@ -151,7 +152,7 @@ fn getNativeArg(
     if (!js_value.isObject()) return JSError.InvalidArgument;
 
     // JS object
-    const ptr = try getNativeObject(T_refl, js_value.castTo(v8.Object));
+    const ptr = try getNativeObject(nat_ctx, T_refl, js_value.castTo(v8.Object));
     if (arg_T.underPtr() != null) {
         value = ptr;
     } else {
@@ -175,7 +176,7 @@ fn getArg(
     if (arg.isNative()) {
 
         // native types
-        value = try getNativeArg(gen.Types[arg.T_refl_index.?], arg, js_val.?);
+        value = try getNativeArg(nat_ctx, gen.Types[arg.T_refl_index.?], arg, js_val.?);
     } else if (arg.nested_index) |index| {
 
         // nested types (ie. JS anonymous objects)
@@ -401,6 +402,7 @@ const PersistentObject = v8.Persistent(v8.Object);
 
 fn bindObjectNativeToJS(
     alloc: std.mem.Allocator,
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     nat_obj: anytype,
     js_obj: v8.Object,
@@ -427,7 +429,7 @@ fn bindObjectNativeToJS(
         const int_ptr = try alloc.create(usize);
         int_ptr.* = @intFromPtr(nat_obj);
         ext = v8.External.init(isolate, int_ptr);
-        try refs.addObject(alloc, int_ptr.*, T_refl.index);
+        try refs.addObject(alloc, &nat_ctx.refs, int_ptr.*, T_refl.index);
     }
     js_obj_pers.setInternalField(0, ext);
     return js_obj_pers;
@@ -463,6 +465,7 @@ fn bindObjectNativeAndJS(
     // bind the Native object to the JS object
     const js_obj_binded = try bindObjectNativeToJS(
         alloc,
+        nat_ctx,
         T_refl,
         nat_obj,
         js_obj,
@@ -772,6 +775,7 @@ fn postAttach(
 }
 
 fn getNativeObject(
+    nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
     js_obj: v8.Object,
 ) !*T_refl.Self() {
@@ -807,7 +811,7 @@ fn getNativeObject(
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(T, gen.Types, ext);
+            obj_ptr = try refs.getObject(nat_ctx.refs, T, gen.Types, ext);
         }
     }
     return obj_ptr;
@@ -870,7 +874,7 @@ fn callFunc(
 
     // retrieve the zig object
     if (comptime func_kind != .constructor and !T_refl.isEmpty()) {
-        const obj_ptr = getNativeObject(T_refl, cbk_info.getThis()) catch unreachable;
+        const obj_ptr = getNativeObject(nat_ctx, T_refl, cbk_info.getThis()) catch unreachable;
         const self_T = @TypeOf(@field(args, "0"));
         if (self_T == T_refl.Self()) {
             @field(args, "0") = obj_ptr.*;
