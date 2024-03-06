@@ -1097,7 +1097,7 @@ fn setStaticAttrs(
     }
 }
 
-pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.ObjectTemplate, ?TPL) anyerror!TPL);
+pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.FunctionTemplate, ?TPL) anyerror!TPL);
 
 const LoadError = error{
     NoPrototypeTemplateProvided,
@@ -1113,7 +1113,7 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
         pub fn load(
             nat_ctx: *NativeContext,
             isolate: v8.Isolate,
-            globals: v8.ObjectTemplate,
+            globals: v8.FunctionTemplate,
             proto_tpl: ?TPL,
         ) LoadError!TPL {
 
@@ -1127,9 +1127,13 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
             const cstr_func = generateConstructor(T_refl, T_refl.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallbackData(isolate, cstr_func, nat_ctx_data);
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
-            globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
+            globals.getInstanceTemplate().set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
             try loadFunctionTemplate(T_refl, cstr_tpl, nat_ctx, isolate, proto_tpl);
+
+            if (comptime T_refl.is_global_type()) {
+                try loadFunctionTemplate(T_refl, globals, nat_ctx, isolate, proto_tpl);
+            }
 
             // return the FunctionTemplate of the constructor
             return TPL{ .tpl = cstr_tpl, .index = T_refl.index };

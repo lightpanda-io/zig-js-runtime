@@ -8,7 +8,6 @@ pub const Types = public.reflect(public.MergeTuple(.{
     .{public.Console},
     WindowTypes,
 }));
-pub const GlobalType = null;
 
 pub fn main() !void {
 

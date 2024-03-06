@@ -160,20 +160,11 @@ pub const Env = struct {
     // load user-defined Types into Javascript environement
     pub fn load(self: Env, js_types: []usize) anyerror!void {
         var tpls: [gen.Types.len]TPL = undefined;
-        try gen.load(self.nat_ctx, self.isolate, self.globals.getInstanceTemplate(), TPL, &tpls);
+        try gen.load(self.nat_ctx, self.isolate, self.globals, TPL, &tpls);
         for (tpls, 0..) |tpl, i| {
             js_types[i] = @intFromPtr(tpl.tpl.handle);
         }
         self.nat_ctx.loadTypes(js_types);
-
-        if (gen.GlobalType) |T| {
-            const T_refl = comptime gen.getType(T);
-            var proto: ?TPL = null;
-            if (T_refl.proto_index) |index| {
-                proto = tpls[index];
-            }
-            try loadFunctionTemplate(T_refl, self.globals, self.nat_ctx, self.isolate, proto);
-        }
     }
 
     // start a Javascript context

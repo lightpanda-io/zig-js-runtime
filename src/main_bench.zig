@@ -12,7 +12,6 @@ const kb = 1024;
 const us = std.time.ns_per_us;
 
 pub const Types = public.reflect(proto.Types);
-pub const GlobalType = null;
 
 fn benchWithIsolate(
     bench_alloc: *bench.Allocator,

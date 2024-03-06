@@ -715,6 +715,7 @@ pub const Struct = struct {
     self_T: ?type,
     value: Type,
     mem_guarantied: bool,
+    global_type: bool,
 
     // index on the types list
     index: usize,
@@ -753,6 +754,10 @@ pub const Struct = struct {
             }
             return self.hasProtoCast();
         }
+    }
+
+    pub fn is_global_type(comptime self: Struct) bool {
+        comptime return self.global_type;
     }
 
     pub fn hasProtoCast(comptime self: Struct) bool {
@@ -1162,6 +1167,9 @@ pub const Struct = struct {
             mem_guarantied = @typeInfo(T).Struct.layout != .Auto;
         }
 
+        // global type
+        const global_type: bool = @hasDecl(T, "global_type");
+
         // nested types
         var nested_nb: usize = 0;
         // first iteration to retrieve the number of nested structs
@@ -1325,6 +1333,7 @@ pub const Struct = struct {
             .value = try Type.reflect(real_T, null),
             .static_attrs_T = Struct.reflectAttrs(T),
             .mem_guarantied = mem_guarantied,
+            .global_type = global_type,
 
             // index in types list
             .index = index,
@@ -1377,6 +1386,7 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
 
 fn lookupDuplicates(comptime all: []Struct) Error!void {
     std.debug.assert(@inComptime());
+    var count_global_type = 0;
     for (all, 0..) |s, i| {
         for (all[i + 1 ..]) |other_s| {
 
@@ -1396,6 +1406,16 @@ fn lookupDuplicates(comptime all: []Struct) Error!void {
                 fmtErr(msg.len, msg, s.Self());
                 return error.StructDuplicateName;
             }
+        }
+
+        // Check if global type declaration is duplicated.
+        if (s.global_type) {
+            if (count_global_type > 0) {
+                const msg = "duplicate global type declaration";
+                fmtErr(msg.len, msg, s.T);
+                return error.StructDuplicateGlobalType;
+            }
+            count_global_type += 1;
         }
     }
 }
@@ -1761,6 +1781,7 @@ const Error = error{
     StructLookup,
     StructDuplicateType,
     StructDuplicateName,
+    StructDuplicateGlobalType,
     StructExceptionWithoutErrorSet,
     StructExceptionWrongErrorSet,
     StructExceptionWrongInterface,
@@ -1862,6 +1883,12 @@ const TestStructLookup = struct {
 const TestStructDuplicateTypeA = struct {};
 const TestStructDuplicateTypeB = struct {
     pub const Self = TestStructDuplicateTypeA;
+};
+const TestStructDuplicateGlobalTypeA = struct {
+    pub const global_type = true;
+};
+const TestStructDuplicateGlobalTypeB = struct {
+    pub const global_type = true;
 };
 const MyExceptionWithoutErrorSet = struct {};
 const TestStructExceptionWithoutErrorSet = struct {
@@ -2041,6 +2068,10 @@ pub fn tests() !void {
     try ensureErr(
         .{ TestStructDuplicateTypeA, TestStructDuplicateTypeB },
         error.StructDuplicateType,
+    );
+    try ensureErr(
+        .{ TestStructDuplicateGlobalTypeA, TestStructDuplicateGlobalTypeB },
+        error.StructDuplicateGlobalType,
     );
     try ensureErr(
         .{TestStructExceptionWithoutErrorSet},

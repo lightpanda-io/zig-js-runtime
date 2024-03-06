@@ -55,7 +55,6 @@ pub const Types = gen.reflect(gen.MergeTuple(.{
     callback.Types,
     global.Types,
 }));
-pub const GlobalType = global.Global;
 
 pub fn main() !void {
     std.debug.print("\n", .{});

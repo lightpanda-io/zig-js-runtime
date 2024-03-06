@@ -11,6 +11,7 @@ const GlobalParent = struct {
 
 pub const Global = struct {
     pub const prototype = *GlobalParent;
+    pub const global_type = true;
 
     proto: GlobalParent = .{},
 
