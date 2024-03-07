@@ -715,7 +715,6 @@ pub const Struct = struct {
     self_T: ?type,
     value: Type,
     mem_guarantied: bool,
-    global_type: bool,
 
     // index on the types list
     index: usize,
@@ -754,10 +753,6 @@ pub const Struct = struct {
             }
             return self.hasProtoCast();
         }
-    }
-
-    pub fn is_global_type(comptime self: Struct) bool {
-        comptime return self.global_type;
     }
 
     pub fn hasProtoCast(comptime self: Struct) bool {
@@ -1167,9 +1162,6 @@ pub const Struct = struct {
             mem_guarantied = @typeInfo(T).Struct.layout != .Auto;
         }
 
-        // global type
-        const global_type: bool = @hasDecl(T, "global_type");
-
         // nested types
         var nested_nb: usize = 0;
         // first iteration to retrieve the number of nested structs
@@ -1333,7 +1325,6 @@ pub const Struct = struct {
             .value = try Type.reflect(real_T, null),
             .static_attrs_T = Struct.reflectAttrs(T),
             .mem_guarantied = mem_guarantied,
-            .global_type = global_type,
 
             // index in types list
             .index = index,
@@ -1409,7 +1400,7 @@ fn lookupDuplicates(comptime all: []Struct) Error!void {
         }
 
         // Check if global type declaration is duplicated.
-        if (s.global_type) {
+        if (isGlobalType(s.T)) {
             if (count_global_type > 0) {
                 const msg = "duplicate global type declaration";
                 fmtErr(msg.len, msg, s.T);
@@ -1682,6 +1673,14 @@ pub fn postAttachFunc(comptime T: type) !?type {
 pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     std.debug.assert(@inComptime());
     return @typeInfo(T).Struct.fields[index].default_value != null;
+}
+
+pub fn isGlobalType(comptime T: type) bool {
+    std.debug.assert(@inComptime());
+    if (@hasDecl(T, "global_type")) {
+        return T.global_type;
+    }
+    return false;
 }
 
 // Utils funcs

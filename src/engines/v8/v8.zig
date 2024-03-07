@@ -230,7 +230,7 @@ pub const Env = struct {
 
     pub fn bindGlobal(self: Env, obj: anytype) anyerror!void {
         const T_refl = comptime gen.getType(@TypeOf(obj));
-        if (!comptime T_refl.is_global_type()) return error.notGlobalType;
+        if (!comptime refl.isGlobalType(T_refl.T)) return error.notGlobalType;
         const T = T_refl.Self();
 
         // ensure Native object is a pointer

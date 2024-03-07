@@ -1131,7 +1131,7 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
 
             try loadFunctionTemplate(T_refl, cstr_tpl, nat_ctx, isolate, proto_tpl);
 
-            if (comptime T_refl.is_global_type()) {
+            if (comptime refl.isGlobalType(T_refl.T)) {
                 try loadFunctionTemplate(T_refl, globals, nat_ctx, isolate, proto_tpl);
             }
 
