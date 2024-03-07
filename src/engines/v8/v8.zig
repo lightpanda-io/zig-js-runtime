@@ -80,24 +80,6 @@ pub const Env = struct {
 
     pub fn init(alloc: std.mem.Allocator, loop: *public.Loop) anyerror!Env {
 
-        // globals values
-        // --------------
-
-        // refs
-        refs.map = refs.Map{};
-
-        // native context
-        // --------------
-
-        const objects_ptr = try alloc.create(NativeContext.Objects);
-        objects_ptr.* = NativeContext.Objects{};
-        const nat_ctx = try alloc.create(NativeContext);
-        nat_ctx.* = .{
-            .alloc = alloc,
-            .loop = loop,
-            .objects = objects_ptr,
-        };
-
         // v8 values
         // ---------
 
@@ -117,7 +99,7 @@ pub const Env = struct {
         const globals = v8.FunctionTemplate.initDefault(isolate);
 
         return Env{
-            .nat_ctx = nat_ctx,
+            .nat_ctx = try NativeContext.init(alloc, loop),
             .isolate_params = params,
             .isolate = isolate,
             .hscope = hscope,
@@ -144,15 +126,7 @@ pub const Env = struct {
 
         // native context
         // --------------
-        self.nat_ctx.objects.deinit(self.nat_ctx.alloc);
-        self.nat_ctx.alloc.destroy(self.nat_ctx.objects);
-        self.nat_ctx.alloc.destroy(self.nat_ctx);
-
-        // globals values
-        // --------------
-
-        // unset globals
-        refs.map = undefined;
+        self.nat_ctx.deinit();
 
         self.* = undefined;
     }
@@ -217,9 +191,12 @@ pub const Env = struct {
             return; // no-op
         }
 
-        // context
+        // JS context
         self.js_ctx.?.exit();
         self.js_ctx = undefined;
+
+        // Native context
+        self.nat_ctx.stop();
     }
     pub fn getGlobal(self: Env) anyerror!Object {
         if (self.js_ctx == null) {

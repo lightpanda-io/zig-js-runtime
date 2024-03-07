@@ -10,13 +10,8 @@ const refl = internal.refl;
 // it will be store on the JS object as an internal field
 // - value is the index of API
 pub const Map = std.AutoHashMapUnmanaged(usize, usize);
-pub var map: Map = undefined;
 
-pub fn addObject(alloc: std.mem.Allocator, key: usize, value: usize) !void {
-    try map.put(alloc, key, value);
-}
-
-pub fn getObject(comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
+pub fn getObject(map: Map, comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
 
     // use the object pointer (key) to retrieve the API index (value) in the map
     const ptr_aligned: *align(@alignOf(usize)) anyopaque = @alignCast(ptr);
