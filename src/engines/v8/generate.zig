@@ -473,7 +473,7 @@ fn bindObjectNativeAndJS(
     );
 
     // bind the JS object to the Native object
-    try bindObjectJSToNative(alloc, nat_ctx.objects, nat_obj, js_obj_binded);
+    try bindObjectJSToNative(alloc, &nat_ctx.objects, nat_obj, js_obj_binded);
 
     // call postAttach func
     if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
