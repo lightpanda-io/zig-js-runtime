@@ -1377,6 +1377,7 @@ fn lookupPrototype(comptime all: []Struct) Error!void {
 
 fn lookupDuplicates(comptime all: []Struct) Error!void {
     std.debug.assert(@inComptime());
+    var count_global_type = 0;
     for (all, 0..) |s, i| {
         for (all[i + 1 ..]) |other_s| {
 
@@ -1396,6 +1397,16 @@ fn lookupDuplicates(comptime all: []Struct) Error!void {
                 fmtErr(msg.len, msg, s.Self());
                 return error.StructDuplicateName;
             }
+        }
+
+        // Check if global type declaration is duplicated.
+        if (isGlobalType(s.T)) {
+            if (count_global_type > 0) {
+                const msg = "duplicate global type declaration";
+                fmtErr(msg.len, msg, s.T);
+                return error.StructDuplicateGlobalType;
+            }
+            count_global_type += 1;
         }
     }
 }
@@ -1664,6 +1675,14 @@ pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     return @typeInfo(T).Struct.fields[index].default_value != null;
 }
 
+pub fn isGlobalType(comptime T: type) bool {
+    std.debug.assert(@inComptime());
+    if (@hasDecl(T, "global_type")) {
+        return T.global_type;
+    }
+    return false;
+}
+
 // Utils funcs
 // -----------
 
@@ -1761,6 +1780,7 @@ const Error = error{
     StructLookup,
     StructDuplicateType,
     StructDuplicateName,
+    StructDuplicateGlobalType,
     StructExceptionWithoutErrorSet,
     StructExceptionWrongErrorSet,
     StructExceptionWrongInterface,
@@ -1862,6 +1882,12 @@ const TestStructLookup = struct {
 const TestStructDuplicateTypeA = struct {};
 const TestStructDuplicateTypeB = struct {
     pub const Self = TestStructDuplicateTypeA;
+};
+const TestStructDuplicateGlobalTypeA = struct {
+    pub const global_type = true;
+};
+const TestStructDuplicateGlobalTypeB = struct {
+    pub const global_type = true;
 };
 const MyExceptionWithoutErrorSet = struct {};
 const TestStructExceptionWithoutErrorSet = struct {
@@ -2041,6 +2067,10 @@ pub fn tests() !void {
     try ensureErr(
         .{ TestStructDuplicateTypeA, TestStructDuplicateTypeB },
         error.StructDuplicateType,
+    );
+    try ensureErr(
+        .{ TestStructDuplicateGlobalTypeA, TestStructDuplicateGlobalTypeB },
+        error.StructDuplicateGlobalType,
     );
     try ensureErr(
         .{TestStructExceptionWithoutErrorSet},

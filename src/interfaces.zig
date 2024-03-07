@@ -48,6 +48,8 @@ pub fn Env(
     // load() native apis into js templates
     assertDecl(T, "load", fn (self: T, js_types: []usize) anyerror!void);
 
+    assertDecl(T, "bindGlobal", fn (self: T, ob: anytype) anyerror!void);
+
     // start()
     assertDecl(T, "start", fn (
         self: *T,

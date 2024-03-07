@@ -444,7 +444,7 @@ fn bindObjectJSToNative(
     try objects.put(alloc, nat_obj_ref, js_obj_ref);
 }
 
-fn bindObjectNativeAndJS(
+pub fn bindObjectNativeAndJS(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
     comptime T_refl: refl.Struct,
@@ -1097,7 +1097,12 @@ fn setStaticAttrs(
     }
 }
 
-pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.ObjectTemplate, ?TPL) anyerror!TPL);
+pub const LoadFnType = (fn (*NativeContext, v8.Isolate, v8.FunctionTemplate, ?TPL) anyerror!TPL);
+
+const LoadError = error{
+    NoPrototypeTemplateProvided,
+    WrongPrototypeTemplateProvided,
+};
 
 pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
     return struct {
@@ -1105,15 +1110,10 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
         // NOTE: the load function and it's callbacks constructor/getter/setter/method
         // are executed at runtime !
 
-        const LoadError = error{
-            NoPrototypeTemplateProvided,
-            WrongPrototypeTemplateProvided,
-        };
-
         pub fn load(
             nat_ctx: *NativeContext,
             isolate: v8.Isolate,
-            globals: v8.ObjectTemplate,
+            globals: v8.FunctionTemplate,
             proto_tpl: ?TPL,
         ) LoadError!TPL {
 
@@ -1127,112 +1127,140 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
             const cstr_func = generateConstructor(T_refl, T_refl.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallbackData(isolate, cstr_func, nat_ctx_data);
             const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
-            globals.set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
+            globals.getInstanceTemplate().set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
 
-            // static attributes keys and values
-            comptime var static_nb: usize = undefined;
-            if (T_refl.static_attrs_T) |attr_T| {
-                static_nb = @typeInfo(attr_T).Struct.fields.len;
-            } else {
-                static_nb = 0;
-            }
-            var static_keys: [static_nb]v8.Name = undefined;
-            var static_values: [static_nb]v8.Value = undefined;
-            staticAttrsKeys(T_refl, &static_keys, isolate);
-            staticAttrsValues(T_refl, &static_values, isolate);
+            try loadFunctionTemplate(T_refl, cstr_tpl, nat_ctx, isolate, proto_tpl);
 
-            // set static attributes on the v8 FunctionTemplate
-            setStaticAttrs(T_refl, cstr_tpl, &static_keys, &static_values);
-
-            // set the optional prototype of the constructor
-            if (comptime T_refl.proto_index != null) {
-                if (proto_tpl == null) {
-                    return LoadError.NoPrototypeTemplateProvided;
-                }
-                if (T_refl.proto_index.? != proto_tpl.?.index) {
-                    return LoadError.WrongPrototypeTemplateProvided;
-                }
-                // at instance level, inherit from proto template
-                // ie. an instance of the Child function has all properties
-                // on Parent's instance template
-                // ie. <Child>.prototype.__proto__ === <Parent>.prototype
-                cstr_tpl.inherit(proto_tpl.?.tpl);
-            }
-
-            // NOTE: There is 2 different ObjectTemplate
-            // attached to the FunctionTemplate of the constructor:
-            // - The PrototypeTemplate which represents the template
-            // of the protype of the constructor.
-            // All getter/setter/methods must be set on it.
-            // - The InstanceTemplate wich represents the template
-            // of the instance created by the constructor.
-            // This template holds the internal field count.
-
-            // get the v8 InstanceTemplate attached to the constructor
-            // and set 1 internal field to bind the counterpart zig object
-            const obj_tpl = cstr_tpl.getInstanceTemplate();
-            if (!T_refl.isEmpty()) {
-                // if the object is an empty struct (ie. a kind of container)
-                // no need to keep it's reference
-                obj_tpl.setInternalFieldCount(1);
-            }
-
-            // get the v8 Prototypetemplate attached to the constructor
-            // to set getter/setter/methods
-            const prototype = cstr_tpl.getPrototypeTemplate();
-
-            // set getters for the v8 ObjectTemplate,
-            // with the corresponding zig callbacks
-            inline for (T_refl.getters) |getter| {
-                const getter_func = generateGetter(T_refl, getter);
-                var key: v8.Name = undefined;
-                if (getter.symbol) |symbol| {
-                    key = switch (symbol) {
-                        .string_tag => v8.Symbol.getToStringTag(isolate),
-                        else => unreachable,
-                    }.toName();
-                } else {
-                    key = v8.String.initUtf8(isolate, getter.js_name).toName();
-                }
-                if (getter.setter_index == null) {
-                    prototype.setGetterData(key, getter_func, nat_ctx_data);
-                } else {
-                    const setter = T_refl.setters[getter.setter_index.?];
-                    const setter_func = generateSetter(T_refl, setter);
-                    prototype.setGetterAndSetterData(key, getter_func, setter_func, nat_ctx_data);
-                }
-            }
-
-            // set static attributes on the v8 ObjectTemplate
-            // so each instance will get them
-            setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
-
-            // add string tag if not provided
-            if (!T_refl.string_tag) {
-                const key = v8.Symbol.getToStringTag(isolate).toName();
-                prototype.setGetter(key, generateStringTag(T_refl.name));
-            }
-
-            // create a v8 FunctionTemplate for each T methods,
-            // with the corresponding zig callbacks,
-            // and attach them to the object template
-            inline for (T_refl.methods) |method| {
-                const func = generateMethod(T_refl, method);
-                const func_tpl = v8.FunctionTemplate.initCallbackData(isolate, func, nat_ctx_data);
-                var key: v8.Name = undefined;
-                if (method.symbol) |symbol| {
-                    key = switch (symbol) {
-                        .iterator => v8.Symbol.getIterator(isolate),
-                        else => unreachable,
-                    }.toName();
-                } else {
-                    key = v8.String.initUtf8(isolate, method.js_name).toName();
-                }
-                prototype.set(key, func_tpl, v8.PropertyAttribute.None);
+            if (comptime refl.isGlobalType(T_refl.T)) {
+                try loadFunctionTemplate(T_refl, globals, nat_ctx, isolate, proto_tpl);
             }
 
             // return the FunctionTemplate of the constructor
             return TPL{ .tpl = cstr_tpl, .index = T_refl.index };
         }
     }.load;
+}
+
+pub fn loadFunctionTemplate(
+    comptime T_refl: refl.Struct,
+    tpl: v8.FunctionTemplate,
+    nat_ctx: *NativeContext,
+    isolate: v8.Isolate,
+    proto_tpl: ?TPL,
+) LoadError!void {
+
+    // static attributes keys and values
+    comptime var static_nb: usize = undefined;
+    if (T_refl.static_attrs_T) |attr_T| {
+        static_nb = @typeInfo(attr_T).Struct.fields.len;
+    } else {
+        static_nb = 0;
+    }
+    var static_keys: [static_nb]v8.Name = undefined;
+    var static_values: [static_nb]v8.Value = undefined;
+    staticAttrsKeys(T_refl, &static_keys, isolate);
+    staticAttrsValues(T_refl, &static_values, isolate);
+
+    // set static attributes on the v8 FunctionTemplate
+    setStaticAttrs(T_refl, tpl, &static_keys, &static_values);
+
+    // set the optional prototype of the constructor
+    if (comptime T_refl.proto_index != null) {
+        if (proto_tpl == null) {
+            return LoadError.NoPrototypeTemplateProvided;
+        }
+        if (T_refl.proto_index.? != proto_tpl.?.index) {
+            return LoadError.WrongPrototypeTemplateProvided;
+        }
+        // at instance level, inherit from proto template
+        // ie. an instance of the Child function has all properties
+        // on Parent's instance template
+        // ie. <Child>.prototype.__proto__ === <Parent>.prototype
+        tpl.inherit(proto_tpl.?.tpl);
+    }
+
+    // NOTE: There is 2 different ObjectTemplate
+    // attached to the FunctionTemplate of the constructor:
+    // - The PrototypeTemplate which represents the template
+    // of the protype of the constructor.
+    // All getter/setter/methods must be set on it.
+    // - The InstanceTemplate wich represents the template
+    // of the instance created by the constructor.
+    // This template holds the internal field count.
+
+    // get the v8 InstanceTemplate attached to the constructor
+    // and set 1 internal field to bind the counterpart zig object
+    const obj_tpl = tpl.getInstanceTemplate();
+    if (!T_refl.isEmpty()) {
+        // if the object is an empty struct (ie. a kind of container)
+        // no need to keep it's reference
+        obj_tpl.setInternalFieldCount(1);
+    }
+
+    // get the v8 Prototypetemplate attached to the constructor
+    // to set getter/setter/methods
+    const prototype = tpl.getPrototypeTemplate();
+
+    // set static attributes on the v8 ObjectTemplate
+    // so each instance will get them
+    setStaticAttrs(T_refl, prototype, &static_keys, &static_values);
+
+    loadObjectTemplate(T_refl, prototype, nat_ctx, isolate);
+}
+
+fn loadObjectTemplate(
+    comptime T_refl: refl.Struct,
+    tpl: v8.ObjectTemplate,
+    nat_ctx: *NativeContext,
+    isolate: v8.Isolate,
+) void {
+    // native context
+    const nat_ctx_num = @as(u64, @intCast(@intFromPtr(nat_ctx)));
+    const nat_ctx_data = isolate.initBigIntU64(nat_ctx_num);
+
+    // set getters for the v8 ObjectTemplate,
+    // with the corresponding zig callbacks
+    inline for (T_refl.getters) |getter| {
+        const getter_func = generateGetter(T_refl, getter);
+        var key: v8.Name = undefined;
+        if (getter.symbol) |symbol| {
+            key = switch (symbol) {
+                .string_tag => v8.Symbol.getToStringTag(isolate),
+                else => unreachable,
+            }.toName();
+        } else {
+            key = v8.String.initUtf8(isolate, getter.js_name).toName();
+        }
+        if (getter.setter_index == null) {
+            tpl.setGetterData(key, getter_func, nat_ctx_data);
+        } else {
+            const setter = T_refl.setters[getter.setter_index.?];
+            const setter_func = generateSetter(T_refl, setter);
+            tpl.setGetterAndSetterData(key, getter_func, setter_func, nat_ctx_data);
+        }
+    }
+
+    // add string tag if not provided
+    if (!T_refl.string_tag) {
+        const key = v8.Symbol.getToStringTag(isolate).toName();
+        tpl.setGetter(key, generateStringTag(T_refl.name));
+    }
+
+    // create a v8 FunctionTemplate for each T methods,
+    // with the corresponding zig callbacks,
+    // and attach them to the object template
+    inline for (T_refl.methods) |method| {
+        const func = generateMethod(T_refl, method);
+        const func_tpl = v8.FunctionTemplate.initCallbackData(isolate, func, nat_ctx_data);
+        var key: v8.Name = undefined;
+        if (method.symbol) |symbol| {
+            key = switch (symbol) {
+                .iterator => v8.Symbol.getIterator(isolate),
+                else => unreachable,
+            }.toName();
+        } else {
+            key = v8.String.initUtf8(isolate, method.js_name).toName();
+        }
+        tpl.set(key, func_tpl, v8.PropertyAttribute.None);
+    }
 }
