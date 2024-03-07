@@ -1,35 +1,36 @@
 const std = @import("std");
 
 const Loop = @import("api.zig").Loop;
-const refs = @import("internal_api.zig").refs;
+const NatObjects = @import("internal_api.zig").refs.Map;
 
 pub const NativeContext = struct {
     alloc: std.mem.Allocator,
     loop: *Loop,
-    objects: Objects,
+
+    js_objs: JSObjects,
+    nat_objs: NatObjects,
 
     // NOTE: DO NOT ACCESS DIRECTLY js_types
     // - use once loadTypes at startup to set them
     // - and then getType during execution to access them
     js_types: ?[]usize = null,
 
-    refs: refs.Map = .{},
-
-    pub const Objects = std.AutoHashMapUnmanaged(usize, usize);
+    pub const JSObjects = std.AutoHashMapUnmanaged(usize, usize);
 
     pub fn init(alloc: std.mem.Allocator, loop: *Loop) !*NativeContext {
         const self = try alloc.create(NativeContext);
         self.* = .{
             .alloc = alloc,
             .loop = loop,
-            .objects = Objects{},
+            .js_objs = JSObjects{},
+            .nat_objs = NatObjects{},
         };
         return self;
     }
 
     pub fn stop(self: *NativeContext) void {
-        self.objects.clearAndFree(self.alloc);
-        self.refs.clearAndFree(self.alloc);
+        self.js_objs.clearAndFree(self.alloc);
+        self.nat_objs.clearAndFree(self.alloc);
     }
 
     // loadTypes into the NativeContext
@@ -48,8 +49,8 @@ pub const NativeContext = struct {
 
     pub fn deinit(self: *NativeContext) void {
         self.stop();
-        self.objects.deinit(self.alloc);
-        self.refs.deinit(self.alloc);
+        self.js_objs.deinit(self.alloc);
+        self.nat_objs.deinit(self.alloc);
         self.* = undefined;
     }
 };

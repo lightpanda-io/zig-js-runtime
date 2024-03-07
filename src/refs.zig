@@ -11,10 +11,6 @@ const refl = internal.refl;
 // - value is the index of API
 pub const Map = std.AutoHashMapUnmanaged(usize, usize);
 
-pub fn addObject(alloc: std.mem.Allocator, map: *Map, key: usize, value: usize) !void {
-    try map.put(alloc, key, value);
-}
-
 pub fn getObject(map: Map, comptime T: type, comptime types: []refl.Struct, ptr: anytype) !*T {
 
     // use the object pointer (key) to retrieve the API index (value) in the map

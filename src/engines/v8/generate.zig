@@ -429,7 +429,7 @@ fn bindObjectNativeToJS(
         const int_ptr = try alloc.create(usize);
         int_ptr.* = @intFromPtr(nat_obj);
         ext = v8.External.init(isolate, int_ptr);
-        try refs.addObject(alloc, &nat_ctx.refs, int_ptr.*, T_refl.index);
+        try nat_ctx.nat_objs.put(alloc, int_ptr.*, T_refl.index);
     }
     js_obj_pers.setInternalField(0, ext);
     return js_obj_pers;
@@ -437,7 +437,7 @@ fn bindObjectNativeToJS(
 
 fn bindObjectJSToNative(
     alloc: std.mem.Allocator,
-    objects: *NativeContext.Objects,
+    objects: *NativeContext.JSObjects,
     nat_obj: anytype,
     js_obj: v8.Object,
 ) !void {
@@ -473,7 +473,7 @@ fn bindObjectNativeAndJS(
     );
 
     // bind the JS object to the Native object
-    try bindObjectJSToNative(alloc, &nat_ctx.objects, nat_obj, js_obj_binded);
+    try bindObjectJSToNative(alloc, &nat_ctx.js_objs, nat_obj, js_obj_binded);
 
     // call postAttach func
     if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
@@ -550,7 +550,7 @@ pub fn setNativeObject(
 
         // JS object is not provided, check the objects map
         const nat_obj_ref = @intFromPtr(nat_obj_ptr);
-        if (nat_ctx.objects.get(nat_obj_ref)) |js_obj_ref| {
+        if (nat_ctx.js_objs.get(nat_obj_ref)) |js_obj_ref| {
 
             // a JS object is already linked to the current Native object
             // return it
@@ -811,7 +811,7 @@ fn getNativeObject(
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(nat_ctx.refs, T, gen.Types, ext);
+            obj_ptr = try refs.getObject(nat_ctx.nat_objs, T, gen.Types, ext);
         }
     }
     return obj_ptr;
