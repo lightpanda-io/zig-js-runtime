@@ -1126,8 +1126,9 @@ pub fn loadFn(comptime T_refl: refl.Struct) LoadFnType {
             // and attach it to the global namespace
             const cstr_func = generateConstructor(T_refl, T_refl.constructor);
             const cstr_tpl = v8.FunctionTemplate.initCallbackData(isolate, cstr_func, nat_ctx_data);
-            const cstr_key = v8.String.initUtf8(isolate, T_refl.name).toName();
-            globals.getInstanceTemplate().set(cstr_key, cstr_tpl, v8.PropertyAttribute.None);
+            const cstr_key = v8.String.initUtf8(isolate, T_refl.name);
+            cstr_tpl.setClassName(cstr_key);
+            globals.getInstanceTemplate().set(cstr_key.toName(), cstr_tpl, v8.PropertyAttribute.None);
 
             try loadFunctionTemplate(T_refl, cstr_tpl, nat_ctx, isolate, proto_tpl);
 

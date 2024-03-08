@@ -41,6 +41,8 @@ pub fn exec(
     try js_env.attachObject(try js_env.getGlobal(), "global", null);
 
     var globals = [_]tests.Case{
+        .{ .src = "Global.name", .ex = "Global" },
+        .{ .src = "GlobalParent.name", .ex = "GlobalParent" },
         .{ .src = "self()", .ex = "true" },
         .{ .src = "parent()", .ex = "true" },
         .{ .src = "global.self()", .ex = "true" },
