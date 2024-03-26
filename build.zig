@@ -50,7 +50,6 @@ pub fn build(b: *std.Build) !void {
 
     // run
     const bench_cmd = b.addRunArtifact(bench);
-    bench_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         bench_cmd.addArgs(args);
     }
@@ -81,7 +80,6 @@ pub fn build(b: *std.Build) !void {
 
     // run
     const shell_cmd = b.addRunArtifact(shell);
-    shell_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         shell_cmd.addArgs(args);
     }
