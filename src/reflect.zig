@@ -1439,7 +1439,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
 
         // reflect each type
         var all: [types_fields.len]Struct = undefined;
-        inline for (types_fields, 0..) |field, i| {
+        for (types_fields, 0..) |field, i| {
             const T = @field(types, field.name);
             all[i] = try Struct.reflect(T, i);
         }
@@ -1463,7 +1463,7 @@ pub fn do(comptime types: anytype) Error![]Struct {
         try lookupException(&all);
 
         // look Types for corresponding Struct
-        inline for (&all) |*s| {
+        for (&all) |*s| {
             try s.lookupTypes(&all);
         }
 
