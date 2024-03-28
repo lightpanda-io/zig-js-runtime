@@ -24,7 +24,7 @@ const public = @import("api.zig");
 const IO = @import("loop.zig").IO;
 
 // Global variables
-var socket_fd: std.os.socket_t = undefined;
+var socket_fd: std.posix.socket_t = undefined;
 var conf: Config = undefined;
 
 // Config
@@ -56,7 +56,7 @@ pub const Config = struct {
                 self.history_max = history_max_default;
             }
             if (self.history_path == null) {
-                const home = std.os.getenv("HOME").?;
+                const home = std.posix.getenv("HOME").?;
                 // NOTE: we are using bufPrintZ as we need a null-terminated slice
                 // to translate as c char
                 self.history_path = try std.fmt.bufPrintZ(
@@ -73,7 +73,7 @@ pub const Config = struct {
 
 // I/O connection context
 const ConnContext = struct {
-    socket: std.os.socket_t,
+    socket: std.posix.socket_t,
 
     cmdContext: *CmdContext,
 };
@@ -82,7 +82,7 @@ const ConnContext = struct {
 fn connCallback(
     ctx: *ConnContext,
     completion: *IO.Completion,
-    result: IO.AcceptError!std.os.socket_t,
+    result: IO.AcceptError!std.posix.socket_t,
 ) void {
     ctx.cmdContext.socket = result catch |err| @panic(@errorName(err));
 
@@ -101,7 +101,7 @@ fn connCallback(
 const CmdContext = struct {
     alloc: std.mem.Allocator,
     js_env: *public.Env,
-    socket: std.os.socket_t,
+    socket: std.posix.socket_t,
     buf: []u8,
     close: bool = false,
 
@@ -153,7 +153,7 @@ fn cmdCallback(
     }
 
     // acknowledge to repl result has been printed
-    _ = std.os.write(ctx.socket, "ok") catch unreachable;
+    _ = std.posix.write(ctx.socket, "ok") catch unreachable;
 
     // continue receving messages asynchronously
     ctx.js_env.nat_ctx.loop.io.recv(
@@ -255,7 +255,7 @@ pub fn shell(
     // reuse_address (SO_REUSEADDR flag) does not seems to work on unix socket
     // see: https://gavv.net/articles/unix-socket-reuse/
     // TODO: use a lock file instead
-    std.os.unlink(conf.socket_path.?) catch |err| {
+    std.posix.unlink(conf.socket_path.?) catch |err| {
         if (err != error.FileNotFound) {
             return err;
         }
@@ -263,10 +263,10 @@ pub fn shell(
 
     // create internal server listening on a unix socket
     const addr = try std.net.Address.initUnix(conf.socket_path.?);
-    var server = std.net.StreamServer.init(.{ .reuse_address = true });
+    var server = try addr.listen(.{ .reuse_address = true, .reuse_port = true });
     defer server.deinit();
-    try server.listen(addr);
-    socket_fd = server.sockfd.?;
+
+    socket_fd = server.stream.handle;
 
     // launch repl in a separate detached thread
     var repl_thread = try std.Thread.spawn(.{}, repl, .{});

@@ -48,7 +48,7 @@ const do_userctx = true;
 
 // tests nb
 const tests_nb = blk: {
-    comptime var nb = 0;
+    var nb = 0;
     if (do_proto) nb += 1;
     if (do_prim) nb += 1;
     if (do_nat) nb += 1;

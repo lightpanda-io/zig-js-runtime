@@ -146,7 +146,11 @@ fn MergeTupleT(comptime value: anytype) type {
     var i = 0;
     while (i < fields_nb) {
         fields[i] = .{
-            .name = itoa(i),
+            // StructField.name expect a null terminated string.
+            // concatenate the `[]const u8` string with an empty string
+            // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
+            // u8`.
+            .name = itoa(i) ++ "",
             .type = type,
             .default_value = null,
             .is_comptime = false,
@@ -156,7 +160,7 @@ fn MergeTupleT(comptime value: anytype) type {
     }
     const decls: [0]std.builtin.Type.Declaration = undefined;
     const info = std.builtin.Type.Struct{
-        .layout = .Auto,
+        .layout = .auto,
         .fields = &fields,
         .decls = &decls,
         .is_tuple = true,

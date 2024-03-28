@@ -367,7 +367,11 @@ const Args = struct {
         if (self_T != null) {
             const name = try itoa(0);
             fields[0] = std.builtin.Type.StructField{
-                .name = name,
+                // StructField.name expect a null terminated string.
+                // concatenate the `[]const u8` string with an empty string
+                // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
+                // u8`.
+                .name = name ++ "",
                 .type = self_T.?,
                 .default_value = null,
                 .is_comptime = false,
@@ -380,7 +384,11 @@ const Args = struct {
                 x += 1;
             }
             fields[x] = std.builtin.Type.StructField{
-                .name = arg.name.?,
+                // StructField.name expect a null terminated string.
+                // concatenate the `[]const u8` string with an empty string
+                // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
+                // u8`.
+                .name = arg.name.? ++ "",
                 .type = arg.T,
                 .default_value = null,
                 .is_comptime = false,
@@ -389,7 +397,7 @@ const Args = struct {
         }
         const decls: [0]std.builtin.Type.Declaration = undefined;
         const s = std.builtin.Type.Struct{
-            .layout = std.builtin.Type.ContainerLayout.Auto,
+            .layout = .auto,
             .fields = &fields,
             .decls = &decls,
             .is_tuple = true,
@@ -920,7 +928,7 @@ pub const Struct = struct {
         }
         return @Type(.{
             .Struct = .{
-                .layout = .Auto,
+                .layout = .auto,
                 .fields = &fields,
                 .decls = &.{},
                 .is_tuple = false,
@@ -1071,7 +1079,7 @@ pub const Struct = struct {
 
                 // for layout where fields memory order is guarantied,
                 // check the 'proto' field is the first one
-                if (@typeInfo(T).Struct.layout != .Auto) {
+                if (@typeInfo(T).Struct.layout != .auto) {
                     if (i != 0) {
                         const msg = "'proto' field should be the first one if memory layout is guarantied (extern)";
                         fmtErr(msg.len, msg, T);
@@ -1145,7 +1153,7 @@ pub const Struct = struct {
         // with unknown memory fields, like slices
         // see: https://github.com/ziglang/zig/issues/2201
         // and https://github.com/ziglang/zig/issues/3133
-        if (obj.Struct.layout == .Packed) {
+        if (obj.Struct.layout == .@"packed") {
             const msg = "type packed struct are not supported";
             fmtErr(msg.len, msg, T);
             return error.StructPacked;
@@ -1180,7 +1188,7 @@ pub const Struct = struct {
         if (@hasDecl(T, "mem_guarantied")) {
             mem_guarantied = true;
         } else {
-            mem_guarantied = @typeInfo(T).Struct.layout != .Auto;
+            mem_guarantied = @typeInfo(T).Struct.layout != .auto;
         }
 
         // nested types
@@ -1614,7 +1622,11 @@ fn createTupleT(comptime members: []type) type {
     var fields: [members.len]std.builtin.Type.StructField = undefined;
     for (members, 0..) |member, i| {
         fields[i] = std.builtin.Type.StructField{
-            .name = try itoa(i),
+            // StructField.name expect a null terminated string.
+            // concatenate the `[]const u8` string with an empty string
+            // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
+            // u8`.
+            .name = try itoa(i) ++ "",
             .type = member,
             .default_value = null,
             .is_comptime = false,
@@ -1622,7 +1634,7 @@ fn createTupleT(comptime members: []type) type {
         };
     }
     const s = std.builtin.Type.Struct{
-        .layout = std.builtin.Type.ContainerLayout.Auto,
+        .layout = .auto,
         .fields = &fields,
         .decls = &.{},
         .is_tuple = true,

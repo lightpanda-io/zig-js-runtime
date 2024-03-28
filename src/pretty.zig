@@ -56,7 +56,11 @@ pub fn GenerateTable(
         var buf: [1]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "{d}", .{i});
         fields[i] = std.builtin.Type.StructField{
-            .name = name,
+            // StructField.name expect a null terminated string.
+            // concatenate the `[]const u8` string with an empty string
+            // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
+            // u8`.
+            .name = name ++ "",
             .type = T,
             .default_value = null,
             .is_comptime = false,
@@ -65,7 +69,7 @@ pub fn GenerateTable(
     }
     const decls: [0]std.builtin.Type.Declaration = undefined;
     const shape_info = std.builtin.Type.Struct{
-        .layout = std.builtin.Type.ContainerLayout.Auto,
+        .layout = .auto,
         .fields = &fields,
         .decls = &decls,
         .is_tuple = true,

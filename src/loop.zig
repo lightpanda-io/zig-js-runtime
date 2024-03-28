@@ -75,15 +75,15 @@ pub const SingleThreaded = struct {
     // Register events atomically
     // - add 1 event and return previous value
     fn addEvent(self: *Self) usize {
-        return @atomicRmw(usize, self.events_nb, .Add, 1, .AcqRel);
+        return @atomicRmw(usize, self.events_nb, .Add, 1, .acq_rel);
     }
     // - remove 1 event and return previous value
     fn removeEvent(self: *Self) usize {
-        return @atomicRmw(usize, self.events_nb, .Sub, 1, .AcqRel);
+        return @atomicRmw(usize, self.events_nb, .Sub, 1, .acq_rel);
     }
     // - get the number of current events
     fn eventsNb(self: *Self) usize {
-        return @atomicLoad(usize, self.events_nb, .SeqCst);
+        return @atomicLoad(usize, self.events_nb, .seq_cst);
     }
 
     fn freeCbk(self: *Self, completion: *IO.Completion, ctx: anytype) void {
@@ -206,7 +206,7 @@ pub const SingleThreaded = struct {
                 return try self.loop.io.tick();
             }
 
-            pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, address: std.net.Address) void {
+            pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, address: std.net.Address) void {
                 self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.connect(*NetworkImpl, self, NetworkImpl.connectCbk, &self.completion, socket, address);
@@ -218,7 +218,7 @@ pub const SingleThreaded = struct {
                 return self.ctx.onConnect(null);
             }
 
-            pub fn receive(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []u8) void {
+            pub fn receive(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, buffer: []u8) void {
                 self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.recv(*NetworkImpl, self, NetworkImpl.receiveCbk, &self.completion, socket, buffer);
@@ -230,7 +230,7 @@ pub const SingleThreaded = struct {
                 return self.ctx.onReceive(ln, null);
             }
 
-            pub fn send(self: *NetworkImpl, ctx: *Ctx, socket: std.os.socket_t, buffer: []const u8) void {
+            pub fn send(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, buffer: []const u8) void {
                 self.ctx = ctx;
                 _ = self.loop.addEvent();
                 self.loop.io.send(*NetworkImpl, self, NetworkImpl.sendCbk, &self.completion, socket, buffer);
