@@ -93,7 +93,7 @@ console.log(p.name()); // 'Doe'
 
 ### Prerequisites
 
-jsruntime-lib is written with [Zig](https://ziglang.org/) `0.10.1`. You have to
+jsruntime-lib is written with [Zig](https://ziglang.org/) `0.12`. You have to
 install it with the right version in order to build the project.
 
 To be able to build the v8 engine, you have to install some libs:
