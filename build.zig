@@ -50,7 +50,6 @@ pub fn build(b: *std.Build) !void {
 
     // run
     const bench_cmd = b.addRunArtifact(bench);
-    bench_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         bench_cmd.addArgs(args);
     }
@@ -81,7 +80,6 @@ pub fn build(b: *std.Build) !void {
 
     // run
     const shell_cmd = b.addRunArtifact(shell);
-    shell_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
         shell_cmd.addArgs(args);
     }
@@ -115,7 +113,7 @@ const Engine = enum {
 
 pub const Options = struct {
     engine: Engine,
-    opts: *std.Build.OptionsStep,
+    opts: *std.Build.Step.Options,
 };
 
 pub fn buildOptions(b: *std.Build) !Options {
@@ -137,7 +135,7 @@ pub fn buildOptions(b: *std.Build) !Options {
 }
 
 fn common(
-    step: *std.Build.CompileStep,
+    step: *std.Build.Step.Compile,
     mode: std.builtin.Mode,
     options: Options,
 ) !void {
@@ -155,13 +153,13 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
         const vendor = vendor_path ++ "vendor";
 
-        fn tigerbeetle_io(step: *std.Build.CompileStep) *std.Build.Module {
+        fn tigerbeetle_io(step: *std.Build.Step.Compile) *std.Build.Module {
             return step.step.owner.createModule(.{
                 .source_file = .{ .path = vendor ++ "/tigerbeetle-io/io.zig" },
             });
         }
 
-        fn zig_v8(step: *std.Build.CompileStep) *std.Build.Module {
+        fn zig_v8(step: *std.Build.Step.Compile) *std.Build.Module {
             step.addIncludePath(.{ .path = vendor ++ "/zig-v8/src" });
 
             return step.step.owner.createModule(.{
@@ -169,7 +167,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
             });
         }
 
-        fn v8(step: *std.Build.CompileStep, mode: std.builtin.Mode) !void {
+        fn v8(step: *std.Build.Step.Compile, mode: std.builtin.Mode) !void {
             const mode_str: []const u8 = if (mode == .Debug) "debug" else "release";
             // step.linkLibC(); // TODO: do we need to link libc?
 
@@ -202,7 +200,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
             step.addObjectFile(.{ .path = lib_path });
         }
 
-        pub fn add_shell(step: *std.Build.CompileStep) !void {
+        pub fn add_shell(step: *std.Build.Step.Compile) !void {
             step.addIncludePath(.{ .path = vendor ++ "/linenoise-mob" });
             const lib = step.step.owner.addStaticLibrary(.{
                 .name = "linenoise",
@@ -220,7 +218,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
         }
 
         pub fn add(
-            step: *std.build.CompileStep,
+            step: *std.build.Step.Compile,
             options: Options,
         ) !void {
             const jsruntime_mod = step.step.owner.createModule(.{
