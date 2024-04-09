@@ -15,6 +15,11 @@ pub const Other = struct {
     }
 };
 
+pub const OtherUnion = union(enum) {
+    Other: Other,
+    Bool: bool,
+};
+
 pub const MyObject = struct {
     val: bool,
 
@@ -36,6 +41,15 @@ pub const MyObject = struct {
 
     pub fn _other(_: MyObject, js_obj: public.JSObject, val: u8) !void {
         try js_obj.set("b", Other{ .val = val });
+    }
+
+    pub fn _otherUnion(_: MyObject, js_obj: public.JSObject, val: ?u8) !void {
+        if (val) |v| {
+            const other = Other{ .val = v };
+            try js_obj.set("c", OtherUnion{ .Other = other });
+        } else {
+            try js_obj.set("d", OtherUnion{ .Bool = true });
+        }
     }
 };
 
@@ -90,6 +104,12 @@ pub fn exec(
         .{ .src = "myObj.other(3)", .ex = "undefined" },
         .{ .src = "myObj.b.__proto__ === Other.prototype", .ex = "true" },
         .{ .src = "myObj.b.val()", .ex = "3" },
+        // setting an union
+        .{ .src = "myObj.otherUnion(4)", .ex = "undefined" },
+        .{ .src = "myObj.c.__proto__ === Other.prototype", .ex = "true" },
+        .{ .src = "myObj.c.val()", .ex = "4" },
+        .{ .src = "myObj.otherUnion()", .ex = "undefined" },
+        .{ .src = "myObj.d", .ex = "true" },
     };
     try tests.checkCases(js_env, &direct);
 
