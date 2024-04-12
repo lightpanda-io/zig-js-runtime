@@ -10,6 +10,7 @@ const NativeContext = internal.NativeContext;
 const JSObjectID = @import("v8.zig").JSObjectID;
 const setNativeType = @import("generate.zig").setNativeType;
 const CallbackInfo = @import("generate.zig").CallbackInfo;
+const getV8Object = @import("generate.zig").getV8Object;
 
 // TODO: Make this JS engine agnostic
 // by providing a common interface
@@ -80,14 +81,11 @@ pub const FuncSync = struct {
         };
     }
 
-    pub fn setThisArg(self: *Func, nat_obj: anytype) !void {
-        // ensure Native object is a pointer
-        if (comptime !refl.isPointer(@TypeOf(nat_obj))) return error.CbkThisMustBeAPointer;
-
-        const nat_obj_ref = @intFromPtr(nat_obj);
-        const js_obj_ref = self.nat_ctx.js_objs.get(nat_obj_ref) orelse return error.CbkThisIsUnknown;
-        const js_obj_handle = @as(*v8.C_Object, @ptrFromInt(js_obj_ref));
-        self.thisArg = v8.Object{ .handle = js_obj_handle };
+    pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+        self.thisArg = try getV8Object(
+            self.nat_ctx,
+            nat_obj_ptr,
+        ) orelse return error.V8ObjectNotFound;
     }
 
     pub fn call(self: FuncSync, alloc: std.mem.Allocator) anyerror!void {
@@ -190,14 +188,11 @@ pub const Func = struct {
         };
     }
 
-    pub fn setThisArg(self: *Func, nat_obj: anytype) !void {
-        // ensure Native object is a pointer
-        if (comptime !refl.isPointer(@TypeOf(nat_obj))) return error.CbkThisMustBeAPointer;
-
-        const nat_obj_ref = @intFromPtr(nat_obj);
-        const js_obj_ref = self.nat_ctx.js_objs.get(nat_obj_ref) orelse return error.CbkThisIsUnknown;
-        const js_obj_handle = @as(*v8.C_Object, @ptrFromInt(js_obj_ref));
-        self.thisArg = v8.Object{ .handle = js_obj_handle };
+    pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+        self.thisArg = try getV8Object(
+            self.nat_ctx,
+            nat_obj_ptr,
+        ) orelse return error.V8ObjectNotFound;
     }
 
     pub fn deinit(self: Func, alloc: std.mem.Allocator) void {

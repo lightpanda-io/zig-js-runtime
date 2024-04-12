@@ -504,6 +504,18 @@ inline fn initJSObject(
     return tpl.getInstanceTemplate().initInstance(js_ctx);
 }
 
+// getV8Object returns the existing v8.Object corresponding to the given native
+// pointer from the native context.
+pub fn getV8Object(nat_ctx: *NativeContext, nat_obj_ptr: anytype) !?v8.Object {
+    // ensure Native object is a pointer
+    if (comptime !refl.isPointer(@TypeOf(nat_obj_ptr))) return error.NotAPointer;
+
+    const nat_obj_ref = @intFromPtr(nat_obj_ptr);
+    const js_obj_ref = nat_ctx.js_objs.get(nat_obj_ref) orelse return null;
+    const js_obj_handle = @as(*v8.C_Object, @ptrFromInt(js_obj_ref));
+    return v8.Object{ .handle = js_obj_handle };
+}
+
 pub fn setNativeObject(
     alloc: std.mem.Allocator,
     nat_ctx: *NativeContext,
