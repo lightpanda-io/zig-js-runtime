@@ -40,7 +40,7 @@ pub fn Env(
     assertDecl(T, "engine", fn () public.engineType);
 
     // init()
-    assertDecl(T, "init", fn (alloc: std.mem.Allocator, loop: *public.Loop) anyerror!T);
+    assertDecl(T, "init", fn (alloc: std.mem.Allocator, loop: *public.Loop, userctx: ?public.UserContext) anyerror!T);
 
     // deinit()
     assertDecl(T, "deinit", fn (self: *T) void);
@@ -49,6 +49,11 @@ pub fn Env(
     assertDecl(T, "load", fn (self: T, js_types: []usize) anyerror!void);
 
     assertDecl(T, "bindGlobal", fn (self: T, ob: anytype) anyerror!void);
+
+    assertDecl(T, "setUserContext", fn (
+        self: *T,
+        userctx: public.UserContext,
+    ) anyerror!void);
 
     // start()
     assertDecl(T, "start", fn (

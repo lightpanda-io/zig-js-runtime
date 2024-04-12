@@ -10,11 +10,13 @@ const NativeContext = internal.NativeContext;
 const public = @import("api.zig");
 const Env = public.Env;
 const Loop = public.Loop;
+const UserContext = public.UserContext;
 
 pub const ContextExecFn = (fn (std.mem.Allocator, *Env) anyerror!void);
 
 pub fn loadEnv(
     arena_alloc: *std.heap.ArenaAllocator,
+    userctx: ?UserContext,
     comptime ctxExecFn: ContextExecFn,
 ) !void {
     const alloc = arena_alloc.allocator();
@@ -26,7 +28,7 @@ pub fn loadEnv(
     }
     var loop = try Loop.init(alloc);
     defer loop.deinit();
-    var js_env = try Env.init(alloc, &loop);
+    var js_env = try Env.init(alloc, &loop, userctx);
     defer js_env.deinit();
 
     // load APIs in JS env

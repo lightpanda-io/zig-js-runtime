@@ -10,6 +10,7 @@ const NativeContext = internal.NativeContext;
 
 const public = @import("../../api.zig");
 const Loop = public.Loop;
+const UserContext = public.UserContext;
 
 const cbk = @import("callback.zig");
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
@@ -194,6 +195,7 @@ fn getArg(
         value = switch (arg.T) {
             std.mem.Allocator => alloc,
             *Loop => nat_ctx.loop,
+            UserContext => nat_ctx.userctx orelse unreachable, // an arg requires a usercontext but it missing.
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
             JSObject => JSObject{ .nat_ctx = nat_ctx, .js_ctx = js_ctx, .js_obj = this },
             JSObjectID => JSObjectID.set(js_val.?.castTo(v8.Object)),

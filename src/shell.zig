@@ -263,7 +263,7 @@ pub fn shell(
     if (ctxExecFn) |func| {
         do_fn = func;
     }
-    try public.loadEnv(arena_alloc, do_fn);
+    try public.loadEnv(arena_alloc, null, do_fn);
 }
 
 fn repl() !void {

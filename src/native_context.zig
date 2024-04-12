@@ -1,11 +1,13 @@
 const std = @import("std");
 
 const Loop = @import("api.zig").Loop;
+const UserContext = @import("api.zig").UserContext;
 const NatObjects = @import("internal_api.zig").refs.Map;
 
 pub const NativeContext = struct {
     alloc: std.mem.Allocator,
     loop: *Loop,
+    userctx: ?UserContext,
 
     js_objs: JSObjects,
     nat_objs: NatObjects,
@@ -17,11 +19,12 @@ pub const NativeContext = struct {
 
     pub const JSObjects = std.AutoHashMapUnmanaged(usize, usize);
 
-    pub fn init(alloc: std.mem.Allocator, loop: *Loop) !*NativeContext {
+    pub fn init(alloc: std.mem.Allocator, loop: *Loop, userctx: ?UserContext) !*NativeContext {
         const self = try alloc.create(NativeContext);
         self.* = .{
             .alloc = alloc,
             .loop = loop,
+            .userctx = userctx,
             .js_objs = JSObjects{},
             .nat_objs = NatObjects{},
         };

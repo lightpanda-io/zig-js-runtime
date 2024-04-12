@@ -9,6 +9,7 @@ const Callback = public.Callback;
 const CallbackSync = public.CallbackSync;
 const CallbackArg = public.CallbackArg;
 const JSObjectID = public.JSObjectID;
+const UserContext = public.UserContext;
 
 const JSObject = public.JSObject;
 
@@ -53,6 +54,7 @@ const internal_types = [_]type{
     CallbackSync,
     CallbackArg,
     JSObjectID,
+    UserContext,
 };
 
 fn isInternalType(comptime T: type) bool {
@@ -545,6 +547,11 @@ pub const Func = struct {
 
             // loop
             if (args_types[i].T == *Loop) {
+                index_offset += 1;
+            }
+
+            // user context
+            if (args_types[i].T == UserContext) {
                 index_offset += 1;
             }
 

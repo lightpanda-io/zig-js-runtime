@@ -19,6 +19,7 @@ const multiple_types = @import("tests/types_multiple_test.zig");
 const object_types = @import("tests/types_object.zig");
 const callback = @import("tests/cbk_test.zig");
 const global = @import("tests/global_test.zig");
+const userctx = @import("tests/userctx_test.zig");
 
 // test to do
 const do_proto = true;
@@ -29,6 +30,7 @@ const do_multi = true;
 const do_obj = true;
 const do_cbk = true;
 const do_global = true;
+const do_userctx = true;
 
 // tests nb
 const tests_nb = blk: {
@@ -41,6 +43,7 @@ const tests_nb = blk: {
     if (do_obj) nb += 1;
     if (do_cbk) nb += 1;
     if (do_global) nb += 1;
+    if (do_userctx) nb += 1;
     break :blk nb;
 };
 
@@ -54,7 +57,10 @@ pub const Types = gen.reflect(gen.MergeTuple(.{
     object_types.Types,
     callback.Types,
     global.Types,
+    userctx.Types,
 }));
+
+pub const UserContext = userctx.UserContext;
 
 pub fn main() !void {
     std.debug.print("\n", .{});
@@ -78,7 +84,7 @@ pub fn main() !void {
         proto_alloc = bench.allocator(std.testing.allocator);
         var proto_arena = std.heap.ArenaAllocator.init(proto_alloc.allocator());
         defer proto_arena.deinit();
-        _ = try eng.loadEnv(&proto_arena, proto.exec);
+        _ = try eng.loadEnv(&proto_arena, null, proto.exec);
     }
 
     // primitive types tests
@@ -87,7 +93,7 @@ pub fn main() !void {
         prim_alloc = bench.allocator(std.testing.allocator);
         var prim_arena = std.heap.ArenaAllocator.init(prim_alloc.allocator());
         defer prim_arena.deinit();
-        _ = try eng.loadEnv(&prim_arena, primitive_types.exec);
+        _ = try eng.loadEnv(&prim_arena, null, primitive_types.exec);
     }
 
     // native types tests
@@ -96,7 +102,7 @@ pub fn main() !void {
         nat_alloc = bench.allocator(std.testing.allocator);
         var nat_arena = std.heap.ArenaAllocator.init(nat_alloc.allocator());
         defer nat_arena.deinit();
-        _ = try eng.loadEnv(&nat_arena, native_types.exec);
+        _ = try eng.loadEnv(&nat_arena, null, native_types.exec);
     }
 
     // complex types tests
@@ -105,7 +111,7 @@ pub fn main() !void {
         complex_alloc = bench.allocator(std.testing.allocator);
         var complex_arena = std.heap.ArenaAllocator.init(complex_alloc.allocator());
         defer complex_arena.deinit();
-        _ = try eng.loadEnv(&complex_arena, complex_types.exec);
+        _ = try eng.loadEnv(&complex_arena, null, complex_types.exec);
     }
 
     // multiple types tests
@@ -114,7 +120,7 @@ pub fn main() !void {
         multi_alloc = bench.allocator(std.testing.allocator);
         var multi_arena = std.heap.ArenaAllocator.init(multi_alloc.allocator());
         defer multi_arena.deinit();
-        _ = try eng.loadEnv(&multi_arena, multiple_types.exec);
+        _ = try eng.loadEnv(&multi_arena, null, multiple_types.exec);
     }
 
     // object types tests
@@ -123,7 +129,7 @@ pub fn main() !void {
         obj_alloc = bench.allocator(std.testing.allocator);
         var obj_arena = std.heap.ArenaAllocator.init(obj_alloc.allocator());
         defer obj_arena.deinit();
-        _ = try eng.loadEnv(&obj_arena, object_types.exec);
+        _ = try eng.loadEnv(&obj_arena, null, object_types.exec);
     }
 
     // callback tests
@@ -132,7 +138,7 @@ pub fn main() !void {
         cbk_alloc = bench.allocator(std.testing.allocator);
         var cbk_arena = std.heap.ArenaAllocator.init(cbk_alloc.allocator());
         defer cbk_arena.deinit();
-        _ = try eng.loadEnv(&cbk_arena, callback.exec);
+        _ = try eng.loadEnv(&cbk_arena, null, callback.exec);
     }
 
     // global tests
@@ -141,7 +147,16 @@ pub fn main() !void {
         global_alloc = bench.allocator(std.testing.allocator);
         var global_arena = std.heap.ArenaAllocator.init(global_alloc.allocator());
         defer global_arena.deinit();
-        _ = try eng.loadEnv(&global_arena, global.exec);
+        _ = try eng.loadEnv(&global_arena, null, global.exec);
+    }
+
+    // user context tests
+    var userctx_alloc: bench.Allocator = undefined;
+    if (do_userctx) {
+        userctx_alloc = bench.allocator(std.testing.allocator);
+        var userctx_arena = std.heap.ArenaAllocator.init(userctx_alloc.allocator());
+        defer userctx_arena.deinit();
+        _ = try eng.loadEnv(&userctx_arena, null, userctx.exec);
     }
 
     if (tests_nb == 0) {
@@ -232,6 +247,15 @@ pub fn main() !void {
             .value = global_alloc_stats.alloc_size,
         };
         try t.addRow(.{ "Global", global_alloc.alloc_nb, global_alloc_size });
+    }
+
+    if (do_userctx) {
+        const userctx_alloc_stats = global_alloc.stats();
+        const userctx_alloc_size = pretty.Measure{
+            .unit = "b",
+            .value = userctx_alloc_stats.alloc_size,
+        };
+        try t.addRow(.{ "User context", userctx_alloc.alloc_nb, userctx_alloc_size });
     }
 
     const out = std.io.getStdErr().writer();

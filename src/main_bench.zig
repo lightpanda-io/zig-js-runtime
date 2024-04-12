@@ -22,7 +22,7 @@ fn benchWithIsolate(
 ) !bench.Result {
     const duration = try bench.call(
         public.loadEnv,
-        .{ arena_alloc, ctxExecFn },
+        .{ arena_alloc, null, ctxExecFn },
         iter,
         warmup,
     );
@@ -58,7 +58,7 @@ fn benchWithoutIsolate(
             duration_global = duration;
         }
     };
-    try public.loadEnv(arena_alloc, s.do);
+    try public.loadEnv(arena_alloc, null, s.do);
     const alloc_stats = bench_alloc.stats();
     return bench.Result{
         .duration = duration_global,
