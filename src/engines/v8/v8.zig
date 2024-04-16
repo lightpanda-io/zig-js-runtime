@@ -142,6 +142,11 @@ pub const Env = struct {
         self.nat_ctx.userctx = userctx;
     }
 
+    pub fn getUserContext(self: *Env) ?*public.UserContext {
+        if (self.nat_ctx.userctx) |*ctx| return ctx;
+        return null;
+    }
+
     // load user-defined Types into Javascript environement
     pub fn load(self: Env, js_types: []usize) anyerror!void {
         var tpls: [gen.Types.len]TPL = undefined;

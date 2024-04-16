@@ -55,6 +55,8 @@ pub fn Env(
         userctx: public.UserContext,
     ) anyerror!void);
 
+    assertDecl(T, "getUserContext", fn (self: *T) ?*public.UserContext);
+
     // start()
     assertDecl(T, "start", fn (
         self: *T,
