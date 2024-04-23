@@ -136,15 +136,7 @@ pub const Env = struct {
     }
 
     pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
-        // you can't replace a user context defined in init.
-        if (self.nat_ctx.userctx != null) return error.UserContextExists;
-
         self.nat_ctx.userctx = userctx;
-    }
-
-    pub fn getUserContext(self: *Env) ?*public.UserContext {
-        if (self.nat_ctx.userctx) |*ctx| return ctx;
-        return null;
     }
 
     // load user-defined Types into Javascript environement
