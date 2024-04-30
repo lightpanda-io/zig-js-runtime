@@ -919,6 +919,8 @@ fn callFunc(
             js_ctx,
         ) catch unreachable; // TODO: internal errors
 
+    } else if (comptime func_kind == .setter) {
+        // on setter, no return value must be the set at all.
     } else {
 
         // return to javascript the result

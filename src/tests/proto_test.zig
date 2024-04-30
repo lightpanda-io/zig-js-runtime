@@ -389,6 +389,15 @@ pub fn exec(
         .{ .src = "dt.say(null)", .ex = "undefined" },
     };
     try tests.checkCases(js_env, &casesFreeArguments);
+
+    var strict_const = [_]tests.Case{
+        .{ .src = 
+        \\"use strict";
+        \\var cp = new Person('John', 'Doe', 25);
+        \\cp.age = 35;
+        , .ex = "35" },
+    };
+    try tests.checkCases(js_env, &strict_const);
 }
 
 fn intToStr(alloc: std.mem.Allocator, nb: u8) []const u8 {
