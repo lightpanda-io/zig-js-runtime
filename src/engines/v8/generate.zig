@@ -309,21 +309,21 @@ fn getArgs(
 
             // non-variadic arg
             value = switch (arg.T) {
-                cbk.Func => cbk.Func.init(
+                cbk.Func => try cbk.Func.init(
                     alloc,
                     nat_ctx,
                     func,
                     raw_value,
                     cbk_info,
                     isolate,
-                ) catch unreachable,
-                cbk.FuncSync => cbk.FuncSync.init(
+                ),
+                cbk.FuncSync => try cbk.FuncSync.init(
                     alloc,
                     func,
                     raw_value,
                     cbk_info,
                     isolate,
-                ) catch unreachable,
+                ),
                 cbk.Arg => cbk.Arg{}, // stage1: we need type
 
                 // normal cases
@@ -345,7 +345,7 @@ fn getArgs(
             // variadic arg
             // take all trailing JS arg as variadic members
             const rest_nb = js_args_nb - i + func.index_offset;
-            const slice = alloc.alloc(arg_real.T, rest_nb) catch unreachable;
+            const slice = try alloc.alloc(arg_real.T, rest_nb);
             var iter: usize = 0;
             while (iter < rest_nb) {
                 const slice_value = try getArg(
