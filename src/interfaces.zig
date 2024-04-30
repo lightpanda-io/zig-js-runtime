@@ -157,21 +157,37 @@ pub fn TryCatch(comptime T: type, comptime env: type) void {
     ) callconv(.Inline) anyerror!?[]const u8);
 }
 
-pub fn Callback(comptime T: type) void {
+pub fn Callback(comptime T: type, comptime Res_T: type) void {
 
     // id()
     assertDecl(T, "id", fn (T: T) usize);
 
     // call()
     assertDecl(T, "call", fn (T: T, nat_args: anytype) anyerror!void);
+
+    // trycall()
+    assertDecl(T, "trycall", fn (T: T, nat_args: anytype, res: *Res_T) anyerror!void);
 }
 
-pub fn CallbackSync(comptime T: type) void {
+pub fn CallbackSync(comptime T: type, comptime Res_T: type) void {
     // call()
     assertDecl(T, "call", fn (T: T, alloc: std.mem.Allocator) anyerror!void);
+
+    // trycall()
+    assertDecl(T, "trycall", fn (T: T, alloc: std.mem.Allocator, res: *Res_T) anyerror!void);
 }
 
 pub fn CallbackArg(comptime _: type) void {}
+
+pub fn CallbackResult(comptime T: type) void {
+    // init()
+    assertDecl(T, "init", fn (alloc: std.mem.Allocator) T);
+
+    // deinit()
+    assertDecl(T, "deinit", fn (self: T) void);
+
+    // TODO: how to get the result?
+}
 
 // Utils
 // -----

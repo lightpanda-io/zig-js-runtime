@@ -28,6 +28,7 @@ const public = @import("../../api.zig");
 pub const Callback = @import("callback.zig").Func;
 pub const CallbackSync = @import("callback.zig").FuncSync;
 pub const CallbackArg = @import("callback.zig").Arg;
+pub const CallbackResult = @import("callback.zig").Result;
 
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;

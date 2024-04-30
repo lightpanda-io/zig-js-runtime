@@ -65,6 +65,7 @@ pub const JSObjectID = Engine.JSObjectID;
 pub const Callback = Engine.Callback;
 pub const CallbackSync = Engine.CallbackSync;
 pub const CallbackArg = Engine.CallbackArg;
+pub const CallbackResult = Engine.CallbackResult;
 
 pub const TryCatch = Engine.TryCatch;
 pub const VM = Engine.VM;
