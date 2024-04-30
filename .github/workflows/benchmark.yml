@@ -106,4 +106,4 @@ jobs:
           name: benchmark-results
 
       - name: format and send json result
-        run: /perf-fmt bench ${{ github.sha }} benchmark.json
+        run: /perf-fmt bench-jsruntime ${{ github.sha }} benchmark.json
