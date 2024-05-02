@@ -10,6 +10,7 @@ const NativeContext = internal.NativeContext;
 const JSObjectID = @import("v8.zig").JSObjectID;
 const setNativeType = @import("generate.zig").setNativeType;
 const CallbackInfo = @import("generate.zig").CallbackInfo;
+const getV8Object = @import("generate.zig").getV8Object;
 
 // TODO: Make this JS engine agnostic
 // by providing a common interface
@@ -21,17 +22,11 @@ pub const Arg = struct {
     // foo: bool = false,
 };
 
-// TODO: set the correct "this" on Func object
-// see https://developer.mozilla.org/en-US/docs/Web/API/setTimeout#the_this_problem
-// should we use:
-// - the context globals?
-// - null?
-// - the calling function (info.getThis)?
-
 pub const FuncSync = struct {
     js_func: v8.Function,
     js_args: []v8.Value,
     isolate: v8.Isolate,
+    thisArg: ?v8.Object = null,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -86,15 +81,23 @@ pub const FuncSync = struct {
         };
     }
 
+    pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+        self.thisArg = try getV8Object(
+            self.nat_ctx,
+            nat_obj_ptr,
+        ) orelse return error.V8ObjectNotFound;
+    }
+
     pub fn call(self: FuncSync, alloc: std.mem.Allocator) anyerror!void {
 
         // retrieve context
         // NOTE: match the Func.call implementation
         const ctx = self.isolate.getCurrentContext();
 
-        // retrieve JS this from persistent handle
-        // TODO: see correct "this" comment above
-        const this = ctx.getGlobal();
+        // Callbacks are typically called with a this value of undefined.
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this#callbacks
+        // TODO use undefined this instead of global.
+        const this = self.thisArg orelse ctx.getGlobal();
 
         // execute function
         _ = self.js_func.call(ctx, this, self.js_args);
@@ -122,6 +125,8 @@ pub const Func = struct {
 
     nat_ctx: *NativeContext,
     isolate: v8.Isolate,
+
+    thisArg: ?v8.Object = null,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -181,6 +186,13 @@ pub const Func = struct {
             .nat_ctx = nat_ctx,
             .isolate = isolate,
         };
+    }
+
+    pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+        self.thisArg = try getV8Object(
+            self.nat_ctx,
+            nat_obj_ptr,
+        ) orelse return error.V8ObjectNotFound;
     }
 
     pub fn deinit(self: Func, alloc: std.mem.Allocator) void {
@@ -256,9 +268,10 @@ pub const Func = struct {
         }
         // else -> no arguments
 
-        // retrieve JS "this" from persistent handle
-        // TODO: see correct "this" comment above
-        const this = js_ctx.getGlobal();
+        // Callbacks are typically called with a this value of undefined.
+        // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this#callbacks
+        // TODO use undefined this instead of global.
+        const this = self.thisArg orelse js_ctx.getGlobal();
 
         // execute function
         const result = js_func.call(js_ctx, this, args);
