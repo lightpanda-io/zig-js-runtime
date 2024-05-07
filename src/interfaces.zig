@@ -94,6 +94,12 @@ pub fn Env(
 
     // TODO: check exec, wait who have v8 specific params
 
+    // waitTryCatch
+    assertDecl(T, "waitTryCatch", fn (
+        self: T,
+        alloc: std.mem.Allocator,
+    ) anyerror!JSResult_T);
+
     // execTryCatch() executes script in JS
     assertDecl(T, "execTryCatch", fn (
         self: T,
