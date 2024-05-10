@@ -49,6 +49,7 @@ pub const Iterable = types.Iterable;
 pub const Variadic = types.Variadic;
 
 pub const Loop = @import("loop.zig").SingleThreaded;
+pub const IO = @import("loop.zig").IO;
 pub const Console = @import("console.zig").Console;
 
 // JS engine
