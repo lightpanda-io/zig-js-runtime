@@ -52,43 +52,6 @@ git_last_commit_full := git log --pretty=format:'%cd_%h' -n 1 --date=format:'%Y-
 tree:
 	@tree -I zig-cache -I zig-out -I vendor -I questions -I benchmarks -I build -I "*~"
 
-
-# Dependencies
-# ------------
-.PHONY: vendor submodule build-v8 build-v8-linux build-v8-macos
-
-V8_VERSION := 11.1.134
-V8_IMAGE := v8-$(V8_VERSION):$(ARCH)-$(OS)
-
-## Fetch dependencies (op access required)
-vendor:
-	@printf "\e[36mUpdating git submodules dependencies ...\e[0m\n" && \
-	git submodule update --init --recursive && \
-	git pull --recurse-submodules && \
-	printf "=> Done\n" && \
-	printf "\e[36mDownloading v8 static library from s3 for \e[32m$(ARCH)-$(OS) \e[36m...\e[0m\n" && \
-	mkdir -p vendor/v8/$(ARCH)-$(OS) && \
-	op run --env-file="vendor/.env" -- aws s3 sync s3://browsercore/v8/$(V8_VERSION)/$(ARCH)-$(OS) vendor/v8/$(ARCH)-$(OS) && \
-	printf "=> Done\n"
-
-
-build-v8-linux:
-	@printf "\e[36mBuilding v8 for $(ARCH)-$(OS) ...\e[0m\n" && \
-	op run --env-file="build/.env" -- docker build --build-arg GITHUB_TOKEN --build-arg AWS_ACCESS_KEY_ID --build-arg AWS_SECRET_ACCESS_KEY build/v8/$(ARCH)-$(OS) -t $(V8_IMAGE) && \
-	printf "=> Done\n"
-
-build-v8-macos:
-	@printf "\e[36mBuilding v8 for $(ARCH)-$(OS) ...\e[0m\n" && \
-	printf "=> TODO\n"
-
-## Build v8 for current OS/ARCH
-build-v8:
-ifeq ($(OS), macos)
-build-v8: build-v8-macos
-else ifeq ($(OS), linux)
-build-v8: build-v8-linux
-endif
-
 # Install and build required dependencies commands
 # ------------
 .PHONY: install-submodule
