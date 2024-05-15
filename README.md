@@ -69,7 +69,7 @@ const Person = struct {
 };
 ```
 
-You can generate the corresponding Javascript funcions at comptime with:
+You can generate the corresponding Javascript functions at comptime with:
 
 ```zig
 const jsruntime = @import("jsruntime");
