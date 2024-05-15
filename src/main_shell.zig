@@ -36,5 +36,5 @@ pub fn main() !void {
     defer arena.deinit();
 
     // launch shell
-    try public.shell(&arena, null, .{ .app_name = "jsruntime-shell" });
+    try public.shell(&arena, null, .{ .app_name = "zig-js-runtime-shell" });
 }

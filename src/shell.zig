@@ -284,8 +284,10 @@ fn repl() !void {
 
     // greetings
     printStdout(
-        \\JS Repl
+        \\
+        \\zig-js-runtime - Javascript Shell
         \\exit with Ctrl+D or "exit"
+        \\
         \\
     , .{});
 

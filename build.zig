@@ -47,7 +47,7 @@ pub fn build(b: *std.Build) !void {
 
     // compile and install
     const bench = b.addExecutable(.{
-        .name = "jsruntime-bench",
+        .name = "zig-js-runtime-bench",
         .root_source_file = .{ .path = "src/main_bench.zig" },
         .single_threaded = true,
         .target = target,
@@ -77,7 +77,7 @@ pub fn build(b: *std.Build) !void {
 
     // compile and install
     const shell = b.addExecutable(.{
-        .name = "jsruntime-shell",
+        .name = "zig-js-runtime-shell",
         .root_source_file = .{ .path = "src/main_shell.zig" },
         .target = target,
         .optimize = mode,
@@ -90,7 +90,7 @@ pub fn build(b: *std.Build) !void {
         shell.strip = true;
     }
     // do not install shell binary
-    // shell.install();
+    // b.installArtifact(shell);
 
     // run
     const shell_cmd = b.addRunArtifact(shell);

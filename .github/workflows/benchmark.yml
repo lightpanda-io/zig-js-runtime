@@ -63,11 +63,11 @@ jobs:
       - run: zig build -Doptimize=ReleaseSafe -Dengine=v8
       - name: run benchmark
         run: |
-          ./zig-out/bin/jsruntime-bench > benchmark.txt
+          ./zig-out/bin/zig-js-runtime-bench > benchmark.txt
           cat benchmark.txt
 
       - name: json output
-        run: ./zig-out/bin/jsruntime-bench --json > benchmark.json
+        run: ./zig-out/bin/zig-js-runtime-bench --json > benchmark.json
 
       - name: write commit
         run: |
