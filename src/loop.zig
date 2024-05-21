@@ -20,6 +20,8 @@ pub const IO = @import("tigerbeetle-io").IO;
 const public = @import("api.zig");
 const JSCallback = public.Callback;
 
+const log = std.log.scoped(.loop);
+
 fn report(comptime fmt: []const u8, args: anytype) void {
     const max_len = 200;
     var buf: [max_len]u8 = undefined;
@@ -109,7 +111,13 @@ pub const SingleThreaded = struct {
         defer ctx.loop.freeCbk(completion, ctx);
 
         // TODO: return the error to the callback
-        result catch |err| @panic(@errorName(err));
+        result catch |err| {
+            switch (err) {
+                error.Canceled => {},
+                else => log.err("timeout callback: {any}", .{err}),
+            }
+            return;
+        };
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -155,7 +163,10 @@ pub const SingleThreaded = struct {
         defer ctx.loop.freeCbk(completion, ctx);
 
         // TODO: return the error to the callback
-        result catch |err| @panic(@errorName(err));
+        result catch |err| {
+            log.err("cancel callback: {any}", .{err});
+            return;
+        };
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -176,7 +187,7 @@ pub const SingleThreaded = struct {
 
         const completion = self.alloc.create(IO.Completion) catch unreachable;
         completion.* = undefined;
-        const ctx = self.alloc.create(ContextTimeout) catch unreachable;
+        const ctx = self.alloc.create(ContextCancel) catch unreachable;
         ctx.* = ContextCancel{
             .loop = self,
             .js_cbk = js_cbk,
