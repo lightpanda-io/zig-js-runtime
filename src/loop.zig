@@ -129,7 +129,7 @@ pub const SingleThreaded = struct {
         }
     }
 
-    pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) void {
+    pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) usize {
         const completion = self.alloc.create(IO.Completion) catch unreachable;
         completion.* = undefined;
         const ctx = self.alloc.create(ContextTimeout) catch unreachable;
@@ -142,6 +142,51 @@ pub const SingleThreaded = struct {
         if (builtin.is_test) {
             report("start timeout {d} for {d} nanoseconds", .{ old_events_nb + 1, nanoseconds });
         }
+
+        return @intFromPtr(completion);
+    }
+
+    const ContextCancel = struct {
+        loop: *Self,
+        js_cbk: ?JSCallback,
+    };
+
+    fn cancelCallback(
+        ctx: *ContextCancel,
+        completion: *IO.Completion,
+        result: IO.CancelError!void,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+
+        // TODO: return the error to the callback
+        result catch |err| @panic(@errorName(err));
+
+        const old_events_nb = ctx.loop.removeEvent();
+        if (builtin.is_test) {
+            report("timeout done, remaining events: {d}", .{old_events_nb - 1});
+        }
+
+        // js callback
+        if (ctx.js_cbk) |js_cbk| {
+            defer js_cbk.deinit(ctx.loop.alloc);
+            js_cbk.call(null) catch {
+                ctx.loop.cbk_error = true;
+            };
+        }
+    }
+
+    pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) void {
+        const comp_cancel: *IO.Completion = @ptrFromInt(id);
+
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctx = self.alloc.create(ContextTimeout) catch unreachable;
+        ctx.* = ContextCancel{
+            .loop = self,
+            .js_cbk = js_cbk,
+        };
+
+        self.io.cancel(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
     }
 
     // Yield
