@@ -21,8 +21,9 @@ fn checkInterfaces(engine: anytype) void {
     // public api
     interfaces.API(engine.API, engine.LoadFnType);
 
-    interfaces.Callback(engine.Callback);
-    interfaces.CallbackSync(engine.CallbackSync);
+    interfaces.CallbackResult(engine.CallbackResult);
+    interfaces.Callback(engine.Callback, engine.CallbackResult);
+    interfaces.CallbackSync(engine.CallbackSync, engine.CallbackResult);
     interfaces.CallbackArg(engine.CallbackArg);
 
     interfaces.JSResult(engine.JSResult);

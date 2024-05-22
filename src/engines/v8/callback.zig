@@ -26,6 +26,8 @@ const setNativeType = @import("generate.zig").setNativeType;
 const CallbackInfo = @import("generate.zig").CallbackInfo;
 const getV8Object = @import("generate.zig").getV8Object;
 
+const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
+
 // TODO: Make this JS engine agnostic
 // by providing a common interface
 
@@ -34,6 +36,41 @@ pub const Arg = struct {
     // otherwise LLVM emits a warning
     // "stack frame size (x) exceeds limit (y)"
     // foo: bool = false,
+};
+
+pub const Result = struct {
+    alloc: std.mem.Allocator,
+    success: bool = false,
+    result: ?[]const u8 = null,
+    stack: ?[]const u8 = null,
+
+    pub fn init(alloc: std.mem.Allocator) Result {
+        return .{ .alloc = alloc };
+    }
+
+    pub fn deinit(self: Result) void {
+        if (self.result) |res| self.alloc.free(res);
+        if (self.stack) |stack| self.alloc.free(stack);
+    }
+
+    pub fn setError(
+        self: *Result,
+        isolate: v8.Isolate,
+        js_ctx: v8.Context,
+        try_catch: v8.TryCatch,
+    ) !void {
+        self.success = false;
+
+        // exception
+        if (try_catch.getException()) |except| {
+            self.result = try valueToUtf8(self.alloc, except, isolate, js_ctx);
+        }
+
+        // stack
+        if (try_catch.getStackTrace(js_ctx)) |stack| {
+            self.stack = try valueToUtf8(self.alloc, stack, isolate, js_ctx);
+        }
+    }
 };
 
 pub const FuncSync = struct {
@@ -100,6 +137,28 @@ pub const FuncSync = struct {
             self.nat_ctx,
             nat_obj_ptr,
         ) orelse return error.V8ObjectNotFound;
+    }
+
+    // call the function with a try catch to catch errors an report in res.
+    pub fn trycall(self: FuncSync, alloc: std.mem.Allocator, res: *Result) anyerror!void {
+        // JS try cache
+        var try_catch: v8.TryCatch = undefined;
+        try_catch.init(self.isolate);
+        defer try_catch.deinit();
+
+        self.call(alloc) catch |e| {
+            res.success = false;
+            if (try_catch.hasCaught()) {
+                // retrieve context
+                // NOTE: match the Func.call implementation
+                const ctx = self.isolate.getCurrentContext();
+                try res.setError(self.isolate, ctx, try_catch);
+            }
+
+            return e;
+        };
+
+        res.success = true;
     }
 
     pub fn call(self: FuncSync, alloc: std.mem.Allocator) anyerror!void {
@@ -228,11 +287,29 @@ pub const Func = struct {
         return self._id.get();
     }
 
-    pub fn call(
-        self: Func,
-        nat_args: anytype,
-    ) anyerror!void {
+    // call the function with a try catch to catch errors an report in res.
+    pub fn trycall(self: Func, nat_args: anytype, res: *Result) anyerror!void {
+        // JS try cache
+        var try_catch: v8.TryCatch = undefined;
+        try_catch.init(self.isolate);
+        defer try_catch.deinit();
 
+        self.call(nat_args) catch |e| {
+            res.success = false;
+            if (try_catch.hasCaught()) {
+                // retrieve context
+                // NOTE: match the Func.call implementation
+                const ctx = self.isolate.getCurrentContext();
+                try res.setError(self.isolate, ctx, try_catch);
+            }
+
+            return e;
+        };
+
+        res.success = true;
+    }
+
+    pub fn call(self: Func, nat_args: anytype) anyerror!void {
         // ensure Native args and JS args are not both provided
         const info = @typeInfo(@TypeOf(nat_args));
         if (comptime info != .Null) {
