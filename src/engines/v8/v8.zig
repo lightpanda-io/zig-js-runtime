@@ -92,7 +92,11 @@ pub const Env = struct {
         return .v8;
     }
 
-    pub fn init(alloc: std.mem.Allocator, loop: *public.Loop) anyerror!Env {
+    pub fn init(
+        alloc: std.mem.Allocator,
+        loop: *public.Loop,
+        userctx: ?public.UserContext,
+    ) anyerror!Env {
 
         // v8 values
         // ---------
@@ -113,7 +117,7 @@ pub const Env = struct {
         const globals = v8.FunctionTemplate.initDefault(isolate);
 
         return Env{
-            .nat_ctx = try NativeContext.init(alloc, loop),
+            .nat_ctx = try NativeContext.init(alloc, loop, userctx),
             .isolate_params = params,
             .isolate = isolate,
             .hscope = hscope,
@@ -143,6 +147,10 @@ pub const Env = struct {
         self.nat_ctx.deinit();
 
         self.* = undefined;
+    }
+
+    pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
+        self.nat_ctx.userctx = userctx;
     }
 
     // load user-defined Types into Javascript environement

@@ -51,6 +51,8 @@ pub const Variadic = types.Variadic;
 pub const Loop = @import("loop.zig").SingleThreaded;
 pub const Console = @import("console.zig").Console;
 
+pub const UserContext = @import("user_context.zig").UserContext;
+
 // JS engine
 // ---------
 
