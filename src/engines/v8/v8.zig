@@ -345,6 +345,21 @@ pub const Env = struct {
         };
     }
 
+    pub fn waitTryCatch(
+        self: Env,
+        alloc: std.mem.Allocator,
+    ) anyerror!JSResult {
+
+        // JS try cache
+        var try_catch: v8.TryCatch = undefined;
+        try_catch.init(self.isolate);
+        defer try_catch.deinit();
+
+        var res = JSResult{};
+        try self.wait(alloc, try_catch, &res);
+        return res;
+    }
+
     // run a JS script and wait for all callbacks
     // try_catch + exec + wait
     pub fn run(
