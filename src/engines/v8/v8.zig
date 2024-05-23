@@ -352,6 +352,8 @@ pub const Env = struct {
                 return err;
             }
         };
+
+        if (cbk_res) |res| res.success = true;
     }
 
     pub fn waitTryCatch(
