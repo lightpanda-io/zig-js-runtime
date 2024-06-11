@@ -19,7 +19,7 @@ const pkgs = packages("");
 
 /// Do not rename this constant. It is scanned by some scripts to determine
 /// which zig version to install.
-pub const recommended_zig_version = "0.12.0-dev.3518+d2be725e4";
+pub const recommended_zig_version = "0.12.1";
 
 pub fn build(b: *std.Build) !void {
     switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {
@@ -113,7 +113,7 @@ pub fn build(b: *std.Build) !void {
     });
     try common(tests, mode, options);
     tests.root_module.single_threaded = true;
-    tests.test_runner = "src/test_runner.zig";
+    tests.test_runner = .{ .path = "src/test_runner.zig" };
     const run_tests = b.addRunArtifact(tests);
 
     // step
