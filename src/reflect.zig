@@ -89,7 +89,7 @@ pub const Type = struct {
     T_refl_index: ?usize = null,
     nested_index: ?usize = null, // T_refl_index is mandatory in this case
 
-    union_T: ?[]Type,
+    union_T: ?[]const Type,
 
     pub inline fn isNative(comptime self: Type) bool {
         comptime {
@@ -241,7 +241,7 @@ pub const Type = struct {
 
     // find if T is a VariadicType
     // and returns it as a reflect.Type
-    pub fn variadic(comptime T: type, comptime structs: ?[]Struct) !?Type {
+    pub fn variadic(comptime T: type, comptime structs: ?[]const Struct) !?Type {
         std.debug.assert(@inComptime());
 
         const TT = Type._variadic(T) orelse return null;
@@ -257,7 +257,7 @@ pub const Type = struct {
     }
 
     // check that user-defined types have been provided as an API
-    pub fn lookup(comptime self: *Type, comptime structs: []Struct) Error!void {
+    pub fn lookup(comptime self: *Type, comptime structs: []const Struct) Error!void {
         std.debug.assert(@inComptime());
 
         // lookup unecessary
@@ -274,9 +274,14 @@ pub const Type = struct {
 
         // if union, lookup each possible type
         if (self.union_T) |union_types| {
-            inline for (union_types) |*tt| {
-                try tt.lookup(structs);
+            var uts: [union_types.len]Type = undefined;
+            inline for (union_types, 0..) |tt, i| {
+                var t = tt;
+                try t.lookup(structs);
+                uts[i] = t;
             }
+            const cuts = uts;
+            self.union_T = &cuts;
             return;
         }
 
@@ -316,7 +321,7 @@ pub const Type = struct {
         }
     }
 
-    fn reflectUnion(comptime T: type, comptime info: std.builtin.Type) Error![]Type {
+    fn reflectUnion(comptime T: type, comptime info: std.builtin.Type) Error![]const Type {
         if (info.Union.tag_type == null) {
             const msg = "union should be a tagged";
             fmtErr(msg.len, msg, T);
@@ -326,7 +331,9 @@ pub const Type = struct {
         inline for (info.Union.fields, 0..) |field, i| {
             union_types[i] = try Type.reflect(field.type, field.name);
         }
-        return &union_types;
+
+        const cunion_types = union_types;
+        return &cunion_types;
     }
 
     pub fn reflect(comptime T: type, comptime name: ?[]const u8) Error!Type {
@@ -335,7 +342,7 @@ pub const Type = struct {
         const info = @typeInfo(Type._underT(T));
 
         // union T
-        var union_T: ?[]Type = null;
+        var union_T: ?[]const Type = null;
         if (info == .Union) {
             union_T = try reflectUnion(T, info);
         }
@@ -348,17 +355,19 @@ pub const Type = struct {
             }
         }
 
+        const cunion_T = union_T;
+
         const t = Type{
             .T = T,
             .name = name,
-            .union_T = union_T,
+            .union_T = cunion_T,
         };
         return t;
     }
 };
 
 const Args = struct {
-    fn reflect(comptime self_T: ?type, comptime args: []Type) type {
+    fn reflect(comptime self_T: ?type, comptime args: []const Type) type {
         var len = args.len;
         if (self_T != null) {
             len += 1;
@@ -395,10 +404,11 @@ const Args = struct {
                 .alignment = @alignOf(arg.T),
             };
         }
-        const decls: [0]std.builtin.Type.Declaration = undefined;
+        const decls = [_]std.builtin.Type.Declaration{};
+        const cfields = fields;
         const s = std.builtin.Type.Struct{
             .layout = .auto,
-            .fields = &fields,
+            .fields = &cfields,
             .decls = &decls,
             .is_tuple = true,
         };
@@ -461,7 +471,7 @@ pub const Func = struct {
     name: []const u8,
 
     // func signature
-    args: []Type,
+    args: []const Type,
     args_T: type,
     first_optional_arg: ?usize,
 
@@ -478,10 +488,16 @@ pub const Func = struct {
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 
-    fn lookupTypes(comptime self: *Func, comptime structs: []Struct) Error!void {
-        inline for (self.args) |*arg| {
-            try arg.lookup(structs);
+    fn lookupTypes(comptime self: *Func, comptime structs: []const Struct) Error!void {
+        // copy args
+        var args: [self.args.len]Type = undefined;
+        inline for (self.args, 0..) |arg, i| {
+            var a = arg;
+            try a.lookup(structs);
+            args[i] = a;
         }
+        const cargs = args;
+        self.args = &cargs;
         try self.return_type.lookup(structs);
     }
 
@@ -663,8 +679,8 @@ pub const Func = struct {
         const js_name = jsName(field_name);
 
         // reflect args
-        const args_slice = args_types[0..];
-        const args_T = comptime Args.reflect(self_T, args_slice);
+        const args_slice = args_types;
+        const args_T = comptime Args.reflect(self_T, &args_slice);
 
         // reflect return type
         const return_type = try Type.reflect(func.Fn.return_type.?, null);
@@ -675,7 +691,7 @@ pub const Func = struct {
             .name = name,
 
             // func signature
-            .args = args_slice,
+            .args = &args_slice,
             .args_T = args_T,
             .first_optional_arg = first_optional_arg,
 
@@ -697,7 +713,7 @@ pub const Func = struct {
 
 pub const StructNested = struct {
     T: type,
-    fields: []Type,
+    fields: []const Type,
 
     fn isNested(comptime T: type, comptime decl: std.builtin.Type.Declaration) bool {
         // special keywords
@@ -731,7 +747,8 @@ pub const StructNested = struct {
         inline for (info.Struct.fields, 0..) |field, i| {
             fields[i] = try Type.reflect(field.type, field.name);
         }
-        return .{ .T = T, .fields = &fields };
+        const cfields = fields;
+        return .{ .T = T, .fields = &cfields };
     }
 };
 
@@ -759,12 +776,12 @@ pub const Struct = struct {
     has_constructor: bool,
     constructor: Func,
 
-    getters: []Func,
-    setters: []Func,
-    methods: []Func,
+    getters: []const Func,
+    setters: []const Func,
+    methods: []const Func,
 
     // nested types
-    nested: []StructNested,
+    nested: []const StructNested,
 
     pub fn Self(comptime self: Struct) type {
         comptime {
@@ -810,20 +827,54 @@ pub const Struct = struct {
         if (self.has_constructor) {
             try self.constructor.lookupTypes(structs);
         }
-        inline for (self.getters) |*getter| {
-            try getter.lookupTypes(structs);
+
+        // copy getters
+        var getters: [self.getters.len]Func = undefined;
+        inline for (self.getters, 0..) |getter, i| {
+            var f = getter;
+            try f.lookupTypes(structs);
+            getters[i] = f;
         }
-        inline for (self.setters) |*setter| {
-            try setter.lookupTypes(structs);
+        const cgetters = getters;
+        self.getters = &cgetters;
+
+        // copy setters
+        var setters: [self.setters.len]Func = undefined;
+        inline for (self.setters, 0..) |setter, i| {
+            var f = setter;
+            try f.lookupTypes(structs);
+            setters[i] = f;
         }
-        inline for (self.methods) |*method| {
-            try method.lookupTypes(structs);
+        const csetters = setters;
+        self.setters = &csetters;
+
+        // copy methods
+        var methods: [self.methods.len]Func = undefined;
+        inline for (self.methods, 0..) |method, i| {
+            var f = method;
+            try f.lookupTypes(structs);
+            methods[i] = f;
         }
-        inline for (self.nested) |nested| {
-            inline for (nested.fields) |*field| {
-                try field.lookup(structs);
+        const cmethods = methods;
+        self.methods = &cmethods;
+
+        // copy nested
+        var nesteds: [self.nested.len]StructNested = undefined;
+        inline for (self.nested, 0..) |nested, i| {
+            var n = nested;
+            // copy fields
+            var fields: [nested.fields.len]Type = undefined;
+            inline for (nested.fields, 0..) |field, j| {
+                var f = field;
+                try f.lookup(structs);
+                fields[j] = f;
             }
+            const cfields = fields;
+            n.fields = &cfields;
+            nesteds[i] = n;
         }
+        const cnesteds = nesteds;
+        self.nested = &cnesteds;
     }
 
     fn lessThan(_: void, comptime a: Struct, comptime b: Struct) bool {
@@ -926,10 +977,11 @@ pub const Struct = struct {
             };
             attrs_done += 1;
         }
+        const cfields = fields;
         return @Type(.{
             .Struct = .{
                 .layout = .auto,
-                .fields = &fields,
+                .fields = &cfields,
                 .decls = &.{},
                 .is_tuple = false,
             },
@@ -1019,7 +1071,7 @@ pub const Struct = struct {
 
     // Retrieve the optional Exception of the API,
     // including from prototype chain
-    pub fn exception(comptime self: Struct, comptime all: []Struct) ?Struct {
+    pub fn exception(comptime self: Struct, comptime all: []const Struct) ?Struct {
         std.debug.assert(@inComptime());
 
         // errors have already been checked at lookup stage
@@ -1344,6 +1396,11 @@ pub const Struct = struct {
             }
         }
 
+        const cgetters = getters;
+        const csetters = setters;
+        const cmethods = methods;
+        const cnested = nested;
+
         return Struct{
             // struct info
             .name = struct_name,
@@ -1364,12 +1421,12 @@ pub const Struct = struct {
             // struct functions
             .has_constructor = has_constructor,
             .constructor = constructor,
-            .getters = getters[0..],
-            .setters = setters[0..],
-            .methods = methods[0..],
+            .getters = &cgetters,
+            .setters = &csetters,
+            .methods = &cmethods,
 
             // nested types
-            .nested = nested[0..],
+            .nested = &cnested,
         };
     }
 };
@@ -1453,7 +1510,7 @@ fn lookupException(comptime all: []Struct) Error!void {
     }
 }
 
-pub fn do(comptime types: anytype) Error![]Struct {
+pub fn do(comptime types: anytype) Error![]const Struct {
     comptime {
 
         // check types provided
@@ -1496,7 +1553,9 @@ pub fn do(comptime types: anytype) Error![]Struct {
             try s.lookupTypes(&all);
         }
 
-        return &all;
+        // handle comptime var.
+        const call = all;
+        return &call;
     }
 }
 
@@ -1618,7 +1677,7 @@ fn assertFuncReturnT(comptime func: type, comptime T: type, comptime opts: EqlOp
 
 // createTupleT generate a tuple type
 // with the members passed as fields
-fn createTupleT(comptime members: []type) type {
+fn createTupleT(comptime members: []const type) type {
     var fields: [members.len]std.builtin.Type.StructField = undefined;
     for (members, 0..) |member, i| {
         fields[i] = std.builtin.Type.StructField{
@@ -1633,9 +1692,10 @@ fn createTupleT(comptime members: []type) type {
             .alignment = @alignOf(member),
         };
     }
+    const cfields = fields;
     const s = std.builtin.Type.Struct{
         .layout = .auto,
-        .fields = &fields,
+        .fields = &cfields,
         .decls = &.{},
         .is_tuple = true,
     };
@@ -1652,7 +1712,8 @@ fn argsT(comptime func: type) type {
     for (info.params, 0..) |param, i| {
         params[i] = param.type.?;
     }
-    return createTupleT(&params);
+    const cparams = params;
+    return createTupleT(&cparams);
 }
 
 // public functions
@@ -1741,7 +1802,8 @@ fn jsName(comptime name: []const u8) []const u8 {
         }
         js_name[i] = char;
     }
-    return &js_name;
+    const cname = js_name;
+    return &cname;
 }
 
 fn shortName(comptime T: type) []const u8 {
@@ -1749,9 +1811,11 @@ fn shortName(comptime T: type) []const u8 {
     return it.first();
 }
 
-pub fn itoa(i: u8) ![]u8 {
+pub fn itoa(i: u8) ![]const u8 {
     var buf: [1]u8 = undefined;
-    return try std.fmt.bufPrint(buf[0..], "{d}", .{i});
+    _ = try std.fmt.bufPrint(buf[0..], "{d}", .{i});
+    const cbuf = buf;
+    return &cbuf;
 }
 
 fn isStringLiteral(comptime T: type) bool {

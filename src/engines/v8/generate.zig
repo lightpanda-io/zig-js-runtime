@@ -168,7 +168,7 @@ fn getNativeArg(
 
     // JS object
     const ptr = try getNativeObject(nat_ctx, T_refl, js_value.castTo(v8.Object));
-    if (arg_T.underPtr() != null) {
+    if (comptime arg_T.underPtr() != null) {
         value = ptr;
     } else {
         value = ptr.*;
@@ -389,13 +389,14 @@ fn getArgs(
 
 fn freeArgs(alloc: std.mem.Allocator, comptime func: refl.Func, obj: anytype) !void {
     inline for (func.args) |arg_T| {
+        const underT = comptime arg_T.underT();
 
         // free char slices
         // the API functions will be responsible of copying the slice
         // in their implementations if they want to keep it afterwards
-        if (arg_T.underT() == []u8 or arg_T.underT() == []const u8) {
+        if (underT == []u8 or underT == []const u8) {
             const val = @field(obj, arg_T.name.?);
-            if (arg_T.underOpt() != null) {
+            if (comptime arg_T.underOpt() != null) {
                 // free only if val is non-null
                 if (val) |v| {
                     alloc.free(v);
@@ -406,7 +407,7 @@ fn freeArgs(alloc: std.mem.Allocator, comptime func: refl.Func, obj: anytype) !v
         }
 
         // free varidadic slices
-        if (try refl.Type.variadic(arg_T.underT(), null) != null) {
+        if (try refl.Type.variadic(underT, null) != null) {
             const val = @field(obj, arg_T.name.?).?;
             // NOTE: variadic are optional by design
             alloc.free(@field(val, "slice"));
@@ -913,7 +914,7 @@ fn callFunc(
 
     // call native func
     const function = @field(T_refl.T, func.name);
-    const res_T = func.return_type.underErr() orelse func.return_type.T;
+    const res_T = comptime func.return_type.underErr() orelse func.return_type.T;
     var res: res_T = undefined;
     if (comptime @typeInfo(func.return_type.T) == .ErrorUnion) {
         res = @call(.auto, function, args) catch |err| {
@@ -940,7 +941,7 @@ fn callFunc(
             nat_ctx.alloc,
             nat_ctx,
             T_refl,
-            func.return_type.underT(),
+            comptime func.return_type.underT(),
             res,
             cbk_info.getThis(),
             isolate,

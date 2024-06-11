@@ -38,15 +38,16 @@ const loadFn = @import("private_api.zig").loadFn;
 // reflect the user-defined types to obtain type information (T_refl)
 // This function must be called at comptime by the root file of the project
 // and stored in a constant named `Types`
-pub fn reflect(comptime types: anytype) []refl.Struct {
+pub fn reflect(comptime types: anytype) []const refl.Struct {
     std.debug.assert(@inComptime());
 
     // call types reflection
-    return refl.do(types) catch unreachable;
+    const structs: []const refl.Struct = refl.do(types) catch |e| @compileError(@errorName(e));
+    return structs;
 }
 
 // Import user-defined types
-pub const Types: []refl.Struct = @import("root").Types;
+pub const Types: []const refl.Struct = @import("root").Types;
 
 // retrieved the reflected type of a user-defined native type
 pub fn getType(comptime T: type) refl.Struct {
@@ -61,7 +62,7 @@ pub fn getType(comptime T: type) refl.Struct {
 
 // generate APIs from reflected types
 // which can be later loaded in JS.
-fn generate(comptime types: []refl.Struct) []API {
+fn generate(comptime types: []const refl.Struct) []API {
     std.debug.assert(@inComptime());
 
     var apis: [types.len]API = undefined;
