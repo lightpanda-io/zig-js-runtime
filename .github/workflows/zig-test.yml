@@ -11,6 +11,7 @@ on:
       - "src/**/*.zig"
       - "src/*.zig"
       - "*.zig"
+      - ".github/**"
   pull_request:
 
     # By default GH trigger on types opened, synchronize and reopened.
@@ -26,6 +27,7 @@ on:
       - "src/**/*.zig"
       - "src/*.zig"
       - "*.zig"
+      - ".github/**"
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -104,6 +106,11 @@ jobs:
       credentials:
        username: ${{ github.actor }}
        password: ${{ secrets.GITHUB_TOKEN }}
+
+      # docker blocks io_uring syscalls by default now.
+      # see https://github.com/tigerbeetle/tigerbeetle/pull/1995
+      # see https://github.com/moby/moby/pull/46762
+      options: "--security-opt seccomp=unconfined"
 
     steps:
       - uses: actions/checkout@v3
