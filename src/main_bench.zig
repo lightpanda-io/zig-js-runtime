@@ -104,7 +104,7 @@ pub fn main() !void {
     while (args.next()) |arg| {
         if (std.mem.eql(u8, "-h", arg) or std.mem.eql(u8, "--help", arg)) {
             try io.getStdErr().writer().print(usage, .{execname});
-            std.os.exit(0);
+            std.posix.exit(0);
         } else if (std.mem.eql(u8, "--json", arg)) {
             json = true;
         }
@@ -144,7 +144,7 @@ pub fn main() !void {
         };
 
         try std.json.stringify(res, .{ .whitespace = .indent_2 }, io.getStdOut().writer());
-        std.os.exit(0);
+        std.posix.exit(0);
     }
 
     // benchmark measures

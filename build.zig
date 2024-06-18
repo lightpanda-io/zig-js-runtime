@@ -19,7 +19,7 @@ const pkgs = packages("");
 
 /// Do not rename this constant. It is scanned by some scripts to determine
 /// which zig version to install.
-pub const recommended_zig_version = "0.12.0-dev.1773+8a8fd47d2";
+pub const recommended_zig_version = "0.12.1";
 
 pub fn build(b: *std.Build) !void {
     switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {
@@ -48,17 +48,17 @@ pub fn build(b: *std.Build) !void {
     // compile and install
     const bench = b.addExecutable(.{
         .name = "zig-js-runtime-bench",
-        .root_source_file = .{ .path = "src/main_bench.zig" },
+        .root_source_file = b.path("src/main_bench.zig"),
         .single_threaded = true,
         .target = target,
         .optimize = mode,
     });
 
-    try common(bench, mode, options);
+    try common(b, &bench.root_module, options);
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
-        bench.strip = true;
+        bench.root_module.strip = true;
     }
     b.installArtifact(bench);
 
@@ -78,16 +78,16 @@ pub fn build(b: *std.Build) !void {
     // compile and install
     const shell = b.addExecutable(.{
         .name = "zig-js-runtime-shell",
-        .root_source_file = .{ .path = "src/main_shell.zig" },
+        .root_source_file = b.path("src/main_shell.zig"),
         .target = target,
         .optimize = mode,
     });
-    try common(shell, mode, options);
+    try common(b, &shell.root_module, options);
     try pkgs.add_shell(shell);
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
-        shell.strip = true;
+        shell.root_module.strip = true;
     }
     // do not install shell binary
     // b.installArtifact(shell);
@@ -107,13 +107,13 @@ pub fn build(b: *std.Build) !void {
 
     // compile
     const tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/run_tests.zig" },
+        .root_source_file = b.path("src/run_tests.zig"),
         .target = target,
         .optimize = mode,
     });
-    try common(tests, mode, options);
-    tests.single_threaded = true;
-    tests.test_runner = "src/test_runner.zig";
+    try common(b, &tests.root_module, options);
+    tests.root_module.single_threaded = true;
+    tests.test_runner = b.path("src/test_runner.zig");
     const run_tests = b.addRunArtifact(tests);
 
     // step
@@ -149,15 +149,15 @@ pub fn buildOptions(b: *std.Build) !Options {
 }
 
 fn common(
-    step: *std.Build.Step.Compile,
-    mode: std.builtin.Mode,
+    b: *std.Build,
+    m: *std.Build.Module,
     options: Options,
 ) !void {
-    step.addOptions("jsruntime_build_options", options.opts);
-    step.addModule("tigerbeetle-io", pkgs.tigerbeetle_io(step));
+    m.addOptions("jsruntime_build_options", options.opts);
+    m.addImport("tigerbeetle-io", pkgs.tigerbeetle_io(b));
     if (options.engine == .v8) {
-        try pkgs.v8(step, mode);
-        step.addModule("v8", pkgs.zig_v8(step));
+        try pkgs.v8(m);
+        m.addImport("v8", pkgs.zig_v8(b));
     }
 }
 
@@ -167,33 +167,35 @@ pub fn packages(comptime vendor_path: []const u8) type {
 
         const vendor = vendor_path ++ "vendor";
 
-        fn tigerbeetle_io(step: *std.Build.Step.Compile) *std.Build.Module {
-            return step.step.owner.createModule(.{
-                .source_file = .{ .path = vendor ++ "/tigerbeetle-io/io.zig" },
+        fn tigerbeetle_io(b: *std.Build) *std.Build.Module {
+            return b.createModule(.{
+                .root_source_file = b.path(vendor ++ "/tigerbeetle-io/io.zig"),
             });
         }
 
-        fn zig_v8(step: *std.Build.Step.Compile) *std.Build.Module {
-            step.addIncludePath(.{ .path = vendor ++ "/zig-v8/src" });
-
-            return step.step.owner.createModule(.{
-                .source_file = .{ .path = vendor ++ "/zig-v8/src/v8.zig" },
+        fn zig_v8(b: *std.Build) *std.Build.Module {
+            const mod = b.createModule(.{
+                .root_source_file = b.path(vendor ++ "/zig-v8/src/v8.zig"),
+                .link_libc = false,
+                .link_libcpp = false,
             });
+
+            mod.addIncludePath(b.path(vendor ++ "/zig-v8/src"));
+
+            return mod;
         }
 
-        fn v8(step: *std.Build.Step.Compile, mode: std.builtin.Mode) !void {
-            const mode_str: []const u8 = if (mode == .Debug) "debug" else "release";
-            // step.linkLibC(); // TODO: do we need to link libc?
-
+        fn v8(mod: *std.Build.Module) !void {
+            const mode_str: []const u8 = if (mod.optimize.? == .Debug) "debug" else "release";
             // FIXME: we are tied to native v8 builds, currently:
             // - aarch64-macos
             // - x86_64-linux
-            const os = step.target.getOsTag();
-            const arch = step.target.getCpuArch();
+            const os = mod.resolved_target.?.result.os.tag;
+            const arch = mod.resolved_target.?.result.cpu.arch;
             switch (os) {
                 .linux => blk: {
                     // TODO: why do we need it? It should be linked already when we built v8
-                    step.linkLibCpp();
+                    mod.link_libcpp = true;
                     break :blk;
                 },
                 .macos => blk: {
@@ -207,45 +209,49 @@ pub fn packages(comptime vendor_path: []const u8) type {
             }
 
             const lib_path = try std.fmt.allocPrint(
-                step.step.owner.allocator,
+                mod.owner.allocator,
                 "{s}vendor/v8/{s}-{s}/{s}/libc_v8.a",
                 .{ vendor_path, @tagName(arch), @tagName(os), mode_str },
             );
-            step.addObjectFile(.{ .path = lib_path });
+            mod.addObjectFile(mod.owner.path(lib_path));
         }
 
         pub fn add_shell(step: *std.Build.Step.Compile) !void {
-            step.addIncludePath(.{ .path = vendor ++ "/linenoise-mob" });
+            step.addIncludePath(step.root_module.owner.path(vendor ++ "/linenoise-mob"));
             const lib = step.step.owner.addStaticLibrary(.{
                 .name = "linenoise",
-                .target = step.target,
-                .optimize = step.optimize,
+                .target = step.root_module.resolved_target.?,
+                .optimize = step.root_module.optimize.?,
                 .link_libc = true,
             });
             // TODO: use mode to add debug/release flags
             const cflags = &.{};
             lib.addCSourceFile(.{
-                .file = .{ .path = vendor ++ "/linenoise-mob/linenoise.c" },
+                .file = step.root_module.owner.path(vendor ++ "/linenoise-mob/linenoise.c"),
                 .flags = cflags,
             });
             step.linkLibrary(lib);
         }
 
-        pub fn add(
-            step: *std.build.Step.Compile,
+        pub fn module(
+            b: *std.Build,
             options: Options,
-        ) !void {
-            const jsruntime_mod = step.step.owner.createModule(.{
-                .source_file = .{ .path = vendor_path ++ "/src/api.zig" },
-                .dependencies = &[_]std.build.ModuleDependency{
+            mode: std.builtin.Mode,
+            target: std.Build.ResolvedTarget,
+        ) !*std.Build.Module {
+            const mod = b.createModule(.{
+                .root_source_file = b.path(vendor_path ++ "/src/api.zig"),
+                .optimize = mode,
+                .target = target,
+                .imports = &[_]std.Build.Module.Import{
                     .{ .name = "jsruntime_build_options", .module = options.opts.createModule() },
-                    .{ .name = "tigerbeetle-io", .module = Self.tigerbeetle_io(step) },
-                    .{ .name = "v8", .module = Self.zig_v8(step) },
+                    .{ .name = "tigerbeetle-io", .module = Self.tigerbeetle_io(b) },
+                    .{ .name = "v8", .module = Self.zig_v8(b) },
                 },
             });
-            try Self.v8(step, step.optimize);
+            try Self.v8(mod);
 
-            step.addModule("jsruntime", jsruntime_mod);
+            return mod;
         }
     };
 }

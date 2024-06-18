@@ -146,14 +146,14 @@ $ make shell
 zig-js-runtime - Javascript Shell
 exit with Ctrl+D or "exit"
 
-> 
+>
 ```
 
 ## Build
 
 ### Prerequisites
 
-zig-js-runtime is written with [Zig](https://ziglang.org/) `0.12`. You have to
+zig-js-runtime is written with [Zig](https://ziglang.org/) `0.12.1`. You have to
 install it with the right version in order to build the project.
 
 To be able to build the v8 engine, you have to install some libs:

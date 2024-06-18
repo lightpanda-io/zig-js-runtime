@@ -35,7 +35,7 @@ fn isTypeError(expected: []const u8, msg: []const u8) bool {
 pub fn sleep(nanoseconds: u64) void {
     const s = nanoseconds / std.time.ns_per_s;
     const ns = nanoseconds % std.time.ns_per_s;
-    std.os.nanosleep(s, ns);
+    std.posix.nanosleep(s, ns);
 }
 
 // result memory is owned by the caller
