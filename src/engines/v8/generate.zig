@@ -976,8 +976,15 @@ fn callFunc(
     // sync callback
     // for test purpose, does not have any sense in real case
     if (comptime func.callback_index != null) {
-        // -1 because of self
-        const js_func_index = func.callback_index.? - func.index_offset - 1;
+        const js_func_index = comptime brk: {
+            var idx = func.callback_index.? - func.index_offset;
+
+            // -1 because of self
+            if (func.kind != .constructor) idx -= 1;
+
+            break :brk idx;
+        };
+
         if (func.args[js_func_index].T == cbk.FuncSync) {
             args[func.callback_index.? - func.index_offset].call(nat_ctx.alloc) catch unreachable;
         }
