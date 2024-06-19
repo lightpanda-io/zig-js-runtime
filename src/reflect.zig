@@ -488,6 +488,8 @@ pub const Func = struct {
 
     setter_index: ?u8, // TODO: not ideal, is there a cleaner solution?
 
+    kind: FuncKind,
+
     fn lookupTypes(comptime self: *Func, comptime structs: []const Struct) Error!void {
         // copy args
         var args: [self.args.len]Type = undefined;
@@ -707,6 +709,8 @@ pub const Func = struct {
             .symbol = Symbol.reflect(name),
 
             .setter_index = null,
+
+            .kind = kind,
         };
     }
 };
