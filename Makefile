@@ -104,7 +104,7 @@ build-release:
 ## Run the benchmark in release-safe mode
 run: build-release
 	@printf "\e[36mRunning...\e[0m\n"
-	@./zig-out/bin/jsruntime-bench || (printf "\e[33mRun ERROR\e[0m\n"; exit 1;)
+	@./zig-out/bin/zig-js-runtime-bench || (printf "\e[33mRun ERROR\e[0m\n"; exit 1;)
 	@printf "\e[33mRun OK\e[0m\n"
 
 ## Run a JS shell in release-safe mode
@@ -125,4 +125,4 @@ ifneq ($(shell $(git_clean)), 0)
 	$(error repo is not clean)
 endif
 	@mkdir -p benchmarks && \
-	./zig-out/bin/jsruntime-bench > benchmarks/$(shell $(git_last_commit_full))_$(shell $(git_current_branch)).txt
+	./zig-out/bin/zig-js-runtime-bench > benchmarks/$(shell $(git_last_commit_full))_$(shell $(git_current_branch)).txt
