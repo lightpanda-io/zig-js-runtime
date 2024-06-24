@@ -59,7 +59,7 @@ pub const UserContext = @import("user_context.zig").UserContext;
 
 const Engine = @import("private_api.zig").Engine;
 
-pub const JSResult = Engine.JSResult;
+pub const JSValue = Engine.JSValue;
 pub const JSObject = Engine.JSObject;
 pub const JSObjectID = Engine.JSObjectID;
 

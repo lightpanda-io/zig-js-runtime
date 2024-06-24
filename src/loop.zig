@@ -68,7 +68,7 @@ pub const SingleThreaded = struct {
             // at each iteration we might have new events registred by previous callbacks
         }
         if (self.cbk_error) {
-            return error.JSCallback;
+            return error.JSExecCallback;
         }
     }
 
