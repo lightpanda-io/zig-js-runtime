@@ -198,6 +198,7 @@ pub const Env = struct {
             if (comptime T_refl.isException()) {
                 const script = T_refl.name ++ ".prototype.__proto__ = Error.prototype";
                 _ = self.exec(script, "errorSubclass") catch {
+                    // TODO: is there a reason to override the error?
                     return error.errorSubClass;
                 };
             }
@@ -290,7 +291,7 @@ pub const Env = struct {
     }
 
     // compile and run a JS script
-    // This is a non-blocking operation, it will returned before any callback is executed
+    // It doesn't wait for callbacks execution
     pub fn exec(
         self: Env,
         script: []const u8,
@@ -299,11 +300,7 @@ pub const Env = struct {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
-
-        const res = jsExec(script, name, self.isolate, self.js_ctx.?) catch {
-            return error.JSExec;
-        };
-        return res;
+        return try jsExec(script, name, self.isolate, self.js_ctx.?);
     }
 
     // wait I/O loop until all JS callbacks are executed
@@ -475,9 +472,9 @@ pub fn jsExec(script: []const u8, name: ?[]const u8, isolate: v8.Isolate, js_ctx
         origin = v8.ScriptOrigin.initDefault(isolate, scr_name.toValue());
     }
     const scr_js = v8.String.initUtf8(isolate, script);
-    const scr = try v8.Script.compile(js_ctx, scr_js, origin);
+    const scr = v8.Script.compile(js_ctx, scr_js, origin) catch return error.JSCompile;
 
     // run
-    const value = try scr.run(js_ctx);
+    const value = scr.run(js_ctx) catch return error.JSExec;
     return .{ .value = value };
 }
