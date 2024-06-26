@@ -303,40 +303,33 @@ pub const Env = struct {
         return try jsExec(script, name, self.isolate, self.js_ctx.?);
     }
 
-    // wait I/O loop until all JS callbacks are executed
-    pub fn wait(
-        self: Env,
-        ignore_errors: bool,
-    ) anyerror!void {
+    // wait I/O Loop until all JS callbacks are executed
+    // This is a blocking operation.
+    // Errors can be either:
+    // - an error of the Loop (eg. IO kernel)
+    // - an error of one of the JS callbacks
+    // NOTE: the Loop does not stop when a JS callback throw an error
+    // ie. all JS callbacks are executed
+    // TODO: return at first error on a JS callback and let the caller
+    // decide whether going forward or not
+    pub fn wait(self: Env) anyerror!void {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
         // run loop
-        self.nat_ctx.loop.run() catch |err| {
-            if (err != error.JSExecCallback) {
-                // IO kernel error
-                return err;
-            } else if (!ignore_errors) {
-                return err;
-            }
-        };
+        return self.nat_ctx.loop.run();
     }
 
     // compile and run a JS script and wait for all callbacks (exec + wait)
     // This is a blocking operation.
-    pub fn execWait(
-        self: Env,
-        script: []const u8,
-        name: ?[]const u8,
-        ignore_errors: bool,
-    ) anyerror!JSValue {
+    pub fn execWait(self: Env, script: []const u8, name: ?[]const u8) anyerror!JSValue {
 
         // exec script
         const res = try self.exec(script, name);
 
         // wait
-        try self.wait(ignore_errors);
+        try self.wait();
 
         return res;
     }

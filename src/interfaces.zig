@@ -102,17 +102,13 @@ pub fn Env(
     ) anyerror!JSValue_T);
 
     // wait() all JS callbacks
-    assertDecl(T, "wait", fn (
-        self: T,
-        ignore_errors: bool,
-    ) anyerror!void);
+    assertDecl(T, "wait", fn (self: T) anyerror!void);
 
     // execWait() executes script in JS and waits all JS callbacks
     assertDecl(T, "execWait", fn (
         self: T,
         script: []const u8,
         name: ?[]const u8,
-        ignore_errors: bool,
     ) anyerror!JSValue_T);
 }
 

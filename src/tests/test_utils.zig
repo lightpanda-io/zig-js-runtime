@@ -100,7 +100,7 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
 
         // run script error
-        const res = js_env.execWait(case.src, name, false) catch |err| {
+        const res = js_env.execWait(case.src, name) catch |err| {
 
             // is it an intended error?
             const except = try try_catch.exception(alloc, js_env.*);
