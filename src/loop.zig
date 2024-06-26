@@ -67,6 +67,10 @@ pub const SingleThreaded = struct {
             try self.io.tick();
             // at each iteration we might have new events registred by previous callbacks
         }
+        // TODO: return instead immediatly on the first JS callback error
+        // and let the caller decide what to do next
+        // (typically retrieve the exception through the TryCatch and
+        // continue the execution of callbacks with a new call to loop.run)
         if (self.cbk_error) {
             return error.JSExecCallback;
         }
