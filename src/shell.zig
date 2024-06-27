@@ -159,6 +159,7 @@ fn cmdCallback(
 
     // JS print result
     const s = res.toString(ctx.alloc, ctx.js_env.*) catch unreachable;
+    defer ctx.alloc.free(s);
     if (std.mem.eql(u8, s, "undefined")) {
         printStdout("<- \x1b[38;5;242m{s}\x1b[0m\n", .{s});
     } else {

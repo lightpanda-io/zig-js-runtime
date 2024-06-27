@@ -128,6 +128,7 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
 
         // check if result is expected
         const res_string = try res.toString(alloc, js_env.*);
+        defer alloc.free(res_string);
         const equal = std.mem.eql(u8, case.ex, res_string);
         if (!equal) {
             has_error = true;

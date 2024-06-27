@@ -422,6 +422,7 @@ pub const JSObject = struct {
 pub const JSValue = struct {
     value: v8.Value,
 
+    // the caller needs to deinit the string returned
     pub fn toString(self: JSValue, alloc: std.mem.Allocator, env: Env) anyerror![]const u8 {
         return valueToUtf8(alloc, self.value, env.isolate, env.js_ctx.?);
     }
