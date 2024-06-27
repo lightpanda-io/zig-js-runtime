@@ -41,6 +41,17 @@ pub const test_utils = @import("tests/test_utils.zig");
 // JS types
 // --------
 
+pub const JSTypes = enum {
+    object,
+    function,
+    string,
+    number,
+    boolean,
+    bigint,
+    null,
+    undefined,
+};
+
 const types = @import("types.zig");
 pub const i64Num = types.i64Num;
 pub const u64Num = types.u64Num;
@@ -59,7 +70,7 @@ pub const UserContext = @import("user_context.zig").UserContext;
 
 const Engine = @import("private_api.zig").Engine;
 
-pub const JSResult = Engine.JSResult;
+pub const JSValue = Engine.JSValue;
 pub const JSObject = Engine.JSObject;
 pub const JSObjectID = Engine.JSObjectID;
 

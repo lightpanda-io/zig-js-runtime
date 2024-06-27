@@ -241,12 +241,12 @@ pub const Types = .{
 
 // exec tests
 pub fn exec(
-    alloc: std.mem.Allocator,
+    _: std.mem.Allocator,
     js_env: *public.Env,
 ) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc);
+    try js_env.start();
     defer js_env.stop();
 
     var nested_arg = [_]tests.Case{

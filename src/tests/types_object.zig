@@ -90,7 +90,7 @@ pub fn exec(
 ) anyerror!void {
 
     // start JS env
-    try js_env.start(alloc);
+    try js_env.start();
     defer js_env.stop();
 
     // const o = Other{ .val = 4 };
