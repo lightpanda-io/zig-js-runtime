@@ -426,6 +426,18 @@ pub const JSValue = struct {
     pub fn toString(self: JSValue, alloc: std.mem.Allocator, env: Env) anyerror![]const u8 {
         return valueToUtf8(alloc, self.value, env.isolate, env.js_ctx.?);
     }
+
+    pub fn typeOf(self: JSValue, env: Env) anyerror!public.JSTypes {
+        var buf: [20]u8 = undefined;
+        const str = try self.value.typeOf(env.isolate);
+        const len = str.lenUtf8(env.isolate);
+        const s = buf[0..len];
+        _ = str.writeUtf8(env.isolate, s);
+        return std.meta.stringToEnum(public.JSTypes, s) orelse {
+            std.log.err("JSValueTypeNotHandled: {s}", .{s});
+            return error.JSValueTypeNotHandled;
+        };
+    }
 };
 
 pub const TryCatch = struct {

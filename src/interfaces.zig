@@ -116,6 +116,9 @@ pub fn JSValue(comptime T: type, env: type) void {
 
     // toString()
     assertDecl(T, "toString", fn (self: T, alloc: std.mem.Allocator, env: env) anyerror![]const u8);
+
+    // typeOf()
+    assertDecl(T, "typeOf", fn (self: T, env: env) anyerror!public.JSTypes);
 }
 
 pub fn JSObjectID(comptime T: type) void {
