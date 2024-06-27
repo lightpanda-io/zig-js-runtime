@@ -104,7 +104,10 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
 
             // is it an intended error?
             const except = try try_catch.exception(alloc, js_env.*);
-            if (isTypeError(case.ex, except.?)) continue;
+            if (except) |msg| {
+                defer alloc.free(msg);
+                if (isTypeError(case.ex, msg)) continue;
+            }
 
             has_error = true;
             if (i == 0) {
@@ -116,8 +119,10 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
                 error.JSExecCallback => case.cbk_ex,
                 else => return err,
             };
-            const stack = try try_catch.stack(alloc, js_env.*);
-            caseError(case.src, expected, except.?, stack.?);
+            if (try try_catch.stack(alloc, js_env.*)) |stack| {
+                defer alloc.free(stack);
+                caseError(case.src, expected, except.?, stack);
+            }
             continue;
         };
 

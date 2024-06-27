@@ -438,6 +438,7 @@ pub const TryCatch = struct {
         return self.inner.hasCaught();
     }
 
+    // the caller needs to deinit the string returned
     pub fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
         if (self.inner.getException()) |msg| {
             return try valueToUtf8(alloc, msg, env.isolate, env.js_ctx.?);
@@ -445,6 +446,7 @@ pub const TryCatch = struct {
         return null;
     }
 
+    // the caller needs to deinit the string returned
     pub fn stack(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
         const stck = self.inner.getStackTrace(env.js_ctx.?);
         if (stck) |s| return try valueToUtf8(alloc, s, env.isolate, env.js_ctx.?);

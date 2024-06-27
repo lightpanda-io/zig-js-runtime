@@ -150,8 +150,10 @@ fn cmdCallback(
         "shell.js",
     ) catch {
         const except = ctx.try_catch.exception(ctx.alloc, ctx.js_env.*) catch unreachable;
-        defer ctx.alloc.free(except.?);
-        printStdout("\x1b[38;5;242mUncaught {s}\x1b[0m\n", .{except.?});
+        if (except) |msg| {
+            defer ctx.alloc.free(msg);
+            printStdout("\x1b[38;5;242mUncaught {s}\x1b[0m\n", .{msg});
+        }
         return;
     };
 
