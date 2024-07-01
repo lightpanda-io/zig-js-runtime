@@ -15,9 +15,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const c = @cImport({
-    @cInclude("linenoise.h");
-});
+const c = @import("linenoise.zig");
 
 const public = @import("api.zig");
 
