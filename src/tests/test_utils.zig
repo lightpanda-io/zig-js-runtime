@@ -86,65 +86,58 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
 
     var has_error = false;
 
+    var try_catch: public.TryCatch = undefined;
+    try_catch.init(js_env.*);
+    defer try_catch.deinit();
+
     // cases
     for (cases, 0..) |case, i| {
+        defer _ = arena.reset(.retain_capacity);
         test_case += 1;
 
         // prepare script execution
         var buf: [99]u8 = undefined;
         const name = try std.fmt.bufPrint(buf[0..], "test_{d}.js", .{test_case});
-        var res = public.JSResult{};
-        var cbk_res = public.JSResult{
-            .success = true,
-            // assume that the return value of the successfull callback is "undefined"
-            .result = "undefined",
-        };
-        // no need to deinit on a FixBufferAllocator
 
-        try js_env.run(alloc, case.src, name, &res, &cbk_res);
+        // run script error
+        const res = js_env.execWait(case.src, name) catch |err| {
 
-        // check script error
-        var case_error = false;
-        if (res.success) {
-            const equal = std.mem.eql(u8, case.ex, res.result);
-            if (!equal) {
-                case_error = true;
+            // is it an intended error?
+            const except = try try_catch.exception(alloc, js_env.*);
+            if (except) |msg| {
+                defer alloc.free(msg);
+                if (isTypeError(case.ex, msg)) continue;
             }
-        } else {
-            if (!isTypeError(case.ex, res.result)) {
-                case_error = true;
-            }
-        }
 
-        // check callback error
-        var cbk_error = false;
-        if (cbk_res.success) {
-            const equal = std.mem.eql(u8, case.cbk_ex, cbk_res.result);
-            if (!equal) {
-                cbk_error = true;
-            }
-        } else {
-            if (!isTypeError(case.cbk_ex, cbk_res.result)) {
-                cbk_error = true;
-            }
-        }
-
-        // log error
-        if (case_error or cbk_error) {
             has_error = true;
             if (i == 0) {
                 std.debug.print("\n", .{});
             }
-        }
-        if (case_error) {
-            caseError(case.src, case.ex, res.result, res.stack);
-        } else if (cbk_error) {
-            caseError(case.src, case.cbk_ex, cbk_res.result, cbk_res.stack);
-        }
 
-        _ = arena.reset(.retain_capacity);
+            const expected = switch (err) {
+                error.JSExec => case.ex,
+                error.JSExecCallback => case.cbk_ex,
+                else => return err,
+            };
+            if (try try_catch.stack(alloc, js_env.*)) |stack| {
+                defer alloc.free(stack);
+                caseError(case.src, expected, except.?, stack);
+            }
+            continue;
+        };
+
+        // check if result is expected
+        const res_string = try res.toString(alloc, js_env.*);
+        defer alloc.free(res_string);
+        const equal = std.mem.eql(u8, case.ex, res_string);
+        if (!equal) {
+            has_error = true;
+            if (i == 0) {
+                std.debug.print("\n", .{});
+            }
+            caseError(case.src, case.ex, res_string, null);
+        }
     }
-
     if (has_error) {
         std.debug.print("\n", .{});
         return error.NotEqual;
@@ -158,7 +151,7 @@ pub const Case = struct {
 };
 
 // a shorthand function to run a script within a JS env
-// without providing a JS result
+// with local TryCatch
 // - on success, do nothing
 // - on error, log error the JS result and JS stack if available
 pub fn runScript(
@@ -168,18 +161,21 @@ pub fn runScript(
     name: []const u8,
 ) !void {
 
-    // init result
-    var res = public.JSResult{};
-    defer res.deinit(alloc);
-
-    try js_env.run(alloc, script, name, &res, null);
+    // local try catch
+    var try_catch: public.TryCatch = undefined;
+    try_catch.init(js_env.*);
+    defer try_catch.deinit();
 
     // check result
-    if (!res.success) {
-        std.log.err("script {s} error: {s}\n", .{ name, res.result });
-        if (res.stack) |stack| {
-            std.log.err("script {s} stack: {s}\n", .{ name, stack });
+    _ = js_env.execWait(script, name) catch |err| {
+        if (try try_catch.exception(alloc, js_env.*)) |msg| {
+            defer alloc.free(msg);
+            std.log.err("script {s} error: {s}\n", .{ name, msg });
         }
-        return error.Script;
-    }
+        if (try try_catch.stack(alloc, js_env.*)) |msg| {
+            defer alloc.free(msg);
+            std.log.err("script {s} stack: {s}\n", .{ name, msg });
+        }
+        return err;
+    };
 }

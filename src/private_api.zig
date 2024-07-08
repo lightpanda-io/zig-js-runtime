@@ -26,7 +26,7 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.CallbackSync(engine.CallbackSync, engine.CallbackResult);
     interfaces.CallbackArg(engine.CallbackArg);
 
-    interfaces.JSResult(engine.JSResult);
+    interfaces.JSValue(engine.JSValue, engine.Env);
     interfaces.JSObjectID(engine.JSObjectID);
 
     interfaces.TryCatch(engine.TryCatch, engine.Env);
@@ -34,7 +34,7 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.VM(engine.VM);
     interfaces.Env(
         engine.Env,
-        engine.JSResult,
+        engine.JSValue,
         engine.Object,
     );
 

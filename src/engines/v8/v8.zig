@@ -165,7 +165,7 @@ pub const Env = struct {
     }
 
     // start a Javascript context
-    pub fn start(self: *Env, alloc: std.mem.Allocator) anyerror!void {
+    pub fn start(self: *Env) anyerror!void {
 
         // context
         self.js_ctx = v8.Context.init(self.isolate, self.globals.getInstanceTemplate(), null);
@@ -197,13 +197,10 @@ pub const Env = struct {
             // TODO: this is an horrible hack
             if (comptime T_refl.isException()) {
                 const script = T_refl.name ++ ".prototype.__proto__ = Error.prototype";
-                const res = try self.execTryCatch(
-                    alloc,
-                    script,
-                    "errorSubclass",
-                );
-                defer res.deinit(alloc);
-                if (!res.success) return error.errorSubClass;
+                _ = self.exec(script, "errorSubclass") catch {
+                    // TODO: is there a reason to override the error?
+                    return error.errorSubClass;
+                };
             }
         }
     }
@@ -293,119 +290,48 @@ pub const Env = struct {
         }
     }
 
-    // compile and run a Javascript script
-    // if no error you need to call deinit on the returned result
+    // compile and run a JS script
+    // It doesn't wait for callbacks execution
     pub fn exec(
         self: Env,
-        alloc: std.mem.Allocator,
         script: []const u8,
         name: ?[]const u8,
-        try_catch: TryCatch,
-    ) !JSResult {
+    ) anyerror!JSValue {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
-
-        var res = JSResult.init();
-        try res.exec(alloc, script, name, self.isolate, self.js_ctx.?, try_catch.try_catch.*);
-        return res;
+        return try jsExec(script, name, self.isolate, self.js_ctx.?);
     }
 
-    // compile and run a Javascript script with try/catch
-    // if no error you need to call deinit on the returned result
-    pub fn execTryCatch(
-        self: Env,
-        alloc: std.mem.Allocator,
-        script: []const u8,
-        name: ?[]const u8,
-    ) anyerror!JSResult {
-
-        // JS try cache
-        var try_catch = TryCatch.init(self);
-        defer try_catch.deinit();
-
-        return self.exec(alloc, script, name, try_catch);
-    }
-
-    // wait I/O loop until all JS callbacks are executed
+    // wait I/O Loop until all JS callbacks are executed
     // This is a blocking operation.
-    pub fn wait(
-        self: Env,
-        alloc: std.mem.Allocator,
-        try_catch: v8.TryCatch,
-        cbk_res: ?*JSResult,
-    ) !void {
+    // Errors can be either:
+    // - an error of the Loop (eg. IO kernel)
+    // - an error of one of the JS callbacks
+    // NOTE: the Loop does not stop when a JS callback throw an error
+    // ie. all JS callbacks are executed
+    // TODO: return at first error on a JS callback and let the caller
+    // decide whether going forward or not
+    pub fn wait(self: Env) anyerror!void {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
         // run loop
-        self.nat_ctx.loop.run() catch |err| {
-            if (try_catch.hasCaught()) {
-                if (cbk_res) |res| {
-                    res.success = false;
-                    return res.setError(alloc, self.isolate, self.js_ctx.?, try_catch);
-                }
-                // otherwise ignore JS errors
-            } else {
-                // IO kernel error
-                return err;
-            }
-        };
-
-        if (cbk_res) |res| res.success = true;
+        return self.nat_ctx.loop.run();
     }
 
-    pub fn waitTryCatch(
-        self: Env,
-        alloc: std.mem.Allocator,
-    ) anyerror!JSResult {
-
-        // JS try cache
-        var try_catch: v8.TryCatch = undefined;
-        try_catch.init(self.isolate);
-        defer try_catch.deinit();
-
-        var res = JSResult{};
-        try self.wait(alloc, try_catch, &res);
-        return res;
-    }
-
-    // run a JS script and wait for all callbacks
-    // try_catch + exec + wait
-    pub fn run(
-        self: Env,
-        alloc: std.mem.Allocator,
-        script: []const u8,
-        name: ?[]const u8,
-        res: *JSResult,
-        cbk_res: ?*JSResult,
-    ) anyerror!void {
-        if (self.js_ctx == null) {
-            return error.EnvNotStarted;
-        }
-
-        // JS try cache
-        var try_catch: v8.TryCatch = undefined;
-        try_catch.init(self.isolate);
-        defer try_catch.deinit();
+    // compile and run a JS script and wait for all callbacks (exec + wait)
+    // This is a blocking operation.
+    pub fn execWait(self: Env, script: []const u8, name: ?[]const u8) anyerror!JSValue {
 
         // exec script
-        try res.exec(alloc, script, name, self.isolate, self.js_ctx.?, try_catch);
+        const res = try self.exec(script, name);
 
-        // run loop
-        self.nat_ctx.loop.run() catch |err| {
-            if (try_catch.hasCaught()) {
-                if (cbk_res) |r| {
-                    r.success = false;
-                    return r.setError(alloc, self.isolate, self.js_ctx.?, try_catch);
-                }
-                // otherwise ignore JS errors
-            } else {
-                // IO kernel error
-                return err;
-            }
-        };
+        // wait
+        try self.wait();
+
+        return res;
     }
 };
 
@@ -493,91 +419,82 @@ pub const JSObject = struct {
     }
 };
 
-pub const TryCatch = struct {
-    try_catch: *v8.TryCatch,
+pub const JSValue = struct {
+    value: v8.Value,
 
-    pub inline fn init(env: Env) TryCatch {
-        var try_catch: v8.TryCatch = undefined;
-        try_catch.init(env.isolate);
-        return .{ .try_catch = &try_catch };
+    // the caller needs to deinit the string returned
+    pub fn toString(self: JSValue, alloc: std.mem.Allocator, env: Env) anyerror![]const u8 {
+        return valueToUtf8(alloc, self.value, env.isolate, env.js_ctx.?);
     }
 
-    pub inline fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
-        if (self.try_catch.getException()) |msg| {
+    pub fn typeOf(self: JSValue, env: Env) anyerror!public.JSTypes {
+        var buf: [20]u8 = undefined;
+        const str = try self.value.typeOf(env.isolate);
+        const len = str.lenUtf8(env.isolate);
+        const s = buf[0..len];
+        _ = str.writeUtf8(env.isolate, s);
+        return std.meta.stringToEnum(public.JSTypes, s) orelse {
+            std.log.err("JSValueTypeNotHandled: {s}", .{s});
+            return error.JSValueTypeNotHandled;
+        };
+    }
+};
+
+pub const TryCatch = struct {
+    inner: v8.TryCatch,
+
+    pub fn init(self: *TryCatch, env: Env) void {
+        self.inner.init(env.isolate);
+    }
+
+    pub fn hasCaught(self: TryCatch) bool {
+        return self.inner.hasCaught();
+    }
+
+    // the caller needs to deinit the string returned
+    pub fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
+        if (self.inner.getException()) |msg| {
             return try valueToUtf8(alloc, msg, env.isolate, env.js_ctx.?);
         }
         return null;
     }
 
-    pub inline fn deinit(self: *TryCatch) void {
-        self.try_catch.deinit();
+    // the caller needs to deinit the string returned
+    pub fn stack(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
+        const stck = self.inner.getStackTrace(env.js_ctx.?);
+        if (stck) |s| return try valueToUtf8(alloc, s, env.isolate, env.js_ctx.?);
+        return null;
+    }
+
+    // a shorthand method to return either the entire stack message
+    // or just the exception message
+    // - in Debug mode return the stack if available
+    // - otherwhise return the exception if available
+    // the caller needs to deinit the string returned
+    pub fn err(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
+        if (builtin.mode == .Debug) {
+            if (try self.stack(alloc, env)) |msg| return msg;
+        }
+        return try self.exception(alloc, env);
+    }
+
+    pub fn deinit(self: *TryCatch) void {
+        self.inner.deinit();
     }
 };
 
-pub const JSResult = struct {
-    success: bool = false,
-    result: []const u8 = undefined,
-    stack: ?[]const u8 = null,
+pub fn jsExec(script: []const u8, name: ?[]const u8, isolate: v8.Isolate, js_ctx: v8.Context) !JSValue {
 
-    pub fn init() JSResult {
-        return .{};
+    // compile
+    var origin: ?v8.ScriptOrigin = undefined;
+    if (name) |n| {
+        const scr_name = v8.String.initUtf8(isolate, n);
+        origin = v8.ScriptOrigin.initDefault(isolate, scr_name.toValue());
     }
+    const scr_js = v8.String.initUtf8(isolate, script);
+    const scr = v8.Script.compile(js_ctx, scr_js, origin) catch return error.JSCompile;
 
-    pub fn deinit(self: JSResult, alloc: std.mem.Allocator) void {
-        alloc.free(self.result);
-        if (self.stack) |stack| {
-            alloc.free(stack);
-        }
-    }
-
-    pub fn exec(
-        self: *JSResult,
-        alloc: std.mem.Allocator,
-        script: []const u8,
-        name: ?[]const u8,
-        isolate: v8.Isolate,
-        js_ctx: v8.Context,
-        try_catch: v8.TryCatch,
-    ) !void {
-
-        // compile
-        var origin: ?v8.ScriptOrigin = undefined;
-        if (name) |n| {
-            const scr_name = v8.String.initUtf8(isolate, n);
-            origin = v8.ScriptOrigin.initDefault(isolate, scr_name.toValue());
-        }
-        const scr_js = v8.String.initUtf8(isolate, script);
-        const scr = v8.Script.compile(js_ctx, scr_js, origin) catch {
-            return self.setError(alloc, isolate, js_ctx, try_catch);
-        };
-
-        // run
-        const res = scr.run(js_ctx) catch {
-            return self.setError(alloc, isolate, js_ctx, try_catch);
-        };
-        self.success = true;
-        self.result = try valueToUtf8(alloc, res, isolate, js_ctx);
-    }
-
-    pub fn setError(
-        self: *JSResult,
-        alloc: std.mem.Allocator,
-        isolate: v8.Isolate,
-        js_ctx: v8.Context,
-        try_catch: v8.TryCatch,
-    ) !void {
-
-        // exception
-        const except = try_catch.getException().?;
-        self.success = false;
-        self.result = try valueToUtf8(alloc, except, isolate, js_ctx);
-
-        // stack
-        if (self.stack != null) {
-            return;
-        }
-        if (try_catch.getStackTrace(js_ctx)) |stack| {
-            self.stack = try valueToUtf8(alloc, stack, isolate, js_ctx);
-        }
-    }
-};
+    // run
+    const value = scr.run(js_ctx) catch return error.JSExec;
+    return .{ .value = value };
+}

@@ -367,7 +367,7 @@ pub const Func = struct {
         // execute function
         const result = js_func.call(js_ctx, this, args);
         if (result == null) {
-            return error.JSCallback;
+            return error.JSExecCallback;
         }
     }
 };

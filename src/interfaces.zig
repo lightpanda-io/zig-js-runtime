@@ -46,7 +46,7 @@ pub fn VM(comptime T: type) void {
 
 pub fn Env(
     comptime T: type,
-    comptime JSResult_T: type,
+    comptime JSValue_T: type,
     comptime Object_T: type,
 ) void {
 
@@ -70,10 +70,7 @@ pub fn Env(
     ) anyerror!void);
 
     // start()
-    assertDecl(T, "start", fn (
-        self: *T,
-        alloc: std.mem.Allocator,
-    ) anyerror!void);
+    assertDecl(T, "start", fn (self: *T) anyerror!void);
 
     // stop()
     assertDecl(T, "stop", fn (self: *T) void);
@@ -97,42 +94,31 @@ pub fn Env(
         to_obj: ?Object_T,
     ) anyerror!void);
 
-    // TODO: check exec, wait who have v8 specific params
-
-    // waitTryCatch
-    assertDecl(T, "waitTryCatch", fn (
+    // exec() executes script in JS
+    assertDecl(T, "exec", fn (
         self: T,
-        alloc: std.mem.Allocator,
-    ) anyerror!JSResult_T);
-
-    // execTryCatch() executes script in JS
-    assertDecl(T, "execTryCatch", fn (
-        self: T,
-        alloc: std.mem.Allocator,
         script: []const u8,
         name: ?[]const u8,
-    ) anyerror!JSResult_T);
+    ) anyerror!JSValue_T);
 
-    // run() executes script in JS and waits all JS callbacks
-    assertDecl(T, "run", fn (
+    // wait() all JS callbacks
+    assertDecl(T, "wait", fn (self: T) anyerror!void);
+
+    // execWait() executes script in JS and waits all JS callbacks
+    assertDecl(T, "execWait", fn (
         self: T,
-        alloc: std.mem.Allocator,
         script: []const u8,
         name: ?[]const u8,
-        res: *JSResult_T,
-        cbk_res: ?*JSResult_T,
-    ) anyerror!void);
+    ) anyerror!JSValue_T);
 }
 
-pub fn JSResult(comptime T: type) void {
+pub fn JSValue(comptime T: type, env: type) void {
 
-    // init()
-    assertDecl(T, "init", fn () T);
+    // toString()
+    assertDecl(T, "toString", fn (self: T, alloc: std.mem.Allocator, env: env) anyerror![]const u8);
 
-    // deinit()
-    assertDecl(T, "deinit", fn (self: T, alloc: std.mem.Allocator) void);
-
-    // TODO: how to get the result?
+    // typeOf()
+    assertDecl(T, "typeOf", fn (self: T, env: env) anyerror!public.JSTypes);
 }
 
 pub fn JSObjectID(comptime T: type) void {
@@ -144,17 +130,34 @@ pub fn JSObjectID(comptime T: type) void {
 pub fn TryCatch(comptime T: type, comptime env: type) void {
 
     // init()
-    assertDecl(T, "init", fn (env: env) callconv(.Inline) T);
+    assertDecl(T, "init", fn (self: *T, env: env) void);
 
     // deinit()
-    assertDecl(T, "deinit", fn (self: *T) callconv(.Inline) void);
+    assertDecl(T, "deinit", fn (self: *T) void);
 
-    // exception
+    // hasCaught()
+    assertDecl(T, "hasCaught", fn (self: T) bool);
+
+    // exception()
     assertDecl(T, "exception", fn (
         self: T,
         alloc: std.mem.Allocator,
         env: env,
-    ) callconv(.Inline) anyerror!?[]const u8);
+    ) anyerror!?[]const u8);
+
+    // err()
+    assertDecl(T, "err", fn (
+        self: T,
+        alloc: std.mem.Allocator,
+        env: env,
+    ) anyerror!?[]const u8);
+
+    // stack()
+    assertDecl(T, "stack", fn (
+        self: T,
+        alloc: std.mem.Allocator,
+        env: env,
+    ) anyerror!?[]const u8);
 }
 
 pub fn Callback(comptime T: type, comptime Res_T: type) void {
