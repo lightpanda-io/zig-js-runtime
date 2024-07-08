@@ -217,7 +217,6 @@ pub fn packages(comptime vendor_path: []const u8) type {
         }
 
         pub fn add_shell(step: *std.Build.Step.Compile) !void {
-            step.addIncludePath(step.root_module.owner.path(vendor ++ "/linenoise-mob"));
             const lib = step.step.owner.addStaticLibrary(.{
                 .name = "linenoise",
                 .target = step.root_module.resolved_target.?,
