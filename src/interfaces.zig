@@ -145,6 +145,13 @@ pub fn TryCatch(comptime T: type, comptime env: type) void {
         env: env,
     ) anyerror!?[]const u8);
 
+    // err()
+    assertDecl(T, "err", fn (
+        self: T,
+        alloc: std.mem.Allocator,
+        env: env,
+    ) anyerror!?[]const u8);
+
     // stack()
     assertDecl(T, "stack", fn (
         self: T,

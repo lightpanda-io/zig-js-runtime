@@ -466,6 +466,18 @@ pub const TryCatch = struct {
         return null;
     }
 
+    // a shorthand method to return either the entire stack message
+    // or just the exception message
+    // - in Debug mode return the stack if available
+    // - otherwhise return the exception if available
+    // the caller needs to deinit the string returned
+    pub fn err(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
+        if (builtin.mode == .Debug) {
+            if (try self.stack(alloc, env)) |msg| return msg;
+        }
+        return try self.exception(alloc, env);
+    }
+
     pub fn deinit(self: *TryCatch) void {
         self.inner.deinit();
     }
