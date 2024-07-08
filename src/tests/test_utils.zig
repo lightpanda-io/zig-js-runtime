@@ -151,7 +151,7 @@ pub const Case = struct {
 };
 
 // a shorthand function to run a script within a JS env
-// without providing a JS result
+// with local TryCatch
 // - on success, do nothing
 // - on error, log error the JS result and JS stack if available
 pub fn runScript(
@@ -161,18 +161,21 @@ pub fn runScript(
     name: []const u8,
 ) !void {
 
-    // init result
-    var res = public.JSResult{};
-    defer res.deinit(alloc);
-
-    try js_env.execWait(alloc, script, name, &res, null);
+    // local try catch
+    var try_catch: public.TryCatch = undefined;
+    try_catch.init(js_env.*);
+    defer try_catch.deinit();
 
     // check result
-    if (!res.success) {
-        std.log.err("script {s} error: {s}\n", .{ name, res.result });
-        if (res.stack) |stack| {
-            std.log.err("script {s} stack: {s}\n", .{ name, stack });
+    _ = js_env.execWait(script, name) catch |err| {
+        if (try try_catch.exception(alloc, js_env.*)) |msg| {
+            defer alloc.free(msg);
+            std.log.err("script {s} error: {s}\n", .{ name, msg });
         }
-        return error.Script;
-    }
+        if (try try_catch.stack(alloc, js_env.*)) |msg| {
+            defer alloc.free(msg);
+            std.log.err("script {s} stack: {s}\n", .{ name, msg });
+        }
+        return err;
+    };
 }
