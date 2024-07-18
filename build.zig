@@ -124,7 +124,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
     try common(b, &tests.root_module, options);
-    tests.root_module.single_threaded = true;
     tests.test_runner = b.path("src/test_runner.zig");
     const run_tests = b.addRunArtifact(tests);
 
