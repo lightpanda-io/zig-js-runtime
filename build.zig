@@ -19,7 +19,7 @@ const pkgs = packages("");
 
 /// Do not rename this constant. It is scanned by some scripts to determine
 /// which zig version to install.
-pub const recommended_zig_version = "0.12.1";
+pub const recommended_zig_version = "0.13.0";
 
 pub fn build(b: *std.Build) !void {
     switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {
@@ -49,7 +49,19 @@ pub fn build(b: *std.Build) !void {
     const bench = b.addExecutable(.{
         .name = "zig-js-runtime-bench",
         .root_source_file = b.path("src/main_bench.zig"),
-        .single_threaded = true,
+
+        // Threads are now required to compile using libc++.
+        // This change happens when upgrading to zig 0.13.0
+        //
+        // With Single thread, I have the following error:
+        // > error: sub-compilation of libcxx failed
+        // > /usr/local/zig-0.13.0/lib/libcxx/include/future:368:4: note:
+        // >"<future> is not supported since libc++ has been configured without
+        // > support for threads."
+        //
+        // see https://github.com/llvm/llvm-project/issues/76588
+        .single_threaded = false,
+
         .target = target,
         .optimize = mode,
     });
@@ -112,7 +124,6 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
     try common(b, &tests.root_module, options);
-    tests.root_module.single_threaded = true;
     tests.test_runner = b.path("src/test_runner.zig");
     const run_tests = b.addRunArtifact(tests);
 
