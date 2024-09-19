@@ -52,7 +52,7 @@ pub const Window = struct {
     ) void {
         const n: u63 = @intCast(milliseconds);
         // TODO: check this value can be holded in u63
-        loop.timeout(n * std.time.ns_per_ms, callback);
+        _ = loop.timeout(n * std.time.ns_per_ms, callback);
     }
 
     pub fn _cbkAsyncWithJSArg(
@@ -64,7 +64,7 @@ pub const Window = struct {
     ) void {
         const n: u63 = @intCast(milliseconds);
         // TODO: check this value can be holded in u63
-        loop.timeout(n * std.time.ns_per_ms, callback);
+        _ = loop.timeout(n * std.time.ns_per_ms, callback);
     }
 
     pub fn _cbkAsyncWithNatArg(_: Window, callback: Callback) !void {
