@@ -197,7 +197,11 @@ pub const SingleThreaded = struct {
             .js_cbk = js_cbk,
         };
 
+        const old_events_nb = self.addEvent();
         self.io.cancel(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
+        if (builtin.is_test) {
+            report("cancel timeout {d}", .{old_events_nb + 1});
+        }
     }
 
     // Yield
