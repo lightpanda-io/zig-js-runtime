@@ -114,6 +114,11 @@ pub const SingleThreaded = struct {
     ) void {
         defer ctx.loop.freeCbk(completion, ctx);
 
+        const old_events_nb = ctx.loop.removeEvent();
+        if (builtin.is_test) {
+            report("timeout done, remaining events: {d}", .{old_events_nb - 1});
+        }
+
         // TODO: return the error to the callback
         result catch |err| {
             switch (err) {
@@ -122,11 +127,6 @@ pub const SingleThreaded = struct {
             }
             return;
         };
-
-        const old_events_nb = ctx.loop.removeEvent();
-        if (builtin.is_test) {
-            report("timeout done, remaining events: {d}", .{old_events_nb - 1});
-        }
 
         // js callback
         if (ctx.js_cbk) |js_cbk| {
@@ -166,16 +166,19 @@ pub const SingleThreaded = struct {
     ) void {
         defer ctx.loop.freeCbk(completion, ctx);
 
-        // TODO: return the error to the callback
-        result catch |err| {
-            log.err("cancel callback: {any}", .{err});
-            return;
-        };
-
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
-            report("timeout done, remaining events: {d}", .{old_events_nb - 1});
+            report("cancel done, remaining events: {d}", .{old_events_nb - 1});
         }
+
+        // TODO: return the error to the callback
+        result catch |err| {
+            switch (err) {
+                error.NotFound => log.debug("cancel callback: {any}", .{err}),
+                else => log.err("cancel callback: {any}", .{err}),
+            }
+            return;
+        };
 
         // js callback
         if (ctx.js_cbk) |js_cbk| {
@@ -197,7 +200,11 @@ pub const SingleThreaded = struct {
             .js_cbk = js_cbk,
         };
 
+        const old_events_nb = self.addEvent();
         self.io.cancel(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
+        if (builtin.is_test) {
+            report("cancel {d}", .{old_events_nb + 1});
+        }
     }
 
     // Yield
