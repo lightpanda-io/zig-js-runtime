@@ -157,8 +157,8 @@ pub const Env = struct {
         self.inspector = inspector;
     }
 
-    pub fn getInspector(self: Env) Inspector {
-        return self.inspector.?;
+    pub inline fn getInspector(self: Env) ?Inspector {
+        return self.inspector;
     }
 
     pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
@@ -527,7 +527,7 @@ pub const Inspector = struct {
         ctx: *anyopaque,
         onResp: public.InspectorOnResponseFn,
         onEvent: public.InspectorOnEventFn,
-    ) !Inspector {
+    ) anyerror!Inspector {
         const inner = try alloc.create(v8.Inspector);
         const channel = v8.InspectorChannel.init(ctx, onResp, onEvent, env.isolate);
         const client = v8.InspectorClient.init();
@@ -545,7 +545,7 @@ pub const Inspector = struct {
         self.inner.contextCreated(env.js_ctx.?, name, origin, auxData);
     }
 
-    pub fn send(self: Inspector, msg: []const u8, env: Env) void {
+    pub fn send(self: Inspector, env: Env, msg: []const u8) void {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
 };

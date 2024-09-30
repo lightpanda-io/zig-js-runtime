@@ -34,9 +34,12 @@ fn checkInterfaces(engine: anytype) void {
     interfaces.VM(engine.VM);
     interfaces.Env(
         engine.Env,
+        engine.Inspector,
         engine.JSValue,
         engine.Object,
     );
+
+    interfaces.Inspector(engine.Inspector, engine.Env);
 
     // private api
 }
