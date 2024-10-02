@@ -541,10 +541,26 @@ pub const Inspector = struct {
         alloc.destroy(self.inner);
     }
 
-    pub fn contextCreated(self: Inspector, env: Env, name: []const u8, origin: []const u8, auxData: ?[]const u8) void {
+    // From CDP docs
+    // https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription
+    // ----
+    // - name: Human readable name describing given context.
+    // - origin: Execution context origin (ie. URL who initialised the request)
+    // - auxData: Embedder-specific auxiliary data likely matching
+    // {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
+    pub fn contextCreated(
+        self: Inspector,
+        env: Env,
+        name: []const u8,
+        origin: []const u8,
+        auxData: ?[]const u8,
+    ) void {
         self.inner.contextCreated(env.js_ctx.?, name, origin, auxData);
     }
 
+    // msg should be formatted for the Inspector protocol
+    // for v8 it's the CDP protocol https://chromedevtools.github.io/devtools-protocol/
+    // with only some domains being relevant (mainly Runtime and Debugger)
     pub fn send(self: Inspector, env: Env, msg: []const u8) void {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
