@@ -33,8 +33,7 @@ pub const NativeContext = struct {
 
     pub const JSObjects = std.AutoHashMapUnmanaged(usize, usize);
 
-    pub fn init(alloc: std.mem.Allocator, loop: *Loop, userctx: ?UserContext) !*NativeContext {
-        const self = try alloc.create(NativeContext);
+    pub fn init(self: *NativeContext, alloc: std.mem.Allocator, loop: *Loop, userctx: ?UserContext) void {
         self.* = .{
             .alloc = alloc,
             .loop = loop,
@@ -42,7 +41,6 @@ pub const NativeContext = struct {
             .js_objs = JSObjects{},
             .nat_objs = NatObjects{},
         };
-        return self;
     }
 
     pub fn stop(self: *NativeContext) void {
@@ -58,7 +56,7 @@ pub const NativeContext = struct {
         self.js_types = js_types;
     }
 
-    pub fn getType(self: NativeContext, comptime T: type, index: usize) *T {
+    pub fn getType(self: *const NativeContext, comptime T: type, index: usize) *T {
         std.debug.assert(self.js_types != null);
         const t = self.js_types.?[index];
         return @as(*T, @ptrFromInt(t));

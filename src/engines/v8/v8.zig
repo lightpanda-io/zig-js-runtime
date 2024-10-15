@@ -80,7 +80,7 @@ pub const VM = struct {
 };
 
 pub const Env = struct {
-    nat_ctx: *NativeContext,
+    nat_ctx: NativeContext,
 
     isolate: v8.Isolate,
     isolate_params: v8.CreateParams,
@@ -94,10 +94,11 @@ pub const Env = struct {
     }
 
     pub fn init(
+        self: *Env,
         alloc: std.mem.Allocator,
         loop: *public.Loop,
         userctx: ?public.UserContext,
-    ) anyerror!Env {
+    ) void {
 
         // v8 values
         // ---------
@@ -117,13 +118,14 @@ pub const Env = struct {
         // ObjectTemplate for the global namespace
         const globals = v8.FunctionTemplate.initDefault(isolate);
 
-        return Env{
-            .nat_ctx = try NativeContext.init(alloc, loop, userctx),
+        self.* = Env{
+            .nat_ctx = undefined,
             .isolate_params = params,
             .isolate = isolate,
             .hscope = hscope,
             .globals = globals,
         };
+        NativeContext.init(&self.nat_ctx, alloc, loop, userctx);
     }
 
     pub fn deinit(self: *Env) void {
@@ -155,9 +157,9 @@ pub const Env = struct {
     }
 
     // load user-defined Types into Javascript environement
-    pub fn load(self: Env, js_types: []usize) anyerror!void {
+    pub fn load(self: *Env, js_types: []usize) anyerror!void {
         var tpls: [gen.Types.len]TPL = undefined;
-        try gen.load(self.nat_ctx, self.isolate, self.globals, TPL, &tpls);
+        try gen.load(&self.nat_ctx, self.isolate, self.globals, TPL, &tpls);
         for (tpls, 0..) |tpl, i| {
             js_types[i] = @intFromPtr(tpl.tpl.handle);
         }
@@ -185,8 +187,8 @@ pub const Env = struct {
             // TODO: is there a better way to do it at the Template level?
             // see https://github.com/Browsercore/jsruntime-lib/issues/128
             if (T_refl.proto_index) |proto_index| {
-                const cstr_tpl = getTpl(self.nat_ctx, i);
-                const proto_tpl = getTpl(self.nat_ctx, proto_index);
+                const cstr_tpl = getTpl(&self.nat_ctx, i);
+                const proto_tpl = getTpl(&self.nat_ctx, proto_index);
                 const cstr_obj = cstr_tpl.getFunction(js_ctx).toObject();
                 const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
                 _ = cstr_obj.setPrototype(js_ctx, proto_obj);
@@ -225,7 +227,7 @@ pub const Env = struct {
         return self.js_ctx.?.getGlobal();
     }
 
-    pub fn bindGlobal(self: Env, obj: anytype) anyerror!void {
+    pub fn bindGlobal(self: *Env, obj: anytype) anyerror!void {
         const T_refl = comptime gen.getType(@TypeOf(obj));
         if (!comptime refl.isGlobalType(T_refl.T)) return error.notGlobalType;
         const T = T_refl.Self();
@@ -252,7 +254,7 @@ pub const Env = struct {
 
         _ = try bindObjectNativeAndJS(
             self.nat_ctx.alloc,
-            self.nat_ctx,
+            &self.nat_ctx,
             T_refl,
             nat_obj_ptr,
             self.js_ctx.?.getGlobal(),
