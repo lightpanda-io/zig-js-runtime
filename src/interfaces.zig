@@ -84,7 +84,7 @@ pub fn Env(
 
     // addObject() from native api into JS
     assertDecl(T, "addObject", fn (
-        self: T,
+        self: *T,
         obj: anytype,
         name: []const u8,
     ) anyerror!void);
