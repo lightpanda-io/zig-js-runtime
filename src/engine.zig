@@ -42,7 +42,8 @@ pub fn loadEnv(
     }
     var loop = try Loop.init(alloc);
     defer loop.deinit();
-    var js_env = try Env.init(alloc, &loop, userctx);
+    var js_env: public.Env = undefined;
+    Env.init(&js_env, alloc, &loop, userctx);
     defer js_env.deinit();
 
     // load APIs in JS env
