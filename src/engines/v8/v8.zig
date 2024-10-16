@@ -274,13 +274,13 @@ pub const Env = struct {
     }
 
     // add a Native object in the Javascript context
-    pub fn addObject(self: Env, obj: anytype, name: []const u8) anyerror!void {
+    pub fn addObject(self: *Env, obj: anytype, name: []const u8) anyerror!void {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
         return createJSObject(
             self.nat_ctx.alloc,
-            self.nat_ctx,
+            &self.nat_ctx,
             obj,
             name,
             self.js_ctx.?.getGlobal(),
