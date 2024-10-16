@@ -37,12 +37,12 @@ runs:
 
     - name: Cache v8
       id: cache-v8
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       env:
         cache-name: cache-v8
       with:
         path: ${{ inputs.cache-dir }}/v8
-        key: libc_v8_${{ inputs.v8 }}_${{ inputs.os }}_${{ inputs.arch }}.a
+        key: libc_v8_${{ inputs.v8 }}_${{ inputs.os }}_${{ inputs.arch }}_${{ inputs.zig-v8 }}.a
 
     - if: ${{ steps.cache-v8.outputs.cache-hit != 'true' }}
       shell: bash
