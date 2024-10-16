@@ -46,6 +46,7 @@ pub fn VM(comptime T: type) void {
 
 pub fn Env(
     comptime T: type,
+    comptime Inspector_T: type,
     comptime JSValue_T: type,
     comptime Object_T: type,
 ) void {
@@ -63,6 +64,9 @@ pub fn Env(
     assertDecl(T, "load", fn (self: *T, js_types: []usize) anyerror!void);
 
     assertDecl(T, "bindGlobal", fn (self: *T, ob: anytype) anyerror!void);
+
+    assertDecl(T, "setInspector", fn (self: *T, inspector: Inspector_T) void);
+    assertDecl(T, "getInspector", fn (self: T) callconv(.Inline) ?Inspector_T);
 
     assertDecl(T, "setUserContext", fn (
         self: *T,
@@ -190,6 +194,33 @@ pub fn CallbackResult(comptime T: type) void {
     assertDecl(T, "deinit", fn (self: T) void);
 
     // TODO: how to get the result?
+}
+
+pub fn Inspector(comptime T: type, comptime Env_T: type) void {
+
+    // init()
+    assertDecl(T, "init", fn (
+        alloc: std.mem.Allocator,
+        env: Env_T,
+        ctx: *anyopaque,
+        onResp: public.InspectorOnResponseFn,
+        onEvent: public.InspectorOnEventFn,
+    ) anyerror!T);
+
+    // deinit()
+    assertDecl(T, "deinit", fn (self: T, alloc: std.mem.Allocator) void);
+
+    // contextCreated()
+    assertDecl(T, "contextCreated", fn (
+        self: T,
+        env: Env_T,
+        name: []const u8,
+        origin: []const u8,
+        auxData: ?[]const u8,
+    ) void);
+
+    // send()
+    assertDecl(T, "send", fn (self: T, env: Env_T, msg: []const u8) void);
 }
 
 // Utils

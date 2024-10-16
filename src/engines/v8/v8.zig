@@ -86,6 +86,7 @@ pub const Env = struct {
     isolate_params: v8.CreateParams,
     hscope: v8.HandleScope,
     globals: v8.FunctionTemplate,
+    inspector: ?Inspector = null,
 
     js_ctx: ?v8.Context = null,
 
@@ -150,6 +151,14 @@ pub const Env = struct {
         self.nat_ctx.deinit();
 
         self.* = undefined;
+    }
+
+    pub fn setInspector(self: *Env, inspector: Inspector) void {
+        self.inspector = inspector;
+    }
+
+    pub inline fn getInspector(self: Env) ?Inspector {
+        return self.inspector;
     }
 
     pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
@@ -220,6 +229,7 @@ pub const Env = struct {
         // Native context
         self.nat_ctx.stop();
     }
+
     pub fn getGlobal(self: Env) anyerror!Object {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
@@ -504,3 +514,54 @@ pub fn jsExec(script: []const u8, name: ?[]const u8, isolate: v8.Isolate, js_ctx
     const value = scr.run(js_ctx) catch return error.JSExec;
     return .{ .value = value };
 }
+
+// Inspector
+
+pub const Inspector = struct {
+    inner: *v8.Inspector,
+    session: v8.InspectorSession,
+
+    pub fn init(
+        alloc: std.mem.Allocator,
+        env: Env,
+        ctx: *anyopaque,
+        onResp: public.InspectorOnResponseFn,
+        onEvent: public.InspectorOnEventFn,
+    ) anyerror!Inspector {
+        const inner = try alloc.create(v8.Inspector);
+        const channel = v8.InspectorChannel.init(ctx, onResp, onEvent, env.isolate);
+        const client = v8.InspectorClient.init();
+        v8.Inspector.init(inner, client, channel, env.isolate);
+        const session = inner.connect();
+        return .{ .inner = inner, .session = session };
+    }
+
+    pub fn deinit(self: Inspector, alloc: std.mem.Allocator) void {
+        self.inner.deinit();
+        alloc.destroy(self.inner);
+    }
+
+    // From CDP docs
+    // https://chromedevtools.github.io/devtools-protocol/tot/Runtime/#type-ExecutionContextDescription
+    // ----
+    // - name: Human readable name describing given context.
+    // - origin: Execution context origin (ie. URL who initialised the request)
+    // - auxData: Embedder-specific auxiliary data likely matching
+    // {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
+    pub fn contextCreated(
+        self: Inspector,
+        env: Env,
+        name: []const u8,
+        origin: []const u8,
+        auxData: ?[]const u8,
+    ) void {
+        self.inner.contextCreated(env.js_ctx.?, name, origin, auxData);
+    }
+
+    // msg should be formatted for the Inspector protocol
+    // for v8 it's the CDP protocol https://chromedevtools.github.io/devtools-protocol/
+    // with only some domains being relevant (mainly Runtime and Debugger)
+    pub fn send(self: Inspector, env: Env, msg: []const u8) void {
+        return self.session.dispatchProtocolMessage(env.isolate, msg);
+    }
+};
