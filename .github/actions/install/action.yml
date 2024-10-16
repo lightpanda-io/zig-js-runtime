@@ -51,6 +51,9 @@ runs:
 
         wget -O ${{ inputs.cache-dir }}/v8/libc_v8.a https://github.com/lightpanda-io/zig-v8-fork/releases/download/${{ inputs.zig-v8 }}/libc_v8_${{ inputs.v8 }}_${{ inputs.os }}_${{ inputs.arch }}.a
 
+    - run: sudo apt-get install -yq libglib2.0-dev
+      shell: bash
+
     - name: install v8
       shell: bash
       run: |
