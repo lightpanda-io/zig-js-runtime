@@ -34,7 +34,7 @@ jobs:
   benchmark:
     name: benchmark
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     # Don't run the CI with draft PR.
     if: github.event.pull_request.draft == false
@@ -79,7 +79,7 @@ jobs:
     # Don't execute on PR
     if: github.event_name != 'pull_request'
 
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     container:
       image: ghcr.io/lightpanda-io/perf-fmt:latest
       credentials:
