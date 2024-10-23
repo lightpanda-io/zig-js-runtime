@@ -235,6 +235,7 @@ pub fn shellExec(
         if (cmd_ctx.close) {
             break;
         }
+        std.time.sleep(10 * std.time.ns_per_ms); // 10ms
     }
 }
 
