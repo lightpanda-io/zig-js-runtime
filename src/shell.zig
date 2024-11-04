@@ -224,7 +224,7 @@ pub fn shellExec(
     // - user input command from repl
     // - JS callbacks events from scripts
     while (true) {
-        try loop.io.tick();
+        try loop.io.run_for_ns(100 * std.time.ns_per_ms); // 100ms
         if (loop.cbk_error) {
             if (try try_catch.exception(alloc, js_env.*)) |msg| {
                 defer alloc.free(msg);
