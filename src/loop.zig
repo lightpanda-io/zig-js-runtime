@@ -66,7 +66,7 @@ pub const SingleThreaded = struct {
     // on the go when they are executed (ie. nested I/O events).
     pub fn run(self: *Self) !void {
         while (self.eventsNb() > 0) {
-            try self.io.tick();
+            try self.io.run_for_ns(10 * std.time.ns_per_ms); // 10ms
             // at each iteration we might have new events registred by previous callbacks
         }
         // TODO: return instead immediatly on the first JS callback error
@@ -228,7 +228,7 @@ pub const SingleThreaded = struct {
             }
 
             pub fn tick(self: *YieldImpl) !void {
-                return try self.loop.io.tick();
+                return try self.loop.io.run_for_ns(10 * std.time.ns_per_us); // 10µs
             }
 
             pub fn yield(self: *YieldImpl, ctx: *Ctx) void {
@@ -270,7 +270,7 @@ pub const SingleThreaded = struct {
             }
 
             pub fn tick(self: *NetworkImpl) !void {
-                return try self.loop.io.tick();
+                return try self.loop.io.run_for_ns(10 * std.time.ns_per_us); // 10µs
             }
 
             pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, address: std.net.Address) void {
