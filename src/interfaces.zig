@@ -52,7 +52,7 @@ pub fn Env(
 ) void {
 
     // engine()
-    assertDecl(T, "engine", fn () public.engineType);
+    assertDecl(T, "engine", fn () public.EngineType);
 
     // init()
     assertDecl(T, "init", fn (self: *T, alloc: std.mem.Allocator, loop: *public.Loop, userctx: ?public.UserContext) void);

@@ -90,7 +90,7 @@ pub const Env = struct {
 
     js_ctx: ?v8.Context = null,
 
-    pub fn engine() public.engineType {
+    pub fn engine() public.EngineType {
         return .v8;
     }
 
