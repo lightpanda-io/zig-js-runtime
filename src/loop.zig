@@ -231,10 +231,6 @@ pub const SingleThreaded = struct {
                 };
             }
 
-            pub fn tick(self: *NetworkImpl) !void {
-                return try self.loop.io.tick();
-            }
-
             pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, address: std.net.Address) void {
                 self.ctx = ctx;
                 _ = self.loop.addEvent();
