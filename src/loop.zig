@@ -207,44 +207,6 @@ pub const SingleThreaded = struct {
         }
     }
 
-    // Yield
-    pub fn Yield(comptime Ctx: type) type {
-        // TODO check ctx interface funcs:
-        // - onYield(ctx: *Ctx, ?anyerror) void
-        return struct {
-            const YieldImpl = @This();
-            const Loop = Self;
-
-            loop: *Loop,
-            ctx: *Ctx,
-            completion: IO.Completion,
-
-            pub fn init(loop: *Loop) YieldImpl {
-                return .{
-                    .loop = loop,
-                    .completion = undefined,
-                    .ctx = undefined,
-                };
-            }
-
-            pub fn tick(self: *YieldImpl) !void {
-                return try self.loop.io.tick();
-            }
-
-            pub fn yield(self: *YieldImpl, ctx: *Ctx) void {
-                self.ctx = ctx;
-                _ = self.loop.addEvent();
-                self.loop.io.timeout(*YieldImpl, self, YieldImpl.yieldCbk, &self.completion, 0);
-            }
-
-            fn yieldCbk(self: *YieldImpl, _: *IO.Completion, result: IO.TimeoutError!void) void {
-                _ = self.loop.removeEvent();
-                _ = result catch |err| return self.ctx.onYield(err);
-                return self.ctx.onYield(null);
-            }
-        };
-    }
-
     // Network
     pub fn Network(comptime Ctx: type) type {
 
