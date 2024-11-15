@@ -66,7 +66,7 @@ pub const SingleThreaded = struct {
     // on the go when they are executed (ie. nested I/O events).
     pub fn run(self: *Self) !void {
         while (self.eventsNb() > 0) {
-            try self.io.tick();
+            try self.io.run_for_ns(10 * std.time.ns_per_ms);
             // at each iteration we might have new events registred by previous callbacks
         }
         // TODO: return instead immediatly on the first JS callback error
