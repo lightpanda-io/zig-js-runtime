@@ -44,6 +44,11 @@ pub const SingleThreaded = struct {
     cbk_error: bool = false,
 
     const Self = @This();
+    pub const Completion = IO.Completion;
+
+    pub const ConnectError = IO.ConnectError;
+    pub const RecvError = IO.RecvError;
+    pub const SendError = IO.SendError;
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         const io = try alloc.create(IO);
@@ -66,7 +71,7 @@ pub const SingleThreaded = struct {
     // on the go when they are executed (ie. nested I/O events).
     pub fn run(self: *Self) !void {
         while (self.eventsNb() > 0) {
-            try self.io.tick();
+            try self.io.run_for_ns(10 * std.time.ns_per_ms);
             // at each iteration we might have new events registred by previous callbacks
         }
         // TODO: return instead immediatly on the first JS callback error
@@ -97,8 +102,8 @@ pub const SingleThreaded = struct {
         self.alloc.destroy(ctx);
     }
 
-    // Callback-based APIs
-    // -------------------
+    // JS callbacks APIs
+    // -----------------
 
     // Timeout
 
@@ -207,107 +212,81 @@ pub const SingleThreaded = struct {
         }
     }
 
-    // Yield
-    pub fn Yield(comptime Ctx: type) type {
-        // TODO check ctx interface funcs:
-        // - onYield(ctx: *Ctx, ?anyerror) void
-        return struct {
-            const YieldImpl = @This();
-            const Loop = Self;
+    // IO callbacks APIs
+    // -----------------
 
-            loop: *Loop,
-            ctx: *Ctx,
-            completion: IO.Completion,
+    // Connect
 
-            pub fn init(loop: *Loop) YieldImpl {
-                return .{
-                    .loop = loop,
-                    .completion = undefined,
-                    .ctx = undefined,
-                };
-            }
-
-            pub fn tick(self: *YieldImpl) !void {
-                return try self.loop.io.tick();
-            }
-
-            pub fn yield(self: *YieldImpl, ctx: *Ctx) void {
-                self.ctx = ctx;
-                _ = self.loop.addEvent();
-                self.loop.io.timeout(*YieldImpl, self, YieldImpl.yieldCbk, &self.completion, 0);
-            }
-
-            fn yieldCbk(self: *YieldImpl, _: *IO.Completion, result: IO.TimeoutError!void) void {
-                _ = self.loop.removeEvent();
-                _ = result catch |err| return self.ctx.onYield(err);
-                return self.ctx.onYield(null);
-            }
-        };
+    pub fn connect(
+        self: *Self,
+        comptime Ctx: type,
+        ctx: *Ctx,
+        completion: *Completion,
+        comptime cbk: fn (ctx: *Ctx, _: *Completion, res: ConnectError!void) void,
+        socket: std.posix.socket_t,
+        address: std.net.Address,
+    ) void {
+        const old_events_nb = self.addEvent();
+        self.io.connect(*Ctx, ctx, cbk, completion, socket, address);
+        if (builtin.is_test) {
+            report("start connect {d}", .{old_events_nb + 1});
+        }
     }
 
-    // Network
-    pub fn Network(comptime Ctx: type) type {
+    pub fn onConnect(self: *Self, _: ConnectError!void) void {
+        const old_events_nb = self.removeEvent();
+        if (builtin.is_test) {
+            report("connect done, remaining events: {d}", .{old_events_nb - 1});
+        }
+    }
 
-        // TODO check ctx interface funcs:
-        // - onConnect(ctx: *Ctx, ?anyerror) void
-        // - onReceive(ctx: *Ctx, usize, ?anyerror) void
-        // - onSend(ctx: *Ctx, usize, ?anyerror) void
+    // Send
 
-        return struct {
-            const NetworkImpl = @This();
-            const Loop = Self;
+    pub fn send(
+        self: *Self,
+        comptime Ctx: type,
+        ctx: *Ctx,
+        completion: *Completion,
+        comptime cbk: fn (ctx: *Ctx, completion: *Completion, res: SendError!usize) void,
+        socket: std.posix.socket_t,
+        buf: []const u8,
+    ) void {
+        const old_events_nb = self.addEvent();
+        self.io.send(*Ctx, ctx, cbk, completion, socket, buf);
+        if (builtin.is_test) {
+            report("start send {d}", .{old_events_nb + 1});
+        }
+    }
 
-            loop: *Loop,
-            ctx: *Ctx,
-            completion: IO.Completion,
+    pub fn onSend(self: *Self, _: SendError!usize) void {
+        const old_events_nb = self.removeEvent();
+        if (builtin.is_test) {
+            report("send done, remaining events: {d}", .{old_events_nb - 1});
+        }
+    }
 
-            pub fn init(loop: *Loop) NetworkImpl {
-                return .{
-                    .loop = loop,
-                    .completion = undefined,
-                    .ctx = undefined,
-                };
-            }
+    // Recv
 
-            pub fn tick(self: *NetworkImpl) !void {
-                return try self.loop.io.tick();
-            }
+    pub fn recv(
+        self: *Self,
+        comptime Ctx: type,
+        ctx: *Ctx,
+        completion: *Completion,
+        comptime cbk: fn (ctx: *Ctx, completion: *Completion, res: RecvError!usize) void,
+        socket: std.posix.socket_t,
+        buf: []u8,
+    ) void {
+        const old_events_nb = self.addEvent();
+        self.io.recv(*Ctx, ctx, cbk, completion, socket, buf);
+        if (builtin.is_test) {
+            report("start recv {d}", .{old_events_nb + 1});
+        }
+    }
 
-            pub fn connect(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, address: std.net.Address) void {
-                self.ctx = ctx;
-                _ = self.loop.addEvent();
-                self.loop.io.connect(*NetworkImpl, self, NetworkImpl.connectCbk, &self.completion, socket, address);
-            }
-
-            fn connectCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.ConnectError!void) void {
-                _ = self.loop.removeEvent();
-                _ = result catch |err| return self.ctx.onConnect(err);
-                return self.ctx.onConnect(null);
-            }
-
-            pub fn receive(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, buffer: []u8) void {
-                self.ctx = ctx;
-                _ = self.loop.addEvent();
-                self.loop.io.recv(*NetworkImpl, self, NetworkImpl.receiveCbk, &self.completion, socket, buffer);
-            }
-
-            fn receiveCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.RecvError!usize) void {
-                _ = self.loop.removeEvent();
-                const ln = result catch |err| return self.ctx.onReceive(0, err);
-                return self.ctx.onReceive(ln, null);
-            }
-
-            pub fn send(self: *NetworkImpl, ctx: *Ctx, socket: std.posix.socket_t, buffer: []const u8) void {
-                self.ctx = ctx;
-                _ = self.loop.addEvent();
-                self.loop.io.send(*NetworkImpl, self, NetworkImpl.sendCbk, &self.completion, socket, buffer);
-            }
-
-            fn sendCbk(self: *NetworkImpl, _: *IO.Completion, result: IO.SendError!usize) void {
-                _ = self.loop.removeEvent();
-                const ln = result catch |err| return self.ctx.onSend(0, err);
-                return self.ctx.onSend(ln, null);
-            }
-        };
+    pub fn onRecv(self: *Self, _: RecvError!usize) void {
+        const old_events_nb = self.removeEvent();
+        if (builtin.is_test) {
+            report("recv done, remaining events: {d}", .{old_events_nb - 1});
+        }
     }
 };
