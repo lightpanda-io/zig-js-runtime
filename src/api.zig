@@ -87,6 +87,6 @@ pub const Inspector = Engine.Inspector;
 pub const InspectorOnResponseFn = *const fn (ctx: *anyopaque, call_id: u32, msg: []const u8) void;
 pub const InspectorOnEventFn = *const fn (ctx: *anyopaque, msg: []const u8) void;
 
-pub const engineType = enum {
+pub const EngineType = enum {
     v8,
 };

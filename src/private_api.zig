@@ -14,6 +14,7 @@
 
 const std = @import("std");
 
+const build_opts = @import("jsruntime_build_options");
 const interfaces = @import("interfaces.zig");
 
 fn checkInterfaces(engine: anytype) void {
@@ -44,31 +45,13 @@ fn checkInterfaces(engine: anytype) void {
     // private api
 }
 
-pub const Engine = blk: {
-
-    // retrieve JS engine
-
-    // - as a build option
-    const build_opts = @import("jsruntime_build_options");
-    if (@hasDecl(build_opts, "engine")) {
-        // use v8 by default.
-        const eng = build_opts.engine orelse "v8";
-        if (std.mem.eql(u8, eng, "v8")) {
-            const engine = @import("engines/v8/v8.zig");
-            checkInterfaces(engine);
-            break :blk engine;
-        }
-        @compileError("unknwon -Dengine '" ++ eng ++ "'");
-    }
-
-    // - as a root declaration
-    const root = @import("root");
-    if (@hasDecl(root, "JSEngine")) {
-        checkInterfaces(root.JSEngine);
-        break :blk root.JSEngine;
-    }
-
-    @compileError("you need to specify a JS engine as a build option (-Dengine) or as a root file declaration (pub const JSEngine)");
+// retrieve JS engine
+pub const Engine = switch (build_opts.engine) {
+    .v8 => blk: {
+        const engine = @import("engines/v8/v8.zig");
+        checkInterfaces(engine);
+        break :blk engine;
+    },
 };
 
 pub const API = Engine.API;

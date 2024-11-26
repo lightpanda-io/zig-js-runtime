@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const EngineType = @import("src/api.zig").EngineType;
 
 const pkgs = packages("");
 
@@ -40,7 +41,7 @@ pub fn build(b: *std.Build) !void {
 
     // TODO: install only bench or shell with zig build <cmd>
 
-    const options = try buildOptions(b);
+    const options = buildOptions(b);
 
     // bench
     // -----
@@ -132,31 +133,16 @@ pub fn build(b: *std.Build) !void {
     test_step.dependOn(&run_tests.step);
 }
 
-const Engine = enum {
-    v8,
-};
-
 pub const Options = struct {
-    engine: Engine,
+    engine: EngineType,
     opts: *std.Build.Step.Options,
 };
 
-pub fn buildOptions(b: *std.Build) !Options {
+pub fn buildOptions(b: *std.Build) Options {
+    const engine = b.option(EngineType, "engine", "JS engine (v8)") orelse .v8;
     const options = b.addOptions();
-    const engine = b.option([]const u8, "engine", "JS engine (v8)");
-    var eng: Engine = undefined;
-    if (engine == null) {
-        // default
-        eng = .v8;
-    } else {
-        if (std.mem.eql(u8, engine.?, "v8")) {
-            eng = .v8;
-        } else {
-            return error.EngineUnknown;
-        }
-    }
-    options.addOption(?[]const u8, "engine", engine);
-    return .{ .engine = eng, .opts = options };
+    options.addOption(EngineType, "engine", engine);
+    return .{ .engine = engine, .opts = options };
 }
 
 fn common(
@@ -166,9 +152,11 @@ fn common(
 ) !void {
     m.addOptions("jsruntime_build_options", options.opts);
     m.addImport("tigerbeetle-io", pkgs.tigerbeetle_io(b));
-    if (options.engine == .v8) {
-        try pkgs.v8(m);
-        m.addImport("v8", pkgs.zig_v8(b));
+    switch (options.engine) {
+        .v8 => {
+            try pkgs.v8(m);
+            m.addImport("v8", pkgs.zig_v8(b));
+        },
     }
 }
 
