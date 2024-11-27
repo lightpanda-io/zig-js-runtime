@@ -315,6 +315,69 @@ pub const Env = struct {
         return try jsExec(script, name, self.isolate, self.js_ctx.?);
     }
 
+    // compile and eval a JS module
+    // It doesn't wait for callbacks execution
+    pub fn module(self: Env, src: []const u8, name: []const u8) anyerror!JSValue {
+        if (self.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
+
+        // compile
+        const script_name = v8.String.initUtf8(self.isolate, name);
+        const script_source = v8.String.initUtf8(self.isolate, src);
+
+        const origin = v8.ScriptOrigin.init(
+            self.isolate,
+            script_name.toValue(),
+            0, // resource_line_offset
+            0, // resource_column_offset
+            false, // resource_is_shared_cross_origin
+            -1, // script_id
+            null, // source_map_url
+            false, // resource_is_opaque
+            false, // is_wasm
+            true, // is_module
+            null, // host_defined_options
+        );
+
+        var script_comp_source: v8.ScriptCompilerSource = undefined;
+        script_comp_source.init(script_source, origin, null);
+        defer script_comp_source.deinit();
+
+        const m = v8.ScriptCompiler.compileModule(
+            self.isolate,
+            &script_comp_source,
+            .kNoCompileOptions,
+            .kNoCacheNoReason,
+        ) catch return error.JSCompile;
+
+        // instantiate
+        // TODO handle ResolveModuleCallback parameters to load module's
+        // dependencies.
+        const ok = m.instantiate(self.js_ctx.?, resolveModuleCallback) catch return error.JSExec;
+        if (!ok) {
+            return error.ModuleInstantiateErr;
+        }
+
+        // evaluate
+        const value = m.evaluate(self.js_ctx.?) catch return error.JSExec;
+        return .{ .value = value };
+    }
+
+    pub fn resolveModuleCallback(
+        ctx: ?*const v8.C_Context,
+        specifier: ?*const v8.C_String,
+        import_attributes: ?*const v8.C_FixedArray,
+        referrer: ?*const v8.C_Module,
+    ) callconv(.C) ?*const v8.C_Module {
+        _ = ctx;
+        _ = specifier;
+        _ = import_attributes;
+        _ = referrer;
+
+        unreachable;
+    }
+
     // wait I/O Loop until all JS callbacks are executed
     // This is a blocking operation.
     // Errors can be either:
