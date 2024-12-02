@@ -302,6 +302,33 @@ pub const Env = struct {
         }
     }
 
+    // compile a JS script
+    pub fn compile(
+        self: Env,
+        script: []const u8,
+        name: []const u8,
+    ) anyerror!JSScript {
+
+        // compile
+        const scr_name = v8.String.initUtf8(self.isolate, name);
+        const script_source = v8.String.initUtf8(self.isolate, script);
+
+        const origin = v8.ScriptOrigin.initDefault(self.isolate, scr_name.toValue());
+
+        var script_comp_source: v8.ScriptCompilerSource = undefined;
+        script_comp_source.init(script_source, origin, null);
+        defer script_comp_source.deinit();
+
+        const uboundedscript = v8.ScriptCompiler.CompileUnboundScript(
+            self.isolate,
+            &script_comp_source,
+            .kNoCompileOptions,
+            .kNoCacheNoReason,
+        ) catch return error.JSCompile;
+
+        return .{ .inner = uboundedscript };
+    }
+
     // compile and run a JS script
     // It doesn't wait for callbacks execution
     pub fn exec(
@@ -428,6 +455,23 @@ pub const JSObject = struct {
         if (!self.js_obj.setValue(self.js_ctx, js_key, js_value)) {
             return error.SetV8Object;
         }
+    }
+};
+
+pub const JSScript = struct {
+    inner: v8.UnboundScript,
+
+    // Bind the unbounded script to the current context and run it.
+    pub fn run(self: JSScript, env: Env) anyerror!JSValue {
+        if (env.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
+
+        const scr = self.inner.bindToCurrentContext() catch return error.JSExec;
+
+        // run
+        const value = scr.run(env.js_ctx.?) catch return error.JSExec;
+        return .{ .value = value };
     }
 };
 
