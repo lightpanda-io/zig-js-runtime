@@ -73,6 +73,7 @@ const Engine = @import("private_api.zig").Engine;
 pub const JSValue = Engine.JSValue;
 pub const JSObject = Engine.JSObject;
 pub const JSObjectID = Engine.JSObjectID;
+pub const JSScript = Engine.JSScript;
 
 pub const Callback = Engine.Callback;
 pub const CallbackSync = Engine.CallbackSync;

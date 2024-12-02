@@ -319,14 +319,14 @@ pub const Env = struct {
         script_comp_source.init(script_source, origin, null);
         defer script_comp_source.deinit();
 
-        const value = v8.ScriptCompiler.CompileUnboundScript(
+        const uboundedscript = v8.ScriptCompiler.CompileUnboundScript(
             self.isolate,
             &script_comp_source,
             .kNoCompileOptions,
             .kNoCacheNoReason,
         ) catch return error.JSCompile;
 
-        return .{ .value = value };
+        return .{ .inner = uboundedscript };
     }
 
     // compile and run a JS script
@@ -459,7 +459,20 @@ pub const JSObject = struct {
 };
 
 pub const JSScript = struct {
-    value: v8.UnboundScript,
+    inner: v8.UnboundScript,
+
+    // Bind the unbounded script to the current context and run it.
+    pub fn run(self: JSScript, env: Env) anyerror!JSValue {
+        if (env.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
+
+        const scr = self.inner.bindToCurrentContext() catch return error.JSExec;
+
+        // run
+        const value = scr.run(env.js_ctx.?) catch return error.JSExec;
+        return .{ .value = value };
+    }
 };
 
 pub const JSValue = struct {
