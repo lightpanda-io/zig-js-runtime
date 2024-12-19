@@ -224,7 +224,7 @@ pub const Env = struct {
 
         // JS context
         self.js_ctx.?.exit();
-        self.js_ctx = undefined;
+        self.js_ctx = null;
 
         // Native context
         self.nat_ctx.stop();
