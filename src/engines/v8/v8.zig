@@ -323,11 +323,75 @@ pub const Env = struct {
         }
 
         // compile
-        const script_name = v8.String.initUtf8(self.isolate, name);
-        const script_source = v8.String.initUtf8(self.isolate, src);
+        const m = compileModule(self.isolate, name, src) catch return error.JSCompile;
+
+        // instantiate
+        const ok = m.instantiate(self.js_ctx.?, resolveModuleCallback) catch return error.JSExec;
+        if (!ok) {
+            return error.ModuleInstantiateErr;
+        }
+
+        // evaluate
+        const value = m.evaluate(self.js_ctx.?) catch return error.JSExec;
+        return .{ .value = value };
+    }
+
+    pub fn resolveModuleCallback(
+        context: ?*const v8.C_Context,
+        specifier: ?*const v8.C_String,
+        import_attributes: ?*const v8.C_FixedArray,
+        referrer: ?*const v8.C_Module,
+    ) callconv(.C) ?*const v8.C_Module {
+        _ = import_attributes;
+        _ = referrer;
+
+        var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+        defer _ = gpa.deinit();
+        const alloc = gpa.allocator();
+
+        const ctx = v8.Context{ .handle = context.? };
+        const isolate = ctx.getIsolate();
+
+        var buf: [256]u8 = undefined;
+        const str = v8.String{ .handle = specifier.? };
+        const len = str.writeUtf8(isolate, buf[0..]);
+        const module_path = buf[0..len];
+
+        std.log.info("resolve module {s}", .{module_path});
+
+        const body = fetchModule(alloc, module_path[1..module_path.len]) catch unreachable;
+        defer alloc.free(body);
+
+        const m = compileModule(isolate, module_path, body) catch unreachable;
+
+        return m.handle;
+    }
+
+    fn fetchModule(alloc: std.mem.Allocator, module_path: []const u8) ![]const u8 {
+        var client = std.http.Client{ .allocator = alloc };
+        defer client.deinit();
+
+        const uri_s = try std.mem.concat(alloc, u8, &[_][]const u8{ "https://sorare.com/assets", module_path });
+        defer alloc.free(uri_s);
+
+        const uri = try std.Uri.parse(uri_s);
+        var b: [4096]u8 = undefined;
+        var req = try client.open(.GET, uri, .{ .server_header_buffer = &b });
+        defer req.deinit();
+
+        try req.send();
+        try req.finish();
+        try req.wait();
+
+        return try req.reader().readAllAlloc(alloc, 10 * 1024 * 1024);
+    }
+
+    fn compileModule(isolate: v8.Isolate, name: []const u8, body: []const u8) !v8.Module {
+        const script_name = v8.String.initUtf8(isolate, name);
+        const script_source = v8.String.initUtf8(isolate, body);
 
         const origin = v8.ScriptOrigin.init(
-            self.isolate,
+            isolate,
             script_name.toValue(),
             0, // resource_line_offset
             0, // resource_column_offset
@@ -344,38 +408,14 @@ pub const Env = struct {
         script_comp_source.init(script_source, origin, null);
         defer script_comp_source.deinit();
 
-        const m = v8.ScriptCompiler.compileModule(
-            self.isolate,
+        const m = try v8.ScriptCompiler.compileModule(
+            isolate,
             &script_comp_source,
             .kNoCompileOptions,
             .kNoCacheNoReason,
-        ) catch return error.JSCompile;
+        );
 
-        // instantiate
-        // TODO handle ResolveModuleCallback parameters to load module's
-        // dependencies.
-        const ok = m.instantiate(self.js_ctx.?, resolveModuleCallback) catch return error.JSExec;
-        if (!ok) {
-            return error.ModuleInstantiateErr;
-        }
-
-        // evaluate
-        const value = m.evaluate(self.js_ctx.?) catch return error.JSExec;
-        return .{ .value = value };
-    }
-
-    pub fn resolveModuleCallback(
-        ctx: ?*const v8.C_Context,
-        specifier: ?*const v8.C_String,
-        import_attributes: ?*const v8.C_FixedArray,
-        referrer: ?*const v8.C_Module,
-    ) callconv(.C) ?*const v8.C_Module {
-        _ = ctx;
-        _ = specifier;
-        _ = import_attributes;
-        _ = referrer;
-
-        unreachable;
+        return m;
     }
 
     // wait I/O Loop until all JS callbacks are executed
