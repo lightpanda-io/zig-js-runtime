@@ -40,6 +40,8 @@ const getTpl = @import("generate.zig").getTpl;
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
 
+const log = std.log.scoped(.v8);
+
 pub const API = struct {
     T_refl: refl.Struct,
     load: LoadFnType,
@@ -317,13 +319,15 @@ pub const Env = struct {
 
     // compile and eval a JS module
     // It doesn't wait for callbacks execution
-    pub fn module(self: Env, src: []const u8, name: []const u8) anyerror!JSValue {
+    pub fn module(self: Env, src: []const u8, uri: []const u8) anyerror!JSValue {
         if (self.js_ctx == null) {
             return error.EnvNotStarted;
         }
 
         // compile
-        const m = compileModule(self.isolate, name, src) catch return error.JSCompile;
+        const m = compileModule(self.isolate, uri, src) catch return error.JSCompile;
+
+        try setReferrerUri(self.js_ctx.?, self.isolate, m, uri);
 
         // instantiate
         const ok = m.instantiate(self.js_ctx.?, resolveModuleCallback) catch return error.JSExec;
@@ -343,7 +347,6 @@ pub const Env = struct {
         referrer: ?*const v8.C_Module,
     ) callconv(.C) ?*const v8.C_Module {
         _ = import_attributes;
-        _ = referrer;
 
         var gpa = std.heap.GeneralPurposeAllocator(.{}){};
         defer _ = gpa.deinit();
@@ -352,29 +355,49 @@ pub const Env = struct {
         const ctx = v8.Context{ .handle = context.? };
         const isolate = ctx.getIsolate();
 
-        var buf: [256]u8 = undefined;
-        const str = v8.String{ .handle = specifier.? };
-        const len = str.writeUtf8(isolate, buf[0..]);
-        const module_path = buf[0..len];
+        const specifier_str = valueToUtf8(alloc, v8.Value{ .handle = specifier.? }, isolate, ctx) catch unreachable;
+        defer alloc.free(specifier_str);
+        log.info("resolve module {s}", .{specifier_str});
 
-        std.log.info("resolve module {s}", .{module_path});
+        const ref = v8.Module{ .handle = referrer.? };
+        const referrer_uri_str = getReferrerUri(alloc, ctx, isolate, ref) catch unreachable;
+        defer alloc.free(referrer_uri_str);
+        const referrer_uri = std.Uri.parse(referrer_uri_str) catch unreachable;
 
-        const body = fetchModule(alloc, module_path[1..module_path.len]) catch unreachable;
+        var buffer: [1024]u8 = undefined;
+        var b: []u8 = buffer[0..];
+        const specifier_uri = std.Uri.resolve_inplace(referrer_uri, specifier_str, &b) catch unreachable;
+
+        const body = fetchModule(alloc, specifier_uri) catch unreachable;
         defer alloc.free(body);
 
-        const m = compileModule(isolate, module_path, body) catch unreachable;
+        const specifier_uri_str = std.fmt.allocPrint(
+            alloc,
+            "{s}://{host}{path}",
+            .{ specifier_uri.scheme, specifier_uri.host.?, specifier_uri.path },
+        ) catch unreachable;
+        defer alloc.free(specifier_uri_str);
+
+        const m = compileModule(isolate, specifier_uri_str, body) catch unreachable;
+        setReferrerUri(ctx, isolate, m, specifier_uri_str) catch unreachable;
 
         return m.handle;
     }
 
-    fn fetchModule(alloc: std.mem.Allocator, module_path: []const u8) ![]const u8 {
+    fn setReferrerUri(ctx: v8.Context, isolate: v8.Isolate, m: v8.Module, uri: []const u8) !void {
+        const v8_str = v8.String.initUtf8(isolate, uri);
+        ctx.setEmbedderData(m.getScriptId(), v8_str.toValue());
+    }
+
+    fn getReferrerUri(alloc: std.mem.Allocator, ctx: v8.Context, isolate: v8.Isolate, m: v8.Module) ![]const u8 {
+        const value = ctx.getEmbedderData(m.getScriptId());
+        return try valueToUtf8(alloc, value, isolate, ctx);
+    }
+
+    fn fetchModule(alloc: std.mem.Allocator, uri: std.Uri) ![]const u8 {
         var client = std.http.Client{ .allocator = alloc };
         defer client.deinit();
 
-        const uri_s = try std.mem.concat(alloc, u8, &[_][]const u8{ "https://sorare.com/assets", module_path });
-        defer alloc.free(uri_s);
-
-        const uri = try std.Uri.parse(uri_s);
         var b: [4096]u8 = undefined;
         var req = try client.open(.GET, uri, .{ .server_header_buffer = &b });
         defer req.deinit();
@@ -382,6 +405,8 @@ pub const Env = struct {
         try req.send();
         try req.finish();
         try req.wait();
+
+        log.info("fetch module {any}: {d}", .{ uri, req.response.status });
 
         return try req.reader().readAllAlloc(alloc, 10 * 1024 * 1024);
     }
@@ -549,7 +574,7 @@ pub const JSValue = struct {
         const s = buf[0..len];
         _ = str.writeUtf8(env.isolate, s);
         return std.meta.stringToEnum(public.JSTypes, s) orelse {
-            std.log.err("JSValueTypeNotHandled: {s}", .{s});
+            log.err("JSValueTypeNotHandled: {s}", .{s});
             return error.JSValueTypeNotHandled;
         };
     }
