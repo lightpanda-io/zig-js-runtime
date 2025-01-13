@@ -30,6 +30,9 @@ pub const CallbackSync = @import("callback.zig").FuncSync;
 pub const CallbackArg = @import("callback.zig").Arg;
 pub const CallbackResult = @import("callback.zig").Result;
 
+pub const Module = v8.Module;
+pub const ModuleLoadFn = *const fn (ctx: *anyopaque, referrer: ?Module, specifier: []const u8) anyerror!Module;
+
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
@@ -39,6 +42,8 @@ const getTpl = @import("generate.zig").getTpl;
 
 const nativeToJS = @import("types_primitives.zig").nativeToJS;
 const valueToUtf8 = @import("types_primitives.zig").valueToUtf8;
+
+const log = std.log.scoped(.v8);
 
 pub const API = struct {
     T_refl: refl.Struct,
@@ -89,6 +94,11 @@ pub const Env = struct {
     inspector: ?Inspector = null,
 
     js_ctx: ?v8.Context = null,
+
+    moduleLoad: ?struct {
+        ctx: *anyopaque,
+        func: ModuleLoadFn,
+    } = null,
 
     pub fn engine() public.EngineType {
         return .v8;
@@ -175,6 +185,21 @@ pub const Env = struct {
         self.nat_ctx.loadTypes(js_types);
     }
 
+    const envIdx = 1;
+
+    // tov8Ctx saves the current env pointer into the v8 context.
+    fn tov8Ctx(self: *Env) void {
+        if (self.js_ctx == null) unreachable;
+        self.js_ctx.?.getIsolate().setData(envIdx, self);
+    }
+
+    // fromv8Ctx extracts the current env pointer into the v8 context.
+    fn fromv8Ctx(ctx: v8.Context) *Env {
+        const env = ctx.getIsolate().getData(envIdx);
+        if (env == null) unreachable;
+        return @ptrCast(@alignCast(env));
+    }
+
     // start a Javascript context
     pub fn start(self: *Env) anyerror!void {
 
@@ -214,6 +239,9 @@ pub const Env = struct {
                 };
             }
         }
+
+        // save the env into the context.
+        self.tov8Ctx();
     }
 
     // stop a Javascript context
@@ -313,6 +341,108 @@ pub const Env = struct {
             return error.EnvNotStarted;
         }
         return try jsExec(script, name, self.isolate, self.js_ctx.?);
+    }
+
+    pub fn setModuleLoadFn(self: *Env, ctx: *anyopaque, mlfn: ModuleLoadFn) !void {
+        self.moduleLoad = .{
+            .ctx = ctx,
+            .func = mlfn,
+        };
+    }
+
+    pub fn compileModule(self: Env, src: []const u8, name: []const u8) anyerror!Module {
+        if (self.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
+
+        // compile
+        const script_name = v8.String.initUtf8(self.isolate, name);
+        const script_source = v8.String.initUtf8(self.isolate, src);
+
+        const origin = v8.ScriptOrigin.init(
+            self.isolate,
+            script_name.toValue(),
+            0, // resource_line_offset
+            0, // resource_column_offset
+            false, // resource_is_shared_cross_origin
+            -1, // script_id
+            null, // source_map_url
+            false, // resource_is_opaque
+            false, // is_wasm
+            true, // is_module
+            null, // host_defined_options
+        );
+
+        var script_comp_source: v8.ScriptCompilerSource = undefined;
+        script_comp_source.init(script_source, origin, null);
+        defer script_comp_source.deinit();
+
+        return v8.ScriptCompiler.compileModule(
+            self.isolate,
+            &script_comp_source,
+            .kNoCompileOptions,
+            .kNoCacheNoReason,
+        ) catch return error.JSCompile;
+    }
+
+    // compile and eval a JS module
+    // It doesn't wait for callbacks execution
+    pub fn module(self: Env, src: []const u8, name: []const u8) anyerror!JSValue {
+        if (self.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
+
+        const m = try self.compileModule(src, name);
+
+        // instantiate
+        // TODO handle ResolveModuleCallback parameters to load module's
+        // dependencies.
+        const ok = m.instantiate(self.js_ctx.?, resolveModuleCallback) catch return error.JSExec;
+        if (!ok) {
+            return error.ModuleInstantiateErr;
+        }
+
+        // evaluate
+        const value = m.evaluate(self.js_ctx.?) catch return error.JSExec;
+        return .{ .value = value };
+    }
+
+    pub fn resolveModuleCallback(
+        c_ctx: ?*const v8.C_Context,
+        specifier: ?*const v8.C_String,
+        import_attributes: ?*const v8.C_FixedArray,
+        referrer: ?*const v8.C_Module,
+    ) callconv(.C) ?*const v8.C_Module {
+        _ = import_attributes;
+
+        if (c_ctx == null) unreachable;
+        const ctx = v8.Context{ .handle = c_ctx.? };
+        const self = Env.fromv8Ctx(ctx);
+
+        const ml = self.moduleLoad orelse unreachable; // if module load is missing, this is a program error.
+
+        // TODO use a fixed allocator?
+        const alloc = self.nat_ctx.alloc;
+
+        // build the specifier value.
+        const specstr = valueToUtf8(
+            alloc,
+            v8.Value{ .handle = specifier.? },
+            ctx.getIsolate(),
+            ctx,
+        ) catch |e| {
+            log.err("resolveModuleCallback: get ref str: {any}", .{e});
+            return null;
+        };
+        defer alloc.free(specstr);
+
+        const refmod = if (referrer) |ref| v8.Module{ .handle = ref } else null;
+
+        const m = ml.func(ml.ctx, refmod, specstr) catch |e| {
+            log.err("resolveModuleCallback: load fn: {any}", .{e});
+            return null;
+        };
+        return m.handle;
     }
 
     // wait I/O Loop until all JS callbacks are executed
@@ -446,7 +576,7 @@ pub const JSValue = struct {
         const s = buf[0..len];
         _ = str.writeUtf8(env.isolate, s);
         return std.meta.stringToEnum(public.JSTypes, s) orelse {
-            std.log.err("JSValueTypeNotHandled: {s}", .{s});
+            log.err("JSValueTypeNotHandled: {s}", .{s});
             return error.JSValueTypeNotHandled;
         };
     }
