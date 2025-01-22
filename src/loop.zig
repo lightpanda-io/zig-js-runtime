@@ -52,6 +52,8 @@ pub const SingleThreaded = struct {
 
     pub fn init(alloc: std.mem.Allocator) !Self {
         const io = try alloc.create(IO);
+        errdefer alloc.destroy(io);
+
         io.* = try IO.init(32, 0);
         const events_nb = try alloc.create(usize);
         events_nb.* = 0;
