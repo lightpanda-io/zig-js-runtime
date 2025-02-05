@@ -260,17 +260,19 @@ pub fn exec(
     };
     try tests.checkCases(js_env, &cases_cbk_setter_arg);
 
-    // cancel cbk
-    var cases_cbk_cancel = [_]tests.Case{
-        .{
-            .src =
-            \\let vv = 0;
-            \\const id = window.cbkAsync(() => {vv += 1}, 100);
-            \\window.cancel(id);
-            ,
-            .ex = "undefined",
-        },
-        .{ .src = "vv", .ex = "0" },
-    };
-    try tests.checkCases(js_env, &cases_cbk_cancel);
+    if (jsruntime.Loop.canCancel()) {
+        // cancel cbk
+        var cases_cbk_cancel = [_]tests.Case{
+            .{
+                .src =
+                \\let vv = 0;
+                \\const id = window.cbkAsync(() => {vv += 1}, 100);
+                \\window.cancel(id);
+                ,
+                .ex = "undefined",
+            },
+            .{ .src = "vv", .ex = "0" },
+        };
+        try tests.checkCases(js_env, &cases_cbk_cancel);
+    }
 }
