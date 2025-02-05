@@ -260,7 +260,7 @@ pub fn exec(
     };
     try tests.checkCases(js_env, &cases_cbk_setter_arg);
 
-    if (jsruntime.Loop.canCancel()) {
+    if (tests.isCancelAvailable()) {
         // cancel cbk
         var cases_cbk_cancel = [_]tests.Case{
             .{

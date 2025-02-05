@@ -291,11 +291,4 @@ pub const SingleThreaded = struct {
             report("recv done, remaining events: {d}", .{old_events_nb - 1});
         }
     }
-
-    pub fn canCancel() bool {
-        return switch (@import("builtin").target.os.tag) {
-            .macos, .tvos, .watchos, .ios => false,
-            else => true,
-        };
-    }
 };

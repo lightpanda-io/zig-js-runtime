@@ -144,6 +144,13 @@ pub fn checkCasesAlloc(allocator: std.mem.Allocator, js_env: *public.Env, cases:
     }
 }
 
+pub fn isCancelAvailable() bool {
+    return switch (@import("builtin").target.os.tag) {
+        .macos, .tvos, .watchos, .ios => false,
+        else => true,
+    };
+}
+
 pub const Case = struct {
     src: []const u8,
     ex: []const u8,
