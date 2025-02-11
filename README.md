@@ -5,7 +5,7 @@ A fast and easy library to add a Javascript runtime into your Zig project.
 With this library you can:
 
 - add Javascript as a scripting language for your Zig project (eg. plugin system, game scripting)
-- build a web browser (this library as been developed for the [Ligthpanda headless browser](https://lightpanda.io))
+- build a web browser (this library as been developed for the [Lightpanda headless browser](https://lightpanda.io))
 - build a Javascript runtime (ie. a Node/Bun like)
 
 Features:
