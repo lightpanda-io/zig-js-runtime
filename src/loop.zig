@@ -60,7 +60,8 @@ pub const SingleThreaded = struct {
         return Self{ .alloc = alloc, .io = io, .events_nb = events_nb };
     }
 
-    pub fn deinit(self: Self) void {
+    pub fn deinit(self: *Self) void {
+        self.cancelAll();
         self.io.deinit();
         self.alloc.destroy(self.io);
         self.alloc.destroy(self.events_nb);
@@ -97,6 +98,9 @@ pub const SingleThreaded = struct {
     // - get the number of current events
     fn eventsNb(self: *Self) usize {
         return @atomicLoad(usize, self.events_nb, .seq_cst);
+    }
+    fn resetEvents(self: *Self) void {
+        @atomicStore(usize, self.events_nb, 0, .unordered);
     }
 
     fn freeCbk(self: *Self, completion: *IO.Completion, ctx: anytype) void {
@@ -169,7 +173,7 @@ pub const SingleThreaded = struct {
     fn cancelCallback(
         ctx: *ContextCancel,
         completion: *IO.Completion,
-        result: IO.CancelError!void,
+        result: IO.CancelOneError!void,
     ) void {
         defer ctx.loop.freeCbk(completion, ctx);
 
@@ -208,10 +212,15 @@ pub const SingleThreaded = struct {
         };
 
         const old_events_nb = self.addEvent();
-        self.io.cancel(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
+        self.io.cancel_one(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
         if (builtin.is_test) {
             report("cancel {d}", .{old_events_nb + 1});
         }
+    }
+
+    pub fn cancelAll(self: *Self) void {
+        self.io.cancel_all();
+        self.resetEvents();
     }
 
     // IO callbacks APIs
