@@ -549,8 +549,8 @@ pub const Func = struct {
                 fmtErr(msg.len, msg, T);
                 return error.FuncSetterFirstArgNotSelfPtr;
             } else if (kind == .method or kind == .getter) {
-                if (self_T.? != struct_T.? and self_T.? != *struct_T.?) {
-                    const msg = "getter/method first argument should be self or *self";
+                if (self_T.? != struct_T.? and self_T.? != *struct_T.? and self_T.? != *const struct_T.?) {
+                    const msg = "getter/method first argument should be self, *self or *const self";
                     fmtErr(msg.len, msg, T);
                     return error.FuncGetterMethodFirstArgNotSelfOrSelfPtr;
                 }
