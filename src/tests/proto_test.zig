@@ -83,7 +83,7 @@ const Person = struct {
         self.age = age;
     }
 
-    pub fn _fullName(self: Person) []u8 {
+    pub fn _fullName(self: *const Person) []u8 {
         return self.last_name;
     }
 
@@ -141,7 +141,7 @@ const PersonPtr = struct {
         return person_ptr;
     }
 
-    pub fn get_name(self: PersonPtr) []u8 {
+    pub fn get_name(self: *const PersonPtr) []u8 {
         return self.name;
     }
 
