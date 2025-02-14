@@ -907,8 +907,10 @@ fn callFunc(
         const self_T = @TypeOf(@field(args, "0"));
         if (self_T == T_refl.Self()) {
             @field(args, "0") = obj_ptr.*;
-        } else if (self_T == *T_refl.Self()) {
+        } else if (self_T == *T_refl.Self() or self_T == *const T_refl.Self()) {
             @field(args, "0") = obj_ptr;
+        } else {
+            unreachable;
         }
     }
 
