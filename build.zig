@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
 
-    try common(b, &bench.root_module, options);
+    try common(b, bench.root_module, options);
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = mode,
     });
-    try common(b, &shell.root_module, options);
+    try common(b, shell.root_module, options);
     try pkgs.add_shell(shell);
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -124,7 +124,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = mode,
     });
-    try common(b, &tests.root_module, options);
+    try common(b, tests.root_module, options);
     tests.test_runner = b.path("src/test_runner.zig");
     const run_tests = b.addRunArtifact(tests);
 
