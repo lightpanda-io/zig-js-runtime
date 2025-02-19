@@ -13,7 +13,6 @@
 // limitations under the License.
 
 const std = @import("std");
-const sort = @import("block.zig");
 const builtin = @import("builtin");
 
 const public = @import("api.zig");
@@ -881,22 +880,24 @@ pub const Struct = struct {
         self.nested = &cnesteds;
     }
 
-    fn lessThan(_: void, comptime a: Struct, comptime b: Struct) bool {
-        // priority: first proto_index (asc) and then index (asc)
-        if (a.proto_index == null and b.proto_index == null) {
-            return a.index < b.index;
-        }
-        if (a.proto_index != null and b.proto_index != null) {
-            if (a.proto_T.? == b.T) {
-                // NOTE: By definition, if we compare:
-                // - A which has a proto B
-                // - And B itself
-                // => A is after B as it requires B
-                return false;
+    fn lessThan(_: void, a: Struct, b: Struct) bool {
+        if (a.proto_T) |apt| {
+            if (b.proto_T != null) {
+                if (apt == b.T) {
+                    return false;
+                }
+                return a.index < b.index;
             }
-            return a.proto_index.? < b.proto_index.?;
+            // a has a proto, b doesn't, a goes after b
+            return false;
         }
-        return a.proto_index == null;
+
+        if (b.proto_T != null) {
+            // b has a proto, a doesn't, a comes before b
+            return true;
+        }
+        // neither a nor b has a proto, the order doesn't matter
+        return a.index < b.index;
     }
 
     fn AttrT(comptime T: type, comptime decl: std.builtin.Type.Declaration) ?type {
@@ -1436,32 +1437,29 @@ pub const Struct = struct {
 };
 
 fn lookupPrototype(comptime all: []Struct) Error!void {
-    inline for (all, 0..) |*s, index| {
+    loop: for (all, 0..) |*s, index| {
+        // structs were initially given an index, but now we reset it based on
+        // the sorted (and final) ordering.
         s.index = index;
-        if (s.proto_T == null) {
-            // does not have a prototype
-            continue;
-        }
-        // loop over all structs to find proto
-        inline for (all, 0..) |proto, proto_index| {
-            if (proto.T != s.proto_T.?) {
-                // type is not equal to prototype type
+
+        const proto_T = s.proto_T orelse continue;
+
+        // Because all is sorted based on prototype, we know that the prototype
+        // for this struct _has_ to be before it, so we only look thorugh
+        // [0..index].
+        for (all[0..index], 0..) |proto, proto_index| {
+            if (proto.T != proto_T) {
                 continue;
             }
-            // is proto
-            if (s.mem_guarantied != proto.mem_guarantied) {
-                // compiler error, should not happen
-                // TODO: check mem_guarantied
-                @panic("struct and proto struct should have the same memory layout");
-            }
+            std.debug.assert(s.mem_guarantied == proto.mem_guarantied);
+
             s.proto_index = proto_index;
-            break;
+            continue :loop;
         }
-        if (s.proto_index == null) {
-            const msg = "struct lookup search of protototype failed";
-            fmtErr(msg.len, msg, s.T);
-            return error.StructLookup;
-        }
+
+        const msg = "struct lookup search of protototype failed";
+        fmtErr(msg.len, msg, s.T);
+        return error.StructLookup;
     }
 }
 
@@ -1537,16 +1535,15 @@ pub fn do(comptime types: anytype) Error![]const Struct {
         // look for duplicates (on types and js names)
         try lookupDuplicates(&all);
 
-        // look for prototype chain
-        // first pass to allow sort
-        try lookupPrototype(&all);
-
         // sort to follow prototype chain order
-        // ie. parents will be listed before children
-        sort.block(Struct, &all, {}, Struct.lessThan);
+        // If A has no prototype, and B has a prototype, then A will come before
+        // B. If both A and B have no prototype, their order (between them)
+        // doesn't matter. If both A and B have prototypes, then A will be
+        // placed before B if A is B's prototype (and B will be placed before A
+        // if B is A's prototype).
+        std.mem.sortUnstable(Struct, &all, {}, Struct.lessThan);
 
         // look for prototype chain
-        // second pass, as sort as modified the index reference
         try lookupPrototype(&all);
 
         // look for exception
