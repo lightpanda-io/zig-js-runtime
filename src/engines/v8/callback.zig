@@ -13,6 +13,7 @@
 // limitations under the License.
 
 const std = @import("std");
+const assert = std.debug.assert;
 
 const v8 = @import("v8"); // TODO: remove
 
@@ -77,6 +78,10 @@ pub const FuncSync = struct {
     js_func: v8.Function,
     js_args: []v8.Value,
 
+    // nat_ctx_id stores the id of the native context when the function is
+    // initialized.
+    // Before using the context, we must ensure is has not been reset.
+    nat_ctx_id: u32,
     nat_ctx: *NativeContext,
     isolate: v8.Isolate,
 
@@ -132,12 +137,15 @@ pub const FuncSync = struct {
         return FuncSync{
             .js_func = js_func,
             .js_args = js_args,
+            .nat_ctx_id = nat_ctx.id,
             .nat_ctx = nat_ctx,
             .isolate = isolate,
         };
     }
 
     pub fn setThisArg(self: *FuncSync, nat_obj_ptr: anytype) !void {
+        // The context mustn't be reset between func init and set this arg call.
+        assert(self.nat_ctx_id == self.nat_ctx.id);
         self.thisArg = try getV8Object(
             self.nat_ctx,
             nat_obj_ptr,
@@ -146,6 +154,10 @@ pub const FuncSync = struct {
 
     // call the function with a try catch to catch errors an report in res.
     pub fn trycall(self: FuncSync, alloc: std.mem.Allocator, res: *Result) anyerror!void {
+        // If the native context has been reset since the function has been
+        // initialized, we ignore the callback.
+        if (self.nat_ctx_id != self.nat_ctx.id) return;
+
         // JS try cache
         var try_catch: v8.TryCatch = undefined;
         try_catch.init(self.isolate);
@@ -167,6 +179,12 @@ pub const FuncSync = struct {
     }
 
     pub fn call(self: FuncSync, alloc: std.mem.Allocator) anyerror!void {
+        // free heap
+        defer alloc.free(self.js_args);
+
+        // If the native context has been reset since the function has been
+        // initialized, we ignore the callback.
+        if (self.nat_ctx_id != self.nat_ctx.id) return;
 
         // retrieve context
         // NOTE: match the Func.call implementation
@@ -179,9 +197,6 @@ pub const FuncSync = struct {
 
         // execute function
         _ = self.js_func.call(ctx, this, self.js_args);
-
-        // free heap
-        alloc.free(self.js_args);
     }
 };
 
@@ -201,6 +216,10 @@ pub const Func = struct {
     // avoiding the need to allocate/free js_args_pers
     js_args_pers: []PersistentValue,
 
+    // nat_ctx_id stores the id of the native context when the function is
+    // initialized.
+    // Before using the context, we must ensure is has not been reset.
+    nat_ctx_id: u32,
     nat_ctx: *NativeContext,
     isolate: v8.Isolate,
 
@@ -261,12 +280,15 @@ pub const Func = struct {
             ._id = JSObjectID.set(js_func_val.castTo(v8.Object)),
             .js_func_pers = js_func_pers,
             .js_args_pers = js_args_pers,
+            .nat_ctx_id = nat_ctx.id,
             .nat_ctx = nat_ctx,
             .isolate = isolate,
         };
     }
 
     pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+        // The context mustn't be reset between func init and set this arg call.
+        assert(self.nat_ctx_id == self.nat_ctx.id);
         self.thisArg = try getV8Object(
             self.nat_ctx,
             nat_obj_ptr,
@@ -294,6 +316,10 @@ pub const Func = struct {
 
     // call the function with a try catch to catch errors an report in res.
     pub fn trycall(self: Func, nat_args: anytype, res: *Result) anyerror!void {
+        // If the native context has been reset since the function has been
+        // initialized, we ignore the callback.
+        if (self.nat_ctx_id != self.nat_ctx.id) return;
+
         // JS try cache
         var try_catch: v8.TryCatch = undefined;
         try_catch.init(self.isolate);
@@ -315,6 +341,10 @@ pub const Func = struct {
     }
 
     pub fn call(self: Func, nat_args: anytype) anyerror!void {
+        // If the native context has been reset since the function has been
+        // initialized, we ignore the callback.
+        if (self.nat_ctx_id != self.nat_ctx.id) return;
+
         // ensure Native args and JS args are not both provided
         const info = @typeInfo(@TypeOf(nat_args));
         if (comptime info != .Null) {

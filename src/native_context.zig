@@ -23,6 +23,9 @@ pub const NativeContext = struct {
     loop: *Loop,
     userctx: ?UserContext,
 
+    // id is incremented after each context reset.
+    id: u32 = 1,
+
     js_objs: JSObjects,
     nat_objs: NatObjects,
 
@@ -44,6 +47,7 @@ pub const NativeContext = struct {
     }
 
     pub fn stop(self: *NativeContext) void {
+        self.id += 1;
         self.js_objs.clearAndFree(self.alloc);
         self.nat_objs.clearAndFree(self.alloc);
     }
