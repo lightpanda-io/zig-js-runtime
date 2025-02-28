@@ -76,11 +76,15 @@ pub const Result = struct {
 pub const FuncSync = struct {
     js_func: v8.Function,
     js_args: []v8.Value,
+
+    nat_ctx: *NativeContext,
     isolate: v8.Isolate,
+
     thisArg: ?v8.Object = null,
 
     pub fn init(
         alloc: std.mem.Allocator,
+        nat_ctx: *NativeContext,
         comptime func: refl.Func,
         raw_value: ?*const v8.C_Value,
         info: CallbackInfo,
@@ -128,11 +132,12 @@ pub const FuncSync = struct {
         return FuncSync{
             .js_func = js_func,
             .js_args = js_args,
+            .nat_ctx = nat_ctx,
             .isolate = isolate,
         };
     }
 
-    pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
+    pub fn setThisArg(self: *FuncSync, nat_obj_ptr: anytype) !void {
         self.thisArg = try getV8Object(
             self.nat_ctx,
             nat_obj_ptr,

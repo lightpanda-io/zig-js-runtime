@@ -335,6 +335,7 @@ fn getArgs(
                 ),
                 cbk.FuncSync => try cbk.FuncSync.init(
                     alloc,
+                    nat_ctx,
                     func,
                     raw_value,
                     cbk_info,
