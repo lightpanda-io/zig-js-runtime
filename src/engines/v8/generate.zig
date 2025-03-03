@@ -213,13 +213,13 @@ fn getArg(
             cbk.Func, cbk.FuncSync, cbk.Arg => unreachable,
             JSObject => JSObject{ .nat_ctx = nat_ctx, .js_ctx = js_ctx, .js_obj = this },
             JSObjectID => JSObjectID.set(js_val.?.castTo(v8.Object)),
-            else => jsToNative(
+            else => try jsToNative(
                 alloc,
                 arg.T,
                 js_val.?,
                 isolate,
                 js_ctx,
-            ) catch unreachable,
+            ),
         };
     }
 

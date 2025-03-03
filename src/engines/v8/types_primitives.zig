@@ -125,17 +125,17 @@ pub fn jsToNative(
         },
 
         // floats
-        f32 => return try js_val.toF32(ctx),
-        f64 => return try js_val.toF64(ctx),
+        f32 => return js_val.toF32(ctx) catch return error.InvalidArgument,
+        f64 => return js_val.toF64(ctx) catch return error.InvalidArgument,
 
         // integers signed
         i8, i16 => {
-            const v = try js_val.toI32(ctx);
+            const v = js_val.toI32(ctx) catch return error.InvalidArgument;
             return @as(T, @intCast(v));
         },
-        i32 => return try js_val.toI32(ctx),
+        i32 => return js_val.toI32(ctx) catch return error.InvalidArgument,
         i64Num => {
-            const v = try js_val.bitCastToI64(ctx);
+            const v = js_val.bitCastToI64(ctx) catch return error.InvalidArgument;
             return i64Num.init(v);
         },
         i64 => {
@@ -143,17 +143,17 @@ pub fn jsToNative(
                 const v = js_val.castTo(v8.BigInt);
                 return v.getInt64();
             }
-            unreachable;
+            return @intCast(js_val.toI32(ctx) catch return error.InvalidArgument);
         },
 
         // integers unsigned
         u8, u16 => {
-            const v = try js_val.toU32(ctx);
+            const v = js_val.toU32(ctx) catch return error.InvalidArgument;
             return @as(T, @intCast(v));
         },
-        u32 => return try js_val.toU32(ctx),
+        u32 => return js_val.toU32(ctx) catch return error.InvalidArgument,
         u64Num, ?u64Num => {
-            const v = try js_val.bitCastToU64(ctx);
+            const v = js_val.bitCastToU64(ctx) catch return error.InvalidArgument;
             return u64Num.init(v);
         },
         u64 => {
@@ -161,7 +161,7 @@ pub fn jsToNative(
                 const v = js_val.castTo(v8.BigInt);
                 return v.getUint64();
             }
-            unreachable;
+            return @intCast(js_val.toU32(ctx) catch return error.InvalidArgument);
         },
 
         // bool
