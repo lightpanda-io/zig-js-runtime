@@ -148,6 +148,7 @@ pub fn exec(
         .{ .src = "const min_i32 = -2147483648", .ex = "undefined" },
         .{ .src = "p.checkI32(min_i32) === min_i32;", .ex = "true" },
         .{ .src = "p.checkI32(min_i32-1) === min_i32-1;", .ex = "false" },
+        .{ .src = "try { p.checkI32(9007199254740995n) } catch(e) { e instanceof TypeError; }", .ex = "true" },
 
         // unsigned
         .{ .src = "const max_u32 = 4294967295", .ex = "undefined" },
