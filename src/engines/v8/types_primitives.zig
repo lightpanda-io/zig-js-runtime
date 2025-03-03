@@ -143,7 +143,7 @@ pub fn jsToNative(
                 const v = js_val.castTo(v8.BigInt);
                 return v.getInt64();
             }
-            unreachable;
+            return @intCast(try js_val.toI32(ctx));
         },
 
         // integers unsigned
@@ -161,7 +161,7 @@ pub fn jsToNative(
                 const v = js_val.castTo(v8.BigInt);
                 return v.getUint64();
             }
-            unreachable;
+            return @intCast(try js_val.toU32(ctx));
         },
 
         // bool

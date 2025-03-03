@@ -162,6 +162,9 @@ pub fn exec(
         .{ .src = "const big_int = 9007199254740995n", .ex = "undefined" },
         .{ .src = "p.checkI64(big_int) === big_int", .ex = "true" },
         .{ .src = "p.checkU64(big_int) === big_int;", .ex = "true" },
+        .{ .src = "p.checkI64(0) === 0n;", .ex = "true" },
+        .{ .src = "p.checkI64(-1) === -1n;", .ex = "true" },
+        .{ .src = "p.checkU64(0) === 0n;", .ex = "true" },
 
         // Floats
         // use round 2 decimals for float to ensure equality
