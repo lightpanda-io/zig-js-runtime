@@ -649,7 +649,7 @@ pub fn jsExec(script: []const u8, name: ?[]const u8, isolate: v8.Isolate, js_ctx
 
 pub const Inspector = struct {
     inner: *v8.Inspector,
-    session: v8.InspectorSession,
+    session: InspectorSession,
 
     pub fn init(
         alloc: std.mem.Allocator,
@@ -662,8 +662,10 @@ pub const Inspector = struct {
         const channel = v8.InspectorChannel.init(ctx, onResp, onEvent, env.isolate);
         const client = v8.InspectorClient.init();
         v8.Inspector.init(inner, client, channel, env.isolate);
-        const session = inner.connect();
-        return .{ .inner = inner, .session = session };
+        return .{
+            .inner = inner,
+            .session = .{ .inner = inner.connect() },
+        };
     }
 
     pub fn deinit(self: Inspector, alloc: std.mem.Allocator) void {
@@ -691,7 +693,22 @@ pub const Inspector = struct {
     // msg should be formatted for the Inspector protocol
     // for v8 it's the CDP protocol https://chromedevtools.github.io/devtools-protocol/
     // with only some domains being relevant (mainly Runtime and Debugger)
-    pub fn send(self: Inspector, env: Env, msg: []const u8) void {
-        return self.session.dispatchProtocolMessage(env.isolate, msg);
+    pub fn send(self: Inspector, env: *const Env, msg: []const u8) void {
+        self.session.send(env, msg);
+    }
+
+    pub fn createSession(self: Inspector) InspectorSession {
+        return .{ .inner = self.inner.connect() };
+    }
+};
+
+pub const InspectorSession = struct {
+    inner: v8.InspectorSession,
+
+    // msg should be formatted for the Inspector protocol
+    // for v8 it's the CDP protocol https://chromedevtools.github.io/devtools-protocol/
+    // with only some domains being relevant (mainly Runtime and Debugger)
+    pub fn send(self: InspectorSession, env: *const Env, msg: []const u8) void {
+        return self.inner.dispatchProtocolMessage(env.isolate, msg);
     }
 };

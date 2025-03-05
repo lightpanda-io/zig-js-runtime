@@ -220,7 +220,7 @@ pub fn Inspector(comptime T: type, comptime Env_T: type) void {
     ) void);
 
     // send()
-    assertDecl(T, "send", fn (self: T, env: Env_T, msg: []const u8) void);
+    assertDecl(T, "send", fn (self: T, env: *const Env_T, msg: []const u8) void);
 }
 
 // Utils
