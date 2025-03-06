@@ -106,7 +106,7 @@ pub const Type = struct {
         // check if the error returned is part of the exception
         // (ie. the ErrorSet of the return type is a superset of the exception)
         const errName = @errorName(err);
-        for (@typeInfo(exceptSet).ErrorSet.?) |e| {
+        for (@typeInfo(exceptSet).error_set.?) |e| {
             if (std.mem.eql(u8, errName, e.name)) {
                 return true;
             }
@@ -117,10 +117,10 @@ pub const Type = struct {
     // If the Type is an ErrorUnion, returns it's ErrorSet
     pub fn errorSet(comptime self: Type) ?type {
         std.debug.assert(@inComptime());
-        if (@typeInfo(self.T) != .ErrorUnion) {
+        if (@typeInfo(self.T) != .error_union) {
             return null;
         }
-        return @typeInfo(self.T).ErrorUnion.error_set;
+        return @typeInfo(self.T).error_union.error_set;
     }
 
     // NOTE: underlying types
@@ -139,10 +139,10 @@ pub const Type = struct {
     // !Type
     fn _underErr(comptime T: type) ?type {
         const info = @typeInfo(T);
-        if (info != .ErrorUnion) {
+        if (info != .error_union) {
             return null;
         }
-        return info.ErrorUnion.payload;
+        return info.error_union.payload;
     }
     pub inline fn underErr(comptime self: Type) ?type {
         std.debug.assert(@inComptime());
@@ -154,10 +154,10 @@ pub const Type = struct {
     fn _underOpt(comptime T: type) ?type {
         const TT = Type._underErr(T) orelse T;
         const info = @typeInfo(TT);
-        if (info != .Optional) {
+        if (info != .optional) {
             return null;
         }
-        return info.Optional.child;
+        return info.optional.child;
     }
     pub inline fn underOpt(comptime self: Type) ?type {
         std.debug.assert(@inComptime());
@@ -177,9 +177,9 @@ pub const Type = struct {
             TT = T;
         }
         const info = @typeInfo(TT);
-        if (info == .Pointer and info.Pointer.size != .Slice) {
+        if (info == .pointer and info.pointer.size != .slice) {
             // NOTE: slice are pointers but we handle them as single value
-            return info.Pointer.child;
+            return info.pointer.child;
         }
         return null;
     }
@@ -210,25 +210,25 @@ pub const Type = struct {
         const info = @typeInfo(T);
 
         // it's a struct
-        if (info != .Struct) {
+        if (info != .@"struct") {
             return null;
         }
 
         // with only 1 field
-        if (info.Struct.fields.len != 1) {
+        if (info.@"struct".fields.len != 1) {
             return null;
         }
 
         // which is called "slice"
-        const slice_field = info.Struct.fields[0];
+        const slice_field = info.@"struct".fields[0];
         if (!std.mem.eql(u8, slice_field.name, "slice")) {
             return null;
         }
 
         // and it's a slice
         const slice_info = @typeInfo(slice_field.type);
-        if (slice_info == .Pointer and slice_info.Pointer.size == .Slice) {
-            return slice_info.Pointer.child;
+        if (slice_info == .pointer and slice_info.pointer.size == .slice) {
+            return slice_info.pointer.child;
         }
 
         return null;
@@ -258,6 +258,7 @@ pub const Type = struct {
     // check that user-defined types have been provided as an API
     pub fn lookup(comptime self: *Type, comptime structs: []const Struct) Error!void {
         std.debug.assert(@inComptime());
+        @setEvalBranchQuota(10_000);
 
         // lookup unecessary
         for (builtin_types) |builtin_T| {
@@ -321,13 +322,13 @@ pub const Type = struct {
     }
 
     fn reflectUnion(comptime T: type, comptime info: std.builtin.Type) Error![]const Type {
-        if (info.Union.tag_type == null) {
+        if (info.@"union".tag_type == null) {
             const msg = "union should be a tagged";
             fmtErr(msg.len, msg, T);
             return error.TypeTaggedUnion;
         }
-        var union_types: [info.Union.fields.len]Type = undefined;
-        inline for (info.Union.fields, 0..) |field, i| {
+        var union_types: [info.@"union".fields.len]Type = undefined;
+        inline for (info.@"union".fields, 0..) |field, i| {
             union_types[i] = try Type.reflect(field.type, field.name);
         }
 
@@ -342,7 +343,7 @@ pub const Type = struct {
 
         // union T
         var union_T: ?[]const Type = null;
-        if (info == .Union) {
+        if (info == .@"union") {
             union_T = try reflectUnion(T, info);
         }
 
@@ -374,14 +375,14 @@ const Args = struct {
         var fields: [len]std.builtin.Type.StructField = undefined;
         if (self_T != null) {
             const name = try itoa(0);
-            fields[0] = std.builtin.Type.StructField{
+            fields[0] = .{
                 // StructField.name expect a null terminated string.
                 // concatenate the `[]const u8` string with an empty string
                 // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
                 // u8`.
                 .name = name ++ "",
                 .type = self_T.?,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .alignment = @alignOf(self_T.?),
             };
@@ -391,28 +392,26 @@ const Args = struct {
             if (self_T != null) {
                 x += 1;
             }
-            fields[x] = std.builtin.Type.StructField{
+            fields[x] = .{
                 // StructField.name expect a null terminated string.
                 // concatenate the `[]const u8` string with an empty string
                 // literal (`name ++ ""`) to explicitly coerce it to `[:0]const
                 // u8`.
                 .name = arg.name.? ++ "",
                 .type = arg.T,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false,
                 .alignment = @alignOf(arg.T),
             };
         }
         const decls = [_]std.builtin.Type.Declaration{};
         const cfields = fields;
-        const s = std.builtin.Type.Struct{
+        return @Type(.{ .@"struct" = .{
             .layout = .auto,
             .fields = &cfields,
             .decls = &decls,
             .is_tuple = true,
-        };
-        const t = std.builtin.Type{ .Struct = s };
-        return @Type(t);
+        } });
     }
 };
 
@@ -439,7 +438,7 @@ pub const FuncKind = enum {
 
     fn reflect(comptime T: type, decl: std.builtin.Type.Declaration) FuncKind {
         // exclude declarations who are not functions
-        if (@typeInfo(@TypeOf(@field(T, decl.name))) != .Fn) {
+        if (@typeInfo(@TypeOf(@field(T, decl.name))) != .@"fn") {
             return FuncKind.ignore;
         }
 
@@ -520,13 +519,13 @@ pub const Func = struct {
 
         // T should be a func
         const func = @typeInfo(T);
-        if (func != .Fn) {
+        if (func != .@"fn") {
             // should not happen as Funckind.reflect has been called before
             @panic("func is not a function");
         }
 
         // check self is present
-        var args = func.Fn.params;
+        var args = func.@"fn".params;
         if (kind != .constructor and args.len == 0) {
             // TODO: handle "class methods"
             const msg = "getter/setter/methods should have at least 1 argument, self";
@@ -684,7 +683,7 @@ pub const Func = struct {
         const args_T = comptime Args.reflect(self_T, &args_slice);
 
         // reflect return type
-        const return_type = try Type.reflect(func.Fn.return_type.?, null);
+        const return_type = try Type.reflect(func.@"fn".return_type.?, null);
         if (Type._is_variadic(return_type.underT())) return error.FuncReturnTypeVariadic;
 
         return Func{
@@ -736,7 +735,7 @@ pub const StructNested = struct {
         }
 
         // exclude types who are not structs
-        if (@typeInfo(decl_type) != .Struct) {
+        if (@typeInfo(decl_type) != .@"struct") {
             return false;
         }
 
@@ -746,8 +745,8 @@ pub const StructNested = struct {
     fn reflect(comptime T: type) StructNested {
         const info = @typeInfo(T);
 
-        var fields: [info.Struct.fields.len]Type = undefined;
-        inline for (info.Struct.fields, 0..) |field, i| {
+        var fields: [info.@"struct".fields.len]Type = undefined;
+        inline for (info.@"struct".fields, 0..) |field, i| {
             fields[i] = try Type.reflect(field.type, field.name);
         }
         const cfields = fields;
@@ -819,7 +818,7 @@ pub const Struct = struct {
     }
 
     pub inline fn isEmpty(comptime self: Struct) bool {
-        if (@typeInfo(self.Self()) == .Opaque) {
+        if (@typeInfo(self.Self()) == .@"opaque") {
             return false;
         }
         return @sizeOf(self.Self()) == 0;
@@ -908,7 +907,7 @@ pub const Struct = struct {
         // exclude declarations of wrong type
         const attr_T = @TypeOf(@field(T, decl.name));
         const attr_info = @typeInfo(attr_T);
-        if (attr_info == .Fn) { // functions
+        if (attr_info == .@"fn") { // functions
             return null;
         }
         for (builtin_types) |builtin_T| {
@@ -951,7 +950,7 @@ pub const Struct = struct {
     }
 
     fn reflectAttrs(comptime T: type) ?type {
-        const decls = @typeInfo(T).Struct.decls;
+        const decls = @typeInfo(T).@"struct".decls;
 
         // first pass for attrs nb
         var attrs_nb = 0;
@@ -973,30 +972,28 @@ pub const Struct = struct {
             if (attr_T == null) {
                 continue;
             }
-            fields[attrs_done] = std.builtin.Type.StructField{
+            fields[attrs_done] = .{
                 .name = decl.name[1..decl.name.len], // remove _
                 .type = attr_T.?,
-                .default_value = null,
+                .default_value_ptr = null,
                 .is_comptime = false, // TODO: should be true here?
                 .alignment = if (@sizeOf(attr_T.?) > 0) @alignOf(attr_T.?) else 0,
             };
             attrs_done += 1;
         }
         const cfields = fields;
-        return @Type(.{
-            .Struct = .{
-                .layout = .auto,
-                .fields = &cfields,
-                .decls = &.{},
-                .is_tuple = false,
-            },
-        });
+        return @Type(.{ .@"struct" = .{
+            .layout = .auto,
+            .fields = &cfields,
+            .decls = &.{},
+            .is_tuple = false,
+        } });
     }
 
     pub fn staticAttrs(comptime self: Struct, comptime attrs_T: type) attrs_T {
         var attrs: attrs_T = undefined;
         var done = 0;
-        for (@typeInfo(self.T).Struct.decls) |decl| {
+        for (@typeInfo(self.T).@"struct".decls) |decl| {
             const attr_T = AttrT(self.T, decl);
             if (attr_T == null) {
                 continue;
@@ -1029,7 +1026,7 @@ pub const Struct = struct {
             return error.StructExceptionWithoutErrorSet;
         }
         const errSet = @field(T, "ErrorSet");
-        if (@typeInfo(errSet) != .ErrorSet) {
+        if (@typeInfo(errSet) != .error_set) {
             return error.StructExceptionWrongErrorSet;
         }
 
@@ -1106,12 +1103,12 @@ pub const Struct = struct {
 
         // check the 'protoype' declaration is a pointer
         const proto_info = @typeInfo(@field(T, "prototype"));
-        if (proto_info != .Pointer) {
+        if (proto_info != .pointer) {
             const msg = "struct 'prototype' declared must be a Pointer";
             fmtErr(msg.len, msg, T);
             return error.StructPrototypeNotPointer;
         }
-        proto_T = proto_info.Pointer.child;
+        proto_T = proto_info.pointer.child;
 
         if (@hasDecl(T, "mem_guarantied")) {
             return proto_T;
@@ -1122,13 +1119,13 @@ pub const Struct = struct {
         if (@hasField(real_T, "proto")) {
 
             // check the 'proto' field
-            inline for (@typeInfo(real_T).Struct.fields, 0..) |field, i| {
+            inline for (@typeInfo(real_T).@"struct".fields, 0..) |field, i| {
                 if (!std.mem.eql(u8, field.name, "proto")) {
                     continue;
                 }
 
                 // check the 'proto' field is not a pointer
-                if (@typeInfo(field.type) == .Pointer) {
+                if (@typeInfo(field.type) == .pointer) {
                     const msg = "struct {s} 'proto' field should not be a Pointer";
                     fmtErr(msg.len, msg, T);
                     return error.StructProtoPointer;
@@ -1136,7 +1133,7 @@ pub const Struct = struct {
 
                 // for layout where fields memory order is guarantied,
                 // check the 'proto' field is the first one
-                if (@typeInfo(T).Struct.layout != .auto) {
+                if (@typeInfo(T).@"struct".layout != .auto) {
                     if (i != 0) {
                         const msg = "'proto' field should be the first one if memory layout is guarantied (extern)";
                         fmtErr(msg.len, msg, T);
@@ -1151,10 +1148,10 @@ pub const Struct = struct {
 
             // check that 'protoCast' is a compatible function
             const proto_func = @typeInfo(@TypeOf(@field(proto_T.?, "protoCast")));
-            if (proto_func != .Fn) {
+            if (proto_func != .@"fn") {
                 return error.StructProtoCastNotFunction;
             } else {
-                const proto_args = proto_func.Fn.params;
+                const proto_args = proto_func.@"fn".params;
                 if (proto_args.len != 1) {
                     return error.StructProtoCastWrongFunction;
                 }
@@ -1165,12 +1162,12 @@ pub const Struct = struct {
                     return error.StructProtoCastWrongFunction;
                 }
             }
-            const ret_T = proto_func.Fn.return_type.?;
+            const ret_T = proto_func.@"fn".return_type.?;
 
             // can be a pointer or a value
             const ret_T_info = @typeInfo(ret_T);
-            if (ret_T_info == .Pointer) {
-                proto_res = ret_T_info.Pointer.child;
+            if (ret_T_info == .pointer) {
+                proto_res = ret_T_info.pointer.child;
             } else {
                 proto_res = ret_T;
             }
@@ -1199,7 +1196,7 @@ pub const Struct = struct {
 
         // T should be a struct
         const obj = @typeInfo(T);
-        if (obj != .Struct) {
+        if (obj != .@"struct") {
             const msg = "type is not a struct";
             fmtErr(msg.len, msg, T);
             return error.StructNotStruct;
@@ -1210,7 +1207,7 @@ pub const Struct = struct {
         // with unknown memory fields, like slices
         // see: https://github.com/ziglang/zig/issues/2201
         // and https://github.com/ziglang/zig/issues/3133
-        if (obj.Struct.layout == .@"packed") {
+        if (obj.@"struct".layout == .@"packed") {
             const msg = "type packed struct are not supported";
             fmtErr(msg.len, msg, T);
             return error.StructPacked;
@@ -1222,7 +1219,7 @@ pub const Struct = struct {
         if (@hasDecl(T, "Self")) {
             self_T = @field(T, "Self");
             real_T = self_T.?;
-            if (@typeInfo(real_T) == .Pointer) {
+            if (@typeInfo(real_T) == .pointer) {
                 const msg = "type Self type should not be a pointer";
                 fmtErr(msg.len, msg, T);
                 return error.StructSelfPointer;
@@ -1230,7 +1227,7 @@ pub const Struct = struct {
         } else {
             real_T = T;
         }
-        if (@typeInfo(real_T) != .Struct and @typeInfo(real_T) != .Opaque) {
+        if (@typeInfo(real_T) != .@"struct" and @typeInfo(real_T) != .@"opaque") {
             const msg = "type is not a struct or opaque";
             fmtErr(msg.len, msg, T);
             return error.StructNotStruct;
@@ -1245,13 +1242,13 @@ pub const Struct = struct {
         if (@hasDecl(T, "mem_guarantied")) {
             mem_guarantied = true;
         } else {
-            mem_guarantied = @typeInfo(T).Struct.layout != .auto;
+            mem_guarantied = @typeInfo(T).@"struct".layout != .auto;
         }
 
         // nested types
         var nested_nb: usize = 0;
         // first iteration to retrieve the number of nested structs
-        inline for (obj.Struct.decls) |decl| {
+        inline for (obj.@"struct".decls) |decl| {
             if (StructNested.isNested(T, decl)) {
                 nested_nb += 1;
             }
@@ -1259,7 +1256,7 @@ pub const Struct = struct {
         var nested: [nested_nb]StructNested = undefined;
         if (nested_nb > 0) {
             var nested_done: usize = 0;
-            inline for (obj.Struct.decls) |decl| {
+            inline for (obj.@"struct".decls) |decl| {
                 if (StructNested.isNested(T, decl)) {
                     const decl_type = @field(T, decl.name);
                     nested[nested_done] = StructNested.reflect(decl_type);
@@ -1276,7 +1273,7 @@ pub const Struct = struct {
         // iterate over struct declarations
         // struct fields are considerated private and ignored
         // first iteration to retrieve the number of each method kind
-        inline for (obj.Struct.decls) |decl| {
+        inline for (obj.@"struct".decls) |decl| {
             const kind = comptime FuncKind.reflect(T, decl);
             switch (kind) {
                 .ignore => continue,
@@ -1299,7 +1296,7 @@ pub const Struct = struct {
 
         // iterate over struct declarations
         // second iteration to generate funcs
-        inline for (obj.Struct.decls) |decl| {
+        inline for (obj.@"struct".decls) |decl| {
 
             // check declaration kind
             const kind = comptime FuncKind.reflect(T, decl);
@@ -1518,12 +1515,12 @@ pub fn do(comptime types: anytype) Error![]const Struct {
         // check types provided
         const types_T = @TypeOf(types);
         const types_info = @typeInfo(types_T);
-        if (types_info != .Struct or !types_info.Struct.is_tuple) {
+        if (types_info != .@"struct" or !types_info.@"struct".is_tuple) {
             const msg = "arg 'types' should be a tuple of types";
             fmtErr(msg.len, msg, types_T);
             return error.TypesNotTuple;
         }
-        const types_fields = types_info.Struct.fields;
+        const types_fields = types_info.@"struct".fields;
 
         // reflect each type
         var all: [types_fields.len]Struct = undefined;
@@ -1582,12 +1579,12 @@ fn assertT(comptime T: type, comptime X: type, comptime opts: EqlOptions) !void 
     const err = error.AssertT;
     const info = @typeInfo(X);
     switch (info) {
-        .ErrorUnion => {
-            if (opts.err) return try assertT(T, info.ErrorUnion.payload, opts);
+        .error_union => {
+            if (opts.err) return try assertT(T, info.error_union.payload, opts);
             return err;
         },
-        .Optional => {
-            if (opts.opt) return try assertT(T, info.Optional.child, opts);
+        .optional => {
+            if (opts.opt) return try assertT(T, info.optional.child, opts);
             return err;
         },
         else => return err,
@@ -1596,7 +1593,7 @@ fn assertT(comptime T: type, comptime X: type, comptime opts: EqlOptions) !void 
 
 pub fn isPointer(comptime T: type) bool {
     std.debug.assert(@inComptime());
-    return @typeInfo(T) == .Pointer;
+    return @typeInfo(T) == .pointer;
 }
 
 // assert T is a supported container type
@@ -1604,14 +1601,14 @@ pub fn isPointer(comptime T: type) bool {
 fn assertApi(comptime T: type) !void {
     const info = @typeInfo(T);
     return switch (info) {
-        .Struct, .Union => {},
+        .@"struct", .@"union" => {},
         else => error.AssertAPI,
     };
 }
 
 // assert func is a function
 fn assertFunc(comptime func: type) !void {
-    if (@typeInfo(func) != .Fn) return error.AssertFunc;
+    if (@typeInfo(func) != .@"fn") return error.AssertFunc;
 }
 
 // assert func is a method of T
@@ -1619,7 +1616,7 @@ fn assertFunc(comptime func: type) !void {
 fn assertFuncIsMethod(comptime T: type, comptime func: type, comptime strict: bool) !void {
     try assertFunc(func);
     const err = error.AssertFuncIsMethod;
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
     if (info.params.len == 0) return err;
 
     const first = info.params[0].type.?;
@@ -1633,7 +1630,7 @@ fn assertFuncIsMethod(comptime T: type, comptime func: type, comptime strict: bo
 // ie. excluding internal types
 fn assertFuncParamsJSNb(comptime func: type, comptime nb: u8) !void {
     try assertFunc(func);
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
     var js_params = 0;
     for (info.params) |param| {
         if (!isInternalType(param.type.?)) {
@@ -1647,7 +1644,7 @@ fn assertFuncParamsJSNb(comptime func: type, comptime nb: u8) !void {
 fn assertFuncParamIsT(comptime func: type, comptime T: type, comptime index: u8) !void {
     try assertFunc(func);
     const err = error.AssertFuncHasParam;
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
 
     if (info.params.len < index + 1) return err;
     if (info.params[index].type.? != T) {
@@ -1658,7 +1655,7 @@ fn assertFuncParamIsT(comptime func: type, comptime T: type, comptime index: u8)
 // assert function has at least 1 parameter of type T
 fn assertFuncHasParamT(comptime func: type, comptime T: type) !void {
     try assertFunc(func);
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
 
     for (info.params) |param| {
         if (param.type.? == T) {
@@ -1672,7 +1669,7 @@ fn assertFuncHasParamT(comptime func: type, comptime T: type) !void {
 // see EqlOptions for behavior details
 fn assertFuncReturnT(comptime func: type, comptime T: type, comptime opts: EqlOptions) !void {
     try assertFunc(func);
-    const ret = @typeInfo(func).Fn.return_type.?;
+    const ret = @typeInfo(func).@"fn".return_type.?;
     assertT(T, ret, opts) catch return error.AssertFuncReturnT;
 }
 
@@ -1688,27 +1685,25 @@ fn createTupleT(comptime members: []const type) type {
             // u8`.
             .name = try itoa(i) ++ "",
             .type = member,
-            .default_value = null,
+            .default_value_ptr = null,
             .is_comptime = false,
             .alignment = @alignOf(member),
         };
     }
     const cfields = fields;
-    const s = std.builtin.Type.Struct{
+    return @Type(.{ .@"struct" = .{
         .layout = .auto,
         .fields = &cfields,
         .decls = &.{},
         .is_tuple = true,
-    };
-    const t = std.builtin.Type{ .Struct = s };
-    return @Type(t);
+    } });
 }
 
 // argsT generate from the func parameters
 // a tuple type suitable for the @call builtin func
 fn argsT(comptime func: type) type {
     try assertFunc(func);
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
     var params: [info.params.len]type = undefined;
     for (info.params, 0..) |param, i| {
         params[i] = param.type.?;
@@ -1724,10 +1719,10 @@ pub fn tupleTypes(comptime tuple: type) []type {
     std.debug.assert(@inComptime());
     const info = @typeInfo(tuple);
     const err = error.TupleTypes;
-    if (info != .Struct) return err;
-    if (!info.Struct.is_tuple) return err;
-    var fields: [info.Struct.fields.len]type = undefined;
-    for (info.Struct.fields, 0..) |field, i| {
+    if (info != .@"struct") return err;
+    if (!info.@"struct".is_tuple) return err;
+    var fields: [info.@"struct".fields.len]type = undefined;
+    for (info.@"struct".fields, 0..) |field, i| {
         fields[i] = field.type;
     }
     return &fields;
@@ -1737,7 +1732,7 @@ pub fn tupleTypes(comptime tuple: type) []type {
 pub fn funcReturnType(comptime func: type) !type {
     std.debug.assert(@inComptime());
     try assertFunc(func);
-    const info = @typeInfo(func).Fn;
+    const info = @typeInfo(func).@"fn";
     return info.return_type.?;
 }
 
@@ -1745,7 +1740,7 @@ pub fn funcReturnType(comptime func: type) !type {
 pub fn isErrorUnion(comptime T: type) bool {
     std.debug.assert(@inComptime());
     const info = @typeInfo(T);
-    return info == .ErrorUnion;
+    return info == .error_union;
 }
 
 // postAttachFunc check if T has `postAttach` function
@@ -1767,7 +1762,7 @@ pub fn postAttachFunc(comptime T: type) !?type {
 
 pub fn hasDefaultValue(comptime T: type, comptime index: usize) bool {
     std.debug.assert(@inComptime());
-    return @typeInfo(T).Struct.fields[index].default_value != null;
+    return @typeInfo(T).@"struct".fields[index].default_value_ptr != null;
 }
 
 pub fn isGlobalType(comptime T: type) bool {
@@ -1808,7 +1803,7 @@ fn jsName(comptime name: []const u8) []const u8 {
 }
 
 fn shortName(comptime T: type) []const u8 {
-    var it = std.mem.splitBackwards(u8, @typeName(T), ".");
+    var it = std.mem.splitBackwardsScalar(u8, @typeName(T), '.');
     return it.first();
 }
 
@@ -1821,7 +1816,7 @@ pub fn itoa(i: u8) ![]const u8 {
 
 fn isStringLiteral(comptime T: type) bool {
     // string literals are const pointers to null-terminated arrays of u8
-    if (@typeInfo(T) != .Pointer) {
+    if (@typeInfo(T) != .pointer) {
         return false;
     }
     const elem = std.meta.Elem(T);

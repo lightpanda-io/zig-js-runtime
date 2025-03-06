@@ -99,17 +99,18 @@ pub const Allocator = struct {
             .alloc = alloc,
             .resize = resize,
             .free = free,
+            .remap = remap,
         } };
     }
 
     fn alloc(
         ctx: *anyopaque,
         len: usize,
-        log2_ptr_align: u8,
+        alignment: std.mem.Alignment,
         return_address: usize,
     ) ?[*]u8 {
         const self: *Allocator = @ptrCast(@alignCast(ctx));
-        const result = self.parent_allocator.rawAlloc(len, log2_ptr_align, return_address);
+        const result = self.parent_allocator.rawAlloc(len, alignment, return_address);
         self.alloc_nb += 1;
         self.size += len;
         return result;
@@ -118,12 +119,12 @@ pub const Allocator = struct {
     fn resize(
         ctx: *anyopaque,
         old_mem: []u8,
-        log2_old_align: u8,
+        alignment: std.mem.Alignment,
         new_len: usize,
         ra: usize,
     ) bool {
         const self: *Allocator = @ptrCast(@alignCast(ctx));
-        const result = self.parent_allocator.rawResize(old_mem, log2_old_align, new_len, ra);
+        const result = self.parent_allocator.rawResize(old_mem, alignment, new_len, ra);
         self.realloc_nb += 1; // TODO: only if result is not null?
         return result;
     }
@@ -131,12 +132,25 @@ pub const Allocator = struct {
     fn free(
         ctx: *anyopaque,
         old_mem: []u8,
-        log2_old_align: u8,
+        alignment: std.mem.Alignment,
         ra: usize,
     ) void {
         const self: *Allocator = @ptrCast(@alignCast(ctx));
-        self.parent_allocator.rawFree(old_mem, log2_old_align, ra);
+        self.parent_allocator.rawFree(old_mem, alignment, ra);
         self.free_nb += 1;
+    }
+
+    fn remap(
+        ctx: *anyopaque,
+        memory: []u8,
+        alignment: std.mem.Alignment,
+        new_len: usize,
+        ret_addr: usize,
+    ) ?[*]u8 {
+        const self: *Allocator = @ptrCast(@alignCast(ctx));
+        const result = self.parent_allocator.rawRemap(memory, alignment, new_len, ret_addr);
+        self.realloc_nb += 1; // TODO: only if result is not null?
+        return result;
     }
 };
 

@@ -531,7 +531,7 @@ pub const JSObject = struct {
         var js_value: v8.Value = undefined;
         if (comptime refl.isBuiltinType(@TypeOf(value))) {
             js_value = try nativeToJS(@TypeOf(value), value, isolate);
-        } else if (@typeInfo(@TypeOf(value)) == .Union) {
+        } else if (@typeInfo(@TypeOf(value)) == .@"union") {
             // NOTE: inspired by std.meta.TagPayloadByName
             const activeTag = @tagName(std.meta.activeTag(value));
             inline for (std.meta.fields(@TypeOf(value))) |field| {
