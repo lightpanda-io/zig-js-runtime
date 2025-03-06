@@ -112,17 +112,17 @@ fn itoa(comptime i: u8) []const u8 {
 // retrieve the number of elements in a tuple
 fn tupleNb(comptime tuple: anytype) usize {
     var nb = 0;
-    for (@typeInfo(@TypeOf(tuple)).Struct.fields) |member| {
+    for (@typeInfo(@TypeOf(tuple)).@"struct".fields) |member| {
         const member_info = @typeInfo(member.type);
-        if (member_info != .Struct or (member_info == .Struct and !member_info.Struct.is_tuple)) {
+        if (member_info != .@"struct" or (member_info == .@"struct" and !member_info.@"struct".is_tuple)) {
             @compileError("GenerateMemberNotTypeOrTuple");
         }
-        for (member_info.Struct.fields) |field| {
+        for (member_info.@"struct".fields) |field| {
             if (field.type != type) {
                 @compileError("GenerateMemberTupleChildNotType");
             }
         }
-        nb += member_info.Struct.fields.len;
+        nb += member_info.@"struct".fields.len;
     }
     return nb;
 }
@@ -130,10 +130,10 @@ fn tupleNb(comptime tuple: anytype) usize {
 fn tupleTypes(comptime nb: usize, comptime tuple: anytype) [nb]type {
     var types: [nb]type = undefined;
     var i = 0;
-    for (@typeInfo(@TypeOf(tuple)).Struct.fields) |member| {
+    for (@typeInfo(@TypeOf(tuple)).@"struct".fields) |member| {
         const T = @field(tuple, member.name);
         const info = @typeInfo(@TypeOf(T));
-        for (info.Struct.fields) |field| {
+        for (info.@"struct".fields) |field| {
             types[i] = @field(T, field.name);
             i += 1;
         }
@@ -153,7 +153,7 @@ fn MergeTupleT(comptime value: anytype) type {
             // u8`.
             .name = itoa(i) ++ "",
             .type = type,
-            .default_value = null,
+            .default_value_ptr = null,
             .is_comptime = false,
             .alignment = @alignOf(type),
         };
@@ -166,7 +166,7 @@ fn MergeTupleT(comptime value: anytype) type {
         .decls = &decls,
         .is_tuple = true,
     };
-    return @Type(std.builtin.Type{ .Struct = info });
+    return @Type(std.builtin.Type{ .@"struct" = info });
 }
 
 pub fn MergeTuple(comptime value: anytype) MergeTupleT(value) {

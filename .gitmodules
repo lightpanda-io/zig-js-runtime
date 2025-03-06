@@ -1,9 +1,11 @@
 [submodule "vendor/zig-v8"]
 	path = vendor/zig-v8
-	url = https://github.com/Browsercore/zig-v8-fork.git/
+	url = https://github.com/lightpanda-io/zig-v8-fork.git/
+	branch = zig-0.14
 [submodule "vendor/tigerbeetle-io"]
 	path = vendor/tigerbeetle-io
-	url = https://github.com/Browsercore/tigerbeetle-io.git/
+	url = https://github.com/lightpanda-io/tigerbeetle-io.git/
+	branch = zig-0.14
 [submodule "vendor/linenoise-mob"]
 	path = vendor/linenoise-mob
 	url = https://github.com/rain-1/linenoise-mob.git/

@@ -20,7 +20,7 @@ const pkgs = packages("");
 
 /// Do not rename this constant. It is scanned by some scripts to determine
 /// which zig version to install.
-pub const recommended_zig_version = "0.13.0";
+pub const recommended_zig_version = "0.14.0";
 
 pub fn build(b: *std.Build) !void {
     switch (comptime builtin.zig_version.order(std.SemanticVersion.parse(recommended_zig_version) catch unreachable)) {
@@ -67,7 +67,7 @@ pub fn build(b: *std.Build) !void {
         .optimize = mode,
     });
 
-    try common(b, &bench.root_module, options);
+    try common(b, bench.root_module, options);
     if (mode == .ReleaseSafe) {
         // remove debug info
         // TODO: check if mandatory in release-safe
@@ -95,7 +95,7 @@ pub fn build(b: *std.Build) !void {
         .target = target,
         .optimize = mode,
     });
-    try common(b, &shell.root_module, options);
+    try common(b, shell.root_module, options);
     try pkgs.add_shell(shell);
     if (mode == .ReleaseSafe) {
         // remove debug info
@@ -121,11 +121,11 @@ pub fn build(b: *std.Build) !void {
     // compile
     const tests = b.addTest(.{
         .root_source_file = b.path("src/run_tests.zig"),
+        .test_runner = .{ .path = b.path("src/test_runner.zig"), .mode = .simple },
         .target = target,
         .optimize = mode,
     });
-    try common(b, &tests.root_module, options);
-    tests.test_runner = b.path("src/test_runner.zig");
+    try common(b, tests.root_module, options);
     const run_tests = b.addRunArtifact(tests);
 
     // step

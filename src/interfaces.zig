@@ -29,10 +29,10 @@ const public = @import("api.zig");
 pub fn API(comptime T: type, comptime LoadFnType: type) void {
 
     // nativeT(), the reflected type of a native struct
-    assertDecl(T, "nativeT", fn (self: T) callconv(.Inline) refl.Struct);
+    assertDecl(T, "nativeT", fn (comptime self: T) callconv(.Inline) refl.Struct);
 
     // loadFn(), the function loading and binding this native struct into the JS engine
-    assertDecl(T, "loadFn", fn (self: T) callconv(.Inline) LoadFnType);
+    assertDecl(T, "loadFn", fn (comptime self: T) callconv(.Inline) LoadFnType);
 }
 
 pub fn VM(comptime T: type) void {
