@@ -489,6 +489,7 @@ pub const Func = struct {
     kind: FuncKind,
 
     fn lookupTypes(comptime self: *Func, comptime structs: []const Struct) Error!void {
+        @setEvalBranchQuota(100_000_000);
         // copy args
         var args: [self.args.len]Type = undefined;
         inline for (self.args, 0..) |arg, i| {
