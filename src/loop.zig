@@ -43,6 +43,10 @@ pub const SingleThreaded = struct {
     events_nb: *usize,
     cbk_error: bool = false,
 
+    // ctx_id is incremented each time the loop is reset.
+    // All context are
+    ctx_id: u32 = 0,
+
     const Self = @This();
     pub const Completion = IO.Completion;
 
@@ -116,6 +120,7 @@ pub const SingleThreaded = struct {
     const ContextTimeout = struct {
         loop: *Self,
         js_cbk: ?JSCallback,
+        ctx_id: u32,
     };
 
     fn timeoutCallback(
@@ -124,6 +129,11 @@ pub const SingleThreaded = struct {
         result: IO.TimeoutError!void,
     ) void {
         defer ctx.loop.freeCbk(completion, ctx);
+
+        // If the loop's context id has changed, don't call the js callback
+        // function. The callback's memory has already be cleaned and the
+        // events nb reset.
+        if (ctx.ctx_id != ctx.loop.ctx_id) return;
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -155,6 +165,7 @@ pub const SingleThreaded = struct {
         ctx.* = ContextTimeout{
             .loop = self,
             .js_cbk = js_cbk,
+            .ctx_id = self.ctx_id,
         };
         const old_events_nb = self.addEvent();
         self.io.timeout(*ContextTimeout, ctx, timeoutCallback, completion, nanoseconds);
@@ -168,6 +179,7 @@ pub const SingleThreaded = struct {
     const ContextCancel = struct {
         loop: *Self,
         js_cbk: ?JSCallback,
+        ctx_id: u32,
     };
 
     fn cancelCallback(
@@ -176,6 +188,11 @@ pub const SingleThreaded = struct {
         result: IO.CancelOneError!void,
     ) void {
         defer ctx.loop.freeCbk(completion, ctx);
+
+        // If the loop's context id has changed, don't call the js callback
+        // function. The callback's memory has already be cleaned and the
+        // events nb reset.
+        if (ctx.ctx_id != ctx.loop.ctx_id) return;
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -209,6 +226,7 @@ pub const SingleThreaded = struct {
         ctx.* = ContextCancel{
             .loop = self,
             .js_cbk = js_cbk,
+            .ctx_id = self.ctx_id,
         };
 
         const old_events_nb = self.addEvent();
@@ -219,7 +237,13 @@ pub const SingleThreaded = struct {
     }
 
     pub fn cancelAll(self: *Self) void {
+        self.resetEvents();
         self.io.cancel_all();
+    }
+
+    // Reset all existing callbacks.
+    pub fn reset(self: *Self) void {
+        self.ctx_id += 1;
         self.resetEvents();
     }
 
