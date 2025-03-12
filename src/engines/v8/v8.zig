@@ -145,8 +145,7 @@ pub const Env = struct {
         // ---------
 
         // handle scope
-        var hscope = self.hscope;
-        hscope.deinit();
+        self.hscope.deinit();
 
         // isolate
         var isolate = self.isolate;
@@ -565,7 +564,7 @@ pub const JSValue = struct {
     value: v8.Value,
 
     // the caller needs to deinit the string returned
-    pub fn toString(self: JSValue, alloc: std.mem.Allocator, env: Env) anyerror![]const u8 {
+    pub fn toString(self: JSValue, alloc: std.mem.Allocator, env: *const Env) anyerror![]const u8 {
         return valueToUtf8(alloc, self.value, env.isolate, env.js_ctx.?);
     }
 
@@ -585,7 +584,7 @@ pub const JSValue = struct {
 pub const TryCatch = struct {
     inner: v8.TryCatch,
 
-    pub fn init(self: *TryCatch, env: Env) void {
+    pub fn init(self: *TryCatch, env: *const Env) void {
         self.inner.init(env.isolate);
     }
 
@@ -594,8 +593,10 @@ pub const TryCatch = struct {
     }
 
     // the caller needs to deinit the string returned
-    pub fn exception(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
-        if (env.js_ctx == null) return error.EnvNotStarted;
+    pub fn exception(self: TryCatch, alloc: std.mem.Allocator, env: *const Env) anyerror!?[]const u8 {
+        if (env.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
 
         if (self.inner.getException()) |msg| {
             return try valueToUtf8(alloc, msg, env.isolate, env.js_ctx.?);
@@ -604,8 +605,10 @@ pub const TryCatch = struct {
     }
 
     // the caller needs to deinit the string returned
-    pub fn stack(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
-        if (env.js_ctx == null) return error.EnvNotStarted;
+    pub fn stack(self: TryCatch, alloc: std.mem.Allocator, env: *const Env) anyerror!?[]const u8 {
+        if (env.js_ctx == null) {
+            return error.EnvNotStarted;
+        }
 
         const stck = self.inner.getStackTrace(env.js_ctx.?);
         if (stck) |s| return try valueToUtf8(alloc, s, env.isolate, env.js_ctx.?);
@@ -617,7 +620,7 @@ pub const TryCatch = struct {
     // - in Debug mode return the stack if available
     // - otherwhise return the exception if available
     // the caller needs to deinit the string returned
-    pub fn err(self: TryCatch, alloc: std.mem.Allocator, env: Env) anyerror!?[]const u8 {
+    pub fn err(self: TryCatch, alloc: std.mem.Allocator, env: *const Env) anyerror!?[]const u8 {
         if (builtin.mode == .Debug) {
             if (try self.stack(alloc, env)) |msg| return msg;
         }
@@ -653,7 +656,7 @@ pub const Inspector = struct {
 
     pub fn init(
         alloc: std.mem.Allocator,
-        env: Env,
+        env: *const Env,
         ctx: *anyopaque,
         onResp: public.InspectorOnResponseFn,
         onEvent: public.InspectorOnEventFn,
@@ -680,7 +683,7 @@ pub const Inspector = struct {
     // {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
     pub fn contextCreated(
         self: Inspector,
-        env: Env,
+        env: *const Env,
         name: []const u8,
         origin: []const u8,
         auxData: ?[]const u8,

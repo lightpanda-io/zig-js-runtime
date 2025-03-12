@@ -119,7 +119,7 @@ pub fn Env(
 pub fn JSValue(comptime T: type, env: type) void {
 
     // toString()
-    assertDecl(T, "toString", fn (self: T, alloc: std.mem.Allocator, env: env) anyerror![]const u8);
+    assertDecl(T, "toString", fn (self: T, alloc: std.mem.Allocator, env: *const env) anyerror![]const u8);
 
     // typeOf()
     assertDecl(T, "typeOf", fn (self: T, env: env) anyerror!public.JSTypes);
@@ -134,7 +134,7 @@ pub fn JSObjectID(comptime T: type) void {
 pub fn TryCatch(comptime T: type, comptime env: type) void {
 
     // init()
-    assertDecl(T, "init", fn (self: *T, env: env) void);
+    assertDecl(T, "init", fn (self: *T, env: *const env) void);
 
     // deinit()
     assertDecl(T, "deinit", fn (self: *T) void);
@@ -146,21 +146,21 @@ pub fn TryCatch(comptime T: type, comptime env: type) void {
     assertDecl(T, "exception", fn (
         self: T,
         alloc: std.mem.Allocator,
-        env: env,
+        env: *const env,
     ) anyerror!?[]const u8);
 
     // err()
     assertDecl(T, "err", fn (
         self: T,
         alloc: std.mem.Allocator,
-        env: env,
+        env: *const env,
     ) anyerror!?[]const u8);
 
     // stack()
     assertDecl(T, "stack", fn (
         self: T,
         alloc: std.mem.Allocator,
-        env: env,
+        env: *const env,
     ) anyerror!?[]const u8);
 }
 
@@ -201,7 +201,7 @@ pub fn Inspector(comptime T: type, comptime Env_T: type) void {
     // init()
     assertDecl(T, "init", fn (
         alloc: std.mem.Allocator,
-        env: Env_T,
+        env: *const Env_T,
         ctx: *anyopaque,
         onResp: public.InspectorOnResponseFn,
         onEvent: public.InspectorOnEventFn,
@@ -213,7 +213,7 @@ pub fn Inspector(comptime T: type, comptime Env_T: type) void {
     // contextCreated()
     assertDecl(T, "contextCreated", fn (
         self: T,
-        env: Env_T,
+        env: *const Env_T,
         name: []const u8,
         origin: []const u8,
         auxData: ?[]const u8,
