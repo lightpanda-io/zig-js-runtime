@@ -273,15 +273,12 @@ pub const Func = struct {
         ) orelse return error.V8ObjectNotFound;
     }
 
-    pub fn deinit(self: Func, alloc: std.mem.Allocator) void {
+    pub fn deinit(self: *Func, alloc: std.mem.Allocator) void {
 
         // cleanup persistent references in v8
-        var js_func_pers = self.js_func_pers; // TODO: why do we need var here?
-        js_func_pers.deinit();
-
-        for (self.js_args_pers) |arg| {
-            var arg_pers = arg; // TODO: why do we need var here?
-            arg_pers.deinit();
+        self.js_func_pers.deinit();
+        for (self.js_args_pers) |*arg| {
+            arg.deinit();
         }
 
         // free heap
