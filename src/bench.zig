@@ -42,7 +42,7 @@ pub fn call(
         if (i == 0) {
             // TODO: handle more return cases
             const info = @typeInfo(@TypeOf(res));
-            if (info == .ErrorUnion) {
+            if (info == .error_union) {
                 is_error_union = true;
             }
         }
