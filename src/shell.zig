@@ -147,7 +147,7 @@ fn cmdCallback(
         input,
         "shell.js",
     ) catch {
-        const except = ctx.try_catch.exception(ctx.alloc, ctx.js_env.*) catch unreachable;
+        const except = ctx.try_catch.exception(ctx.alloc, ctx.js_env) catch unreachable;
         if (except) |msg| {
             defer ctx.alloc.free(msg);
             printStdout("\x1b[38;5;242mUncaught {s}\x1b[0m\n", .{msg});
@@ -156,7 +156,7 @@ fn cmdCallback(
     };
 
     // JS print result
-    const s = res.toString(ctx.alloc, ctx.js_env.*) catch unreachable;
+    const s = res.toString(ctx.alloc, ctx.js_env) catch unreachable;
     defer ctx.alloc.free(s);
     if (std.mem.eql(u8, s, "undefined")) {
         printStdout("<- \x1b[38;5;242m{s}\x1b[0m\n", .{s});
@@ -191,7 +191,7 @@ pub fn shellExec(
 
     // JS try cache
     var try_catch: public.TryCatch = undefined;
-    try_catch.init(js_env.*);
+    try_catch.init(js_env);
     defer try_catch.deinit();
 
     // create I/O contexts and callbacks
@@ -226,7 +226,7 @@ pub fn shellExec(
     while (true) {
         try loop.io.run_for_ns(10 * std.time.ns_per_ms);
         if (loop.cbk_error) {
-            if (try try_catch.exception(alloc, js_env.*)) |msg| {
+            if (try try_catch.exception(alloc, js_env)) |msg| {
                 defer alloc.free(msg);
                 printStdout("\x1b[38;5;242mUncaught {s}\x1b[0m\n", .{msg});
             }
