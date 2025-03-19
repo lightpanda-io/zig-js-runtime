@@ -170,16 +170,16 @@ pub fn runScript(
 
     // local try catch
     var try_catch: public.TryCatch = undefined;
-    try_catch.init(js_env.*);
+    try_catch.init(js_env);
     defer try_catch.deinit();
 
     // check result
     _ = js_env.execWait(script, name) catch |err| {
-        if (try try_catch.exception(alloc, js_env.*)) |msg| {
+        if (try try_catch.exception(alloc, js_env)) |msg| {
             defer alloc.free(msg);
             std.log.err("script {s} error: {s}\n", .{ name, msg });
         }
-        if (try try_catch.stack(alloc, js_env.*)) |msg| {
+        if (try try_catch.stack(alloc, js_env)) |msg| {
             defer alloc.free(msg);
             std.log.err("script {s} stack: {s}\n", .{ name, msg });
         }
