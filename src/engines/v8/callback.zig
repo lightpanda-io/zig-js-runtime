@@ -314,7 +314,7 @@ pub const Func = struct {
     pub fn call(self: Func, nat_args: anytype) anyerror!void {
         // ensure Native args and JS args are not both provided
         const info = @typeInfo(@TypeOf(nat_args));
-        if (comptime info != .Null) {
+        if (comptime info != .null) {
             // TODO: could be a compile error if we use generics for JS args
             std.debug.assert(self.js_args_pers.len == 0);
         }
@@ -330,16 +330,16 @@ pub const Func = struct {
         // retrieve arguments
         var args = try self.nat_ctx.alloc.alloc(v8.Value, self.js_args_pers.len);
         defer self.nat_ctx.alloc.free(args);
-        if (comptime info == .Struct) {
+        if (comptime info == .@"struct") {
 
             // - Native arguments provided on function call
-            std.debug.assert(info.Struct.is_tuple);
-            args = try self.nat_ctx.alloc.alloc(v8.Value, info.Struct.fields.len);
+            std.debug.assert(info.@"struct".is_tuple);
+            args = try self.nat_ctx.alloc.alloc(v8.Value, info.@"struct".fields.len);
             comptime var i = 0;
-            inline while (i < info.Struct.fields.len) {
+            inline while (i < info.@"struct".fields.len) {
                 comptime var ret: refl.Type = undefined;
                 comptime {
-                    ret = try refl.Type.reflect(info.Struct.fields[i].type, null);
+                    ret = try refl.Type.reflect(info.@"struct".fields[i].type, null);
                     try ret.lookup(gen.Types);
                 }
                 args[i] = try setNativeType(

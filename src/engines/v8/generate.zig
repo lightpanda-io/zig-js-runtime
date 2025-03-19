@@ -618,7 +618,7 @@ pub fn setNativeType(
     const info = @typeInfo(@TypeOf(res));
 
     // Optional
-    if (info == .Optional) {
+    if (info == .optional) {
         if (res == null) {
             // if null just return JS null
             return isolate.initNull().toValue();
@@ -919,7 +919,7 @@ fn callFunc(
     const function = @field(T_refl.T, func.name);
     const res_T = comptime func.return_type.underErr() orelse func.return_type.T;
     var res: res_T = undefined;
-    if (comptime @typeInfo(func.return_type.T) == .ErrorUnion) {
+    if (comptime @typeInfo(func.return_type.T) == .error_union) {
         res = @call(.auto, function, args) catch |err| {
             // TODO: how to handle internal errors vs user errors
             const js_err = throwError(
@@ -1106,7 +1106,7 @@ fn staticAttrsKeys(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
+    inline for (@typeInfo(attrs_T).@"struct".fields, 0..) |field, i| {
         keys[i] = v8.String.initUtf8(isolate, field.name).toName();
     }
 }
@@ -1121,7 +1121,7 @@ fn staticAttrsValues(
     }
     const attrs_T = T_refl.static_attrs_T.?;
     const attrs = comptime T_refl.staticAttrs(attrs_T);
-    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |field, i| {
+    inline for (@typeInfo(attrs_T).@"struct".fields, 0..) |field, i| {
         const value = comptime @field(attrs, field.name);
         values[i] = nativeToJS(@TypeOf(value), value, isolate) catch unreachable;
     }
@@ -1137,7 +1137,7 @@ fn setStaticAttrs(
         return;
     }
     const attrs_T = T_refl.static_attrs_T.?;
-    inline for (@typeInfo(attrs_T).Struct.fields, 0..) |_, i| {
+    inline for (@typeInfo(attrs_T).@"struct".fields, 0..) |_, i| {
         template.set(keys[i], values[i], v8.PropertyAttribute.ReadOnly + v8.PropertyAttribute.DontDelete);
     }
 }
@@ -1198,7 +1198,7 @@ pub fn loadFunctionTemplate(
     // static attributes keys and values
     comptime var static_nb: usize = undefined;
     if (T_refl.static_attrs_T) |attr_T| {
-        static_nb = @typeInfo(attr_T).Struct.fields.len;
+        static_nb = @typeInfo(attr_T).@"struct".fields.len;
     } else {
         static_nb = 0;
     }

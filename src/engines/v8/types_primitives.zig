@@ -91,7 +91,7 @@ pub fn jsToNative(
     // JS Null or Undefined value
     if (js_val.isNull() or js_val.isUndefined()) {
         // if Native optional type return null
-        if (comptime info == .Optional) {
+        if (comptime info == .optional) {
             return null;
         }
         // Here we should normally return an error
@@ -104,8 +104,8 @@ pub fn jsToNative(
     }
 
     // unwrap Optional
-    if (info == .Optional) {
-        return try jsToNative(alloc, info.Optional.child, js_val, isolate, ctx);
+    if (info == .optional) {
+        return try jsToNative(alloc, info.optional.child, js_val, isolate, ctx);
     }
 
     // JS values
@@ -185,7 +185,7 @@ pub fn jsToObject(
     // JS Null or Undefined value
     if (js_val.isNull() or js_val.isUndefined()) {
         // if Native optional type return null
-        if (comptime info == .Optional) {
+        if (comptime info == .optional) {
             return null;
         }
     }
@@ -196,8 +196,8 @@ pub fn jsToObject(
     }
 
     // unwrap Optional
-    if (comptime info == .Optional) {
-        return try jsToObject(alloc, nested_T, info.Optional.child, js_val, isolate, ctx);
+    if (comptime info == .optional) {
+        return try jsToObject(alloc, nested_T, info.optional.child, js_val, isolate, ctx);
     }
 
     const js_obj = js_val.castTo(v8.Object);
