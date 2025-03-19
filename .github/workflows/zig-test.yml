@@ -87,3 +87,27 @@ jobs:
 
       - name: zig build test
         run: zig build test -Dengine=v8
+
+  zig-test-macos-x86_64:
+    env:
+      ARCH: x86_64
+      OS: macos
+
+    # Don't run the CI with draft PR.
+    if: github.event.pull_request.draft == false
+
+    runs-on: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: ./.github/actions/install
+        with:
+          os: ${{env.OS}}
+          arch: ${{env.ARCH}}
+
+      - name: zig build test
+        run: zig build test -Dengine=v8
