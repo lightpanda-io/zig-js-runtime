@@ -198,10 +198,6 @@ pub fn packages(comptime vendor_path: []const u8) type {
                     break :blk;
                 },
                 .macos => blk: {
-                    if (arch != .aarch64) {
-                        std.debug.print("only aarch64 are supported on macos builds\n", .{});
-                        return error.ArchNotSupported;
-                    }
                     break :blk;
                 },
                 else => return error.OsNotSupported,
