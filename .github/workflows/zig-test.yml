@@ -135,3 +135,27 @@ jobs:
 
       - name: zig build test
         run: zig build test -Dengine=v8
+
+  zig-test-linux-aarch64:
+    env:
+      ARCH: aarch64
+      OS: linux
+
+    # Don't run the CI with draft PR.
+    if: github.event.pull_request.draft == false
+
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - uses: ./.github/actions/install
+        with:
+          os: ${{env.OS}}
+          arch: ${{env.ARCH}}
+
+      - name: zig build test
+        run: zig build test -Dengine=v8
