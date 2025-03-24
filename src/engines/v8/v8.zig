@@ -82,6 +82,11 @@ pub const VM = struct {
         v8.deinitV8Platform();
         self.platform.deinit();
     }
+
+    pub fn pumpMessageLoop(self: *const VM, env: *const Env, wait: bool) bool {
+        log.debug("pumpMessageLoop", .{});
+        return self.platform.pumpMessageLoop(env.isolate, wait);
+    }
 };
 
 pub const Env = struct {
