@@ -142,6 +142,7 @@ pub const Env = struct {
             .globals = globals,
         };
         NativeContext.init(&self.nat_ctx, alloc, loop, userctx);
+        self.loopMicrotasks();
     }
 
     pub fn deinit(self: *Env) void {
@@ -177,6 +178,15 @@ pub const Env = struct {
 
     pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
         self.nat_ctx.userctx = userctx;
+    }
+
+    fn loopMicrotasks(self: *Env) void {
+        self.isolate.performMicrotasksCheckpoint();
+        self.nat_ctx.loop.zigTimeout(1 * std.time.ns_per_ms, *Env, self, loopMicrotasks);
+    }
+
+    pub fn runMicrotasks(self: *Env) void {
+        self.isolate.performMicrotasksCheckpoint();
     }
 
     // load user-defined Types into Javascript environement
