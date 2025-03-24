@@ -324,4 +324,77 @@ pub const SingleThreaded = struct {
             report("recv done, remaining events: {d}", .{old_events_nb - 1});
         }
     }
+
+    // Zig timeout
+
+    const ContextZigTimeout = struct {
+        loop: *Self,
+        ctx_id: u32,
+
+        context: *anyopaque,
+        callback: *const fn (
+            context: ?*anyopaque,
+        ) void,
+    };
+
+    fn zigTimeoutCallback(
+        ctx: *ContextZigTimeout,
+        completion: *IO.Completion,
+        result: IO.TimeoutError!void,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+
+        // If the loop's context id has changed, don't call the js callback
+        // function. The callback's memory has already be cleaned and the
+        // events nb reset.
+        if (ctx.ctx_id != ctx.loop.ctx_id) return;
+
+        // We don't remove event here b/c we don't want the main loop to wait for
+        // the timeout is done.
+        // This is mainly due b/c the usage of zigTimeout is used to process
+        // background tasks.
+        //_ = ctx.loop.removeEvent();
+
+        result catch |err| {
+            switch (err) {
+                error.Canceled => {},
+                else => log.err("zig timeout callback: {any}", .{err}),
+            }
+            return;
+        };
+
+        // callback
+        ctx.callback(ctx.context);
+    }
+
+    // zigTimeout performs a timeout but the callback is a zig function.
+    pub fn zigTimeout(
+        self: *Self,
+        nanoseconds: u63,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context) void,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctxtimeout = self.alloc.create(ContextZigTimeout) catch unreachable;
+        ctxtimeout.* = ContextZigTimeout{
+            .loop = self,
+            .ctx_id = self.ctx_id,
+            .context = context,
+            .callback = struct {
+                fn wrapper(ctx: ?*anyopaque) void {
+                    callback(@ptrCast(@alignCast(ctx)));
+                }
+            }.wrapper,
+        };
+
+        // We don't add event here b/c we don't want the main loop to wait for
+        // the timeout is done.
+        // This is mainly due b/c the usage of zigTimeout is used to process
+        // background tasks.
+        // _ = self.addEvent();
+
+        self.io.timeout(*ContextZigTimeout, ctxtimeout, zigTimeoutCallback, completion, nanoseconds);
+    }
 };
