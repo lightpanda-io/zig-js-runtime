@@ -119,11 +119,6 @@ pub const FuncSync = struct {
             func.index_offset,
         ) orelse unreachable;
 
-        std.debug.print("idx: {d}, offset: {d}, {any}\n", .{
-            func.callback_index.?,
-            idx,
-            js_func_val,
-        });
         if (!js_func_val.isFunction()) {
             return error.JSWrongType;
         }
