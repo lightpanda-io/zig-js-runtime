@@ -42,7 +42,6 @@ pub const SingleThreaded = struct {
     ctx_id: u32 = 0,
     cancel_pool: std.heap.MemoryPool(ContextCancel),
     timeout_pool: std.heap.MemoryPool(ContextTimeout),
-    completion_pool: std.heap.MemoryPool(Completion),
     event_callback_pool: std.heap.MemoryPool(EventCallbackContext),
 
     const Self = @This();
@@ -58,7 +57,6 @@ pub const SingleThreaded = struct {
             .io = try IO.init(32, 0),
             .cancel_pool = std.heap.MemoryPool(ContextCancel).init(allocator),
             .timeout_pool = std.heap.MemoryPool(ContextTimeout).init(allocator),
-            .completion_pool = std.heap.MemoryPool(Completion).init(allocator),
             .event_callback_pool = std.heap.MemoryPool(EventCallbackContext).init(allocator),
         };
     }
@@ -68,7 +66,6 @@ pub const SingleThreaded = struct {
         self.io.deinit();
         self.cancel_pool.deinit();
         self.timeout_pool.deinit();
-        self.completion_pool.deinit();
         self.event_callback_pool.deinit();
     }
 
@@ -126,7 +123,7 @@ pub const SingleThreaded = struct {
         const loop = ctx.loop;
         defer {
             loop.timeout_pool.destroy(ctx);
-            loop.completion_pool.destroy(completion);
+            loop.allocator.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -155,8 +152,8 @@ pub const SingleThreaded = struct {
     }
 
     pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) !usize {
-        const completion = try self.completion_pool.create();
-        errdefer self.completion_pool.destroy(completion);
+        const completion = try self.allocator.create(Completion);
+        errdefer self.allocator.destroy(completion);
         completion.* = undefined;
 
         const ctx = try self.timeout_pool.create();
@@ -185,8 +182,8 @@ pub const SingleThreaded = struct {
     ) void {
         const loop = ctx.loop;
         defer {
-            ctx.loop.timeout_pool.destroy(ctx);
-            ctx.loop.completion_pool.destroy(completion);
+            loop.cancel_pool.destroy(ctx);
+            loop.allocator.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -217,8 +214,8 @@ pub const SingleThreaded = struct {
     pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) !void {
         const comp_cancel: *IO.Completion = @ptrFromInt(id);
 
-        const completion = try self.completion_pool.create();
-        errdefer self.completion_pool.destroy(completion);
+        const completion = try self.allocator.create(Completion);
+        errdefer self.allocator.destroy(completion);
         completion.* = undefined;
 
         const ctx = try self.cancel_pool.create();
