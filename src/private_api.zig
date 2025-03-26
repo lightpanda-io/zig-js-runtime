@@ -15,43 +15,10 @@
 const std = @import("std");
 
 const build_opts = @import("jsruntime_build_options");
-const interfaces = @import("interfaces.zig");
-
-fn checkInterfaces(engine: anytype) void {
-
-    // public api
-    interfaces.API(engine.API, engine.LoadFnType);
-
-    interfaces.CallbackResult(engine.CallbackResult);
-    interfaces.Callback(engine.Callback, engine.CallbackResult);
-    interfaces.CallbackSync(engine.CallbackSync, engine.CallbackResult);
-    interfaces.CallbackArg(engine.CallbackArg);
-
-    interfaces.JSValue(engine.JSValue, engine.Env);
-    interfaces.JSObjectID(engine.JSObjectID);
-
-    interfaces.TryCatch(engine.TryCatch, engine.Env);
-
-    interfaces.VM(engine.VM);
-    interfaces.Env(
-        engine.Env,
-        engine.Inspector,
-        engine.JSValue,
-        engine.Object,
-    );
-
-    interfaces.Inspector(engine.Inspector, engine.Env);
-
-    // private api
-}
 
 // retrieve JS engine
 pub const Engine = switch (build_opts.engine) {
-    .v8 => blk: {
-        const engine = @import("engines/v8/v8.zig");
-        checkInterfaces(engine);
-        break :blk engine;
-    },
+    .v8 => @import("engines/v8/v8.zig"),
 };
 
 pub const API = Engine.API;
