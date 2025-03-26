@@ -51,7 +51,6 @@ pub const SingleThreaded = struct {
 
     cancel_pool: MemoryPool(ContextCancel),
     timeout_pool: MemoryPool(ContextTimeout),
-    completion_pool: MemoryPool(Completion),
     event_callback_pool: MemoryPool(EventCallbackContext),
 
     const Self = @This();
@@ -69,7 +68,6 @@ pub const SingleThreaded = struct {
             .zig_events_nb = 0,
             .cancel_pool = MemoryPool(ContextCancel).init(alloc),
             .timeout_pool = MemoryPool(ContextTimeout).init(alloc),
-            .completion_pool = MemoryPool(Completion).init(alloc),
             .event_callback_pool = MemoryPool(EventCallbackContext).init(alloc),
         };
     }
@@ -87,7 +85,6 @@ pub const SingleThreaded = struct {
         self.io.deinit();
         self.cancel_pool.deinit();
         self.timeout_pool.deinit();
-        self.completion_pool.deinit();
         self.event_callback_pool.deinit();
     }
 
@@ -156,7 +153,7 @@ pub const SingleThreaded = struct {
         defer {
             loop.removeEvent(.js);
             loop.timeout_pool.destroy(ctx);
-            loop.completion_pool.destroy(completion);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -183,8 +180,8 @@ pub const SingleThreaded = struct {
     }
 
     pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) !usize {
-        const completion = try self.completion_pool.create();
-        errdefer self.completion_pool.destroy(completion);
+        const completion = try self.alloc.create(Completion);
+        errdefer self.alloc.destroy(completion);
         completion.* = undefined;
 
         const ctx = try self.timeout_pool.create();
@@ -215,8 +212,8 @@ pub const SingleThreaded = struct {
 
         defer {
             loop.removeEvent(.js);
-            loop.timeout_pool.destroy(ctx);
-            loop.completion_pool.destroy(completion);
+            loop.cancel_pool.destroy(ctx);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -245,8 +242,8 @@ pub const SingleThreaded = struct {
     pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) !void {
         const comp_cancel: *IO.Completion = @ptrFromInt(id);
 
-        const completion = try self.completion_pool.create();
-        errdefer self.completion_pool.destroy(completion);
+        const completion = try self.alloc.create(Completion);
+        errdefer self.alloc.destroy(completion);
         completion.* = undefined;
 
         const ctx = self.alloc.create(ContextCancel) catch unreachable;
@@ -293,7 +290,7 @@ pub const SingleThreaded = struct {
         const onConnect = struct {
             fn onConnect(callback: *EventCallbackContext, completion_: *Completion, res: ConnectError!void) void {
                 defer callback.loop.event_callback_pool.destroy(callback);
-                callback.loop.removeEvent();
+                callback.loop.removeEvent(.js);
                 cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
             }
         }.onConnect;
@@ -320,7 +317,7 @@ pub const SingleThreaded = struct {
         const onSend = struct {
             fn onSend(callback: *EventCallbackContext, completion_: *Completion, res: SendError!usize) void {
                 defer callback.loop.event_callback_pool.destroy(callback);
-                callback.loop.removeEvent();
+                callback.loop.removeEvent(.js);
                 cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
             }
         }.onSend;
@@ -347,7 +344,7 @@ pub const SingleThreaded = struct {
         const onRecv = struct {
             fn onRecv(callback: *EventCallbackContext, completion_: *Completion, res: RecvError!usize) void {
                 defer callback.loop.event_callback_pool.destroy(callback);
-                callback.loop.removeEvent();
+                callback.loop.removeEvent(.js);
                 cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
             }
         }.onRecv;
@@ -359,7 +356,6 @@ pub const SingleThreaded = struct {
         self.addEvent(.js);
         self.io.recv(*EventCallbackContext, callback, onRecv, completion, socket, buf);
     }
-
 
     // Zig timeout
 
@@ -382,7 +378,7 @@ pub const SingleThreaded = struct {
         defer {
             loop.removeEvent(.zig);
             loop.alloc.destroy(ctx);
-            loop.completion_pool.destroy(completion);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -410,11 +406,9 @@ pub const SingleThreaded = struct {
         context: Context,
         comptime callback: fn (context: Context) void,
     ) void {
-        const completion = self.completion_pool.create() catch unreachable;
-        errdefer self.completion_pool.destroy(completion);
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
         completion.* = undefined;
-
-        const ctxtimeout = self.alloc.create(ContextZigTimeout)  catch unreachable;
+        const ctxtimeout = self.alloc.create(ContextZigTimeout) catch unreachable;
         ctxtimeout.* = ContextZigTimeout{
             .loop = self,
             .zig_ctx_id = self.zig_ctx_id,
