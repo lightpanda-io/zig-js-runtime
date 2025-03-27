@@ -142,10 +142,11 @@ pub const Env = struct {
             .globals = globals,
         };
         NativeContext.init(&self.nat_ctx, alloc, loop, userctx);
-        self.loopMicrotasks();
+        self.startMicrotasks();
     }
 
     pub fn deinit(self: *Env) void {
+        self.stopMicrotasks();
 
         // v8 values
         // ---------
@@ -180,13 +181,19 @@ pub const Env = struct {
         self.nat_ctx.userctx = userctx;
     }
 
-    fn loopMicrotasks(self: *Env) void {
+    pub fn runMicrotasks(self: *const Env) void {
         self.isolate.performMicrotasksCheckpoint();
-        self.nat_ctx.loop.zigTimeout(1 * std.time.ns_per_ms, *Env, self, loopMicrotasks);
     }
 
-    pub fn runMicrotasks(self: *Env) void {
-        self.isolate.performMicrotasksCheckpoint();
+    fn startMicrotasks(self: *Env) void {
+        self.runMicrotasks();
+        self.nat_ctx.loop.zigTimeout(1 * std.time.ns_per_ms, *Env, self, startMicrotasks);
+    }
+
+    fn stopMicrotasks(self: *const Env) void {
+        // We force a loop reset for all zig callback.
+        // The goal is to stop the callbacks used for the run micro tasks.
+        self.nat_ctx.loop.resetZig();
     }
 
     // load user-defined Types into Javascript environement
