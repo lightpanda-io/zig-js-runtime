@@ -43,9 +43,17 @@ pub const SingleThreaded = struct {
     events_nb: *usize,
     cbk_error: bool = false,
 
-    // ctx_id is incremented each time the loop is reset.
-    // All context are
-    ctx_id: u32 = 0,
+    // js_ctx_id is incremented each time the loop is reset for JS.
+    // All JS callbacks store an initial js_ctx_id and compare before execution.
+    // If a ctx is outdated, the callback is ignored.
+    // This is a weak way to cancel all future JS callbacks.
+    js_ctx_id: u32 = 0,
+
+    // zig_ctx_id is incremented each time the loop is reset for Zig.
+    // All Zig callbacks store an initial zig_ctx_id and compare before execution.
+    // If a ctx is outdated, the callback is ignored.
+    // This is a weak way to cancel all future Zig callbacks.
+    zig_ctx_id: u32 = 0,
 
     const Self = @This();
     pub const Completion = IO.Completion;
@@ -120,7 +128,7 @@ pub const SingleThreaded = struct {
     const ContextTimeout = struct {
         loop: *Self,
         js_cbk: ?JSCallback,
-        ctx_id: u32,
+        js_ctx_id: u32,
     };
 
     fn timeoutCallback(
@@ -133,7 +141,7 @@ pub const SingleThreaded = struct {
         // If the loop's context id has changed, don't call the js callback
         // function. The callback's memory has already be cleaned and the
         // events nb reset.
-        if (ctx.ctx_id != ctx.loop.ctx_id) return;
+        if (ctx.js_ctx_id != ctx.loop.js_ctx_id) return;
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -165,7 +173,7 @@ pub const SingleThreaded = struct {
         ctx.* = ContextTimeout{
             .loop = self,
             .js_cbk = js_cbk,
-            .ctx_id = self.ctx_id,
+            .js_ctx_id = self.js_ctx_id,
         };
         const old_events_nb = self.addEvent();
         self.io.timeout(*ContextTimeout, ctx, timeoutCallback, completion, nanoseconds);
@@ -179,7 +187,7 @@ pub const SingleThreaded = struct {
     const ContextCancel = struct {
         loop: *Self,
         js_cbk: ?JSCallback,
-        ctx_id: u32,
+        js_ctx_id: u32,
     };
 
     fn cancelCallback(
@@ -192,7 +200,7 @@ pub const SingleThreaded = struct {
         // If the loop's context id has changed, don't call the js callback
         // function. The callback's memory has already be cleaned and the
         // events nb reset.
-        if (ctx.ctx_id != ctx.loop.ctx_id) return;
+        if (ctx.js_ctx_id != ctx.loop.js_ctx_id) return;
 
         const old_events_nb = ctx.loop.removeEvent();
         if (builtin.is_test) {
@@ -226,7 +234,7 @@ pub const SingleThreaded = struct {
         ctx.* = ContextCancel{
             .loop = self,
             .js_cbk = js_cbk,
-            .ctx_id = self.ctx_id,
+            .js_ctx_id = self.js_ctx_id,
         };
 
         const old_events_nb = self.addEvent();
@@ -241,9 +249,15 @@ pub const SingleThreaded = struct {
         self.io.cancel_all();
     }
 
-    // Reset all existing callbacks.
-    pub fn reset(self: *Self) void {
-        self.ctx_id += 1;
+    // Reset all existing JS callbacks.
+    pub fn resetJS(self: *Self) void {
+        self.js_ctx_id += 1;
+        self.resetEvents();
+    }
+
+    // Reset all existing Zig callbacks.
+    pub fn resetZig(self: *Self) void {
+        self.zig_ctx_id += 1;
         self.resetEvents();
     }
 
@@ -323,5 +337,78 @@ pub const SingleThreaded = struct {
         if (builtin.is_test) {
             report("recv done, remaining events: {d}", .{old_events_nb - 1});
         }
+    }
+
+    // Zig timeout
+
+    const ContextZigTimeout = struct {
+        loop: *Self,
+        zig_ctx_id: u32,
+
+        context: *anyopaque,
+        callback: *const fn (
+            context: ?*anyopaque,
+        ) void,
+    };
+
+    fn zigTimeoutCallback(
+        ctx: *ContextZigTimeout,
+        completion: *IO.Completion,
+        result: IO.TimeoutError!void,
+    ) void {
+        defer ctx.loop.freeCbk(completion, ctx);
+
+        // If the loop's context id has changed, don't call the js callback
+        // function. The callback's memory has already be cleaned and the
+        // events nb reset.
+        if (ctx.zig_ctx_id != ctx.loop.zig_ctx_id) return;
+
+        // We don't remove event here b/c we don't want the main loop to wait for
+        // the timeout is done.
+        // This is mainly due b/c the usage of zigTimeout is used to process
+        // background tasks.
+        //_ = ctx.loop.removeEvent();
+
+        result catch |err| {
+            switch (err) {
+                error.Canceled => {},
+                else => log.err("zig timeout callback: {any}", .{err}),
+            }
+            return;
+        };
+
+        // callback
+        ctx.callback(ctx.context);
+    }
+
+    // zigTimeout performs a timeout but the callback is a zig function.
+    pub fn zigTimeout(
+        self: *Self,
+        nanoseconds: u63,
+        comptime Context: type,
+        context: Context,
+        comptime callback: fn (context: Context) void,
+    ) void {
+        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        completion.* = undefined;
+        const ctxtimeout = self.alloc.create(ContextZigTimeout) catch unreachable;
+        ctxtimeout.* = ContextZigTimeout{
+            .loop = self,
+            .zig_ctx_id = self.zig_ctx_id,
+            .context = context,
+            .callback = struct {
+                fn wrapper(ctx: ?*anyopaque) void {
+                    callback(@ptrCast(@alignCast(ctx)));
+                }
+            }.wrapper,
+        };
+
+        // We don't add event here b/c we don't want the main loop to wait for
+        // the timeout is done.
+        // This is mainly due b/c the usage of zigTimeout is used to process
+        // background tasks.
+        // _ = self.addEvent();
+
+        self.io.timeout(*ContextZigTimeout, ctxtimeout, zigTimeoutCallback, completion, nanoseconds);
     }
 };

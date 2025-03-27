@@ -82,6 +82,11 @@ pub const VM = struct {
         v8.deinitV8Platform();
         self.platform.deinit();
     }
+
+    pub fn pumpMessageLoop(self: *const VM, env: *const Env, wait: bool) bool {
+        log.debug("pumpMessageLoop", .{});
+        return self.platform.pumpMessageLoop(env.isolate, wait);
+    }
 };
 
 pub const Env = struct {
@@ -137,9 +142,11 @@ pub const Env = struct {
             .globals = globals,
         };
         NativeContext.init(&self.nat_ctx, alloc, loop, userctx);
+        self.startMicrotasks();
     }
 
     pub fn deinit(self: *Env) void {
+        self.stopMicrotasks();
 
         // v8 values
         // ---------
@@ -172,6 +179,21 @@ pub const Env = struct {
 
     pub fn setUserContext(self: *Env, userctx: public.UserContext) anyerror!void {
         self.nat_ctx.userctx = userctx;
+    }
+
+    pub fn runMicrotasks(self: *const Env) void {
+        self.isolate.performMicrotasksCheckpoint();
+    }
+
+    fn startMicrotasks(self: *Env) void {
+        self.runMicrotasks();
+        self.nat_ctx.loop.zigTimeout(1 * std.time.ns_per_ms, *Env, self, startMicrotasks);
+    }
+
+    fn stopMicrotasks(self: *const Env) void {
+        // We force a loop reset for all zig callback.
+        // The goal is to stop the callbacks used for the run micro tasks.
+        self.nat_ctx.loop.resetZig();
     }
 
     // load user-defined Types into Javascript environement
