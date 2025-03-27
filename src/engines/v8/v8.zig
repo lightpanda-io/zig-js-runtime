@@ -747,6 +747,10 @@ fn getExternalEntry(value: v8.Value) ?*ExternalEntry {
         return null;
     }
     const obj = value.castTo(Object);
+    if (obj.internalFieldCount() == 0) {
+        return null;
+    }
+
     const external_data = obj.getInternalField(0).castTo(v8.External).get().?;
     return @alignCast(@ptrCast(external_data));
 }
