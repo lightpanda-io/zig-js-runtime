@@ -106,7 +106,7 @@ pub const SingleThreaded = struct {
 
     const Event = enum { js, zig };
 
-    fn eventsPtr(self: *Self, event: Event) *usize {
+    fn eventsPtr(self: *Self, comptime event: Event) *usize {
         return switch (event) {
             .zig => &self.zig_events_nb,
             .js => &self.js_events_nb,
@@ -115,18 +115,18 @@ pub const SingleThreaded = struct {
 
     // Register events atomically
     // - add 1 event and return previous value
-    fn addEvent(self: *Self, event: Event) usize {
+    fn addEvent(self: *Self, comptime event: Event) usize {
         return @atomicRmw(usize, self.eventsPtr(event), .Add, 1, .acq_rel);
     }
     // - remove 1 event and return previous value
-    fn removeEvent(self: *Self, event: Event) usize {
+    fn removeEvent(self: *Self, comptime event: Event) usize {
         return @atomicRmw(usize, self.eventsPtr(event), .Sub, 1, .acq_rel);
     }
     // - get the number of current events
-    fn eventsNb(self: *Self, event: Event) usize {
+    fn eventsNb(self: *Self, comptime event: Event) usize {
         return @atomicLoad(usize, self.eventsPtr(event), .seq_cst);
     }
-    fn resetEvents(self: *Self, event: Event) void {
+    fn resetEvents(self: *Self, comptime event: Event) void {
         @atomicStore(usize, self.eventsPtr(event), 0, .unordered);
     }
 
