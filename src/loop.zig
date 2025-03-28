@@ -39,9 +39,9 @@ fn report(comptime fmt: []const u8, args: anytype) void {
 // I/O APIs based on async/await might be added in the future.
 pub const SingleThreaded = struct {
     alloc: std.mem.Allocator, // TODO: unmanaged version ?
-    io: *IO,
-    js_events_nb: *usize,
-    zig_events_nb: *usize,
+    io: IO,
+    js_events_nb: usize,
+    zig_events_nb: usize,
     cbk_error: bool = false,
 
     // js_ctx_id is incremented each time the loop is reset for JS.
@@ -64,21 +64,11 @@ pub const SingleThreaded = struct {
     pub const SendError = IO.SendError;
 
     pub fn init(alloc: std.mem.Allocator) !Self {
-        const io = try alloc.create(IO);
-        errdefer alloc.destroy(io);
-
-        io.* = try IO.init(32, 0);
-
-        const js_events_nb = try alloc.create(usize);
-        js_events_nb.* = 0;
-        const zig_events_nb = try alloc.create(usize);
-        zig_events_nb.* = 0;
-
         return Self{
             .alloc = alloc,
-            .io = io,
-            .js_events_nb = js_events_nb,
-            .zig_events_nb = zig_events_nb,
+            .io = try IO.init(32, 0),
+            .js_events_nb = 0,
+            .zig_events_nb = 0,
         };
     }
 
@@ -91,13 +81,8 @@ pub const SingleThreaded = struct {
                 break;
             };
         }
-
         self.cancelAll();
-
         self.io.deinit();
-        self.alloc.destroy(self.io);
-        self.alloc.destroy(self.js_events_nb);
-        self.alloc.destroy(self.zig_events_nb);
     }
 
     // Retrieve all registred I/O events completed by OS kernel,
@@ -121,10 +106,10 @@ pub const SingleThreaded = struct {
 
     const Event = enum { js, zig };
 
-    fn eventsPtr(self: *const Self, event: Event) *usize {
+    fn eventsPtr(self: *Self, event: Event) *usize {
         return switch (event) {
-            .zig => self.zig_events_nb,
-            .js => self.js_events_nb,
+            .zig => &self.zig_events_nb,
+            .js => &self.js_events_nb,
         };
     }
 
