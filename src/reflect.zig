@@ -785,7 +785,7 @@ pub const Struct = struct {
 
     // nested types
     nested: []const StructNested,
-    sub_type: ?[:0]const u8,
+    sub_type: ?[*c]const u8,
 
     pub fn Self(comptime self: Struct) type {
         comptime {
@@ -1247,7 +1247,7 @@ pub const Struct = struct {
             mem_guarantied = @typeInfo(T).@"struct".layout != .auto;
         }
 
-        var sub_type: ?[:0]const u8 = null;
+        var sub_type: ?[*c]const u8 = null;
         if (@hasDecl(T, "sub_type")) {
             sub_type = @field(T, "sub_type");
         }

@@ -717,7 +717,7 @@ pub const ExternalEntry = struct {
     // the proper subtype (and description) fields in the returned JSON.
     // V8 will give us a Value and ask us for the subtype. Hence, we store it
     // here.
-    sub_type: ?[:0]const u8,
+    sub_type: ?[*c]const u8,
 };
 
 // See above for documentation for the ExternalEntry's sub_type field.
