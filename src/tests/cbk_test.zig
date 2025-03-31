@@ -55,9 +55,9 @@ pub const Window = struct {
         loop: *jsruntime.Loop,
         callback: Callback,
         milliseconds: u32,
-    ) u32 {
+    ) !u32 {
         const n: u63 = @intCast(milliseconds);
-        const id = loop.timeout(n * std.time.ns_per_ms, callback);
+        const id = try loop.timeout(n * std.time.ns_per_ms, callback);
 
         defer self.timeoutid += 1;
         self.timeoutids[self.timeoutid] = id;
@@ -71,9 +71,9 @@ pub const Window = struct {
         callback: Callback,
         milliseconds: u32,
         _: CallbackArg,
-    ) u32 {
+    ) !u32 {
         const n: u63 = @intCast(milliseconds);
-        const id = loop.timeout(n * std.time.ns_per_ms, callback);
+        const id = try loop.timeout(n * std.time.ns_per_ms, callback);
 
         defer self.timeoutid += 1;
         self.timeoutids[self.timeoutid] = id;
@@ -81,9 +81,9 @@ pub const Window = struct {
         return self.timeoutid;
     }
 
-    pub fn _cancel(self: Window, loop: *jsruntime.Loop, id: u32) void {
+    pub fn _cancel(self: Window, loop: *jsruntime.Loop, id: u32) !void {
         if (id >= self.timeoutid) return;
-        loop.cancel(self.timeoutids[id], null);
+        try loop.cancel(self.timeoutids[id], null);
     }
 
     pub fn _cbkAsyncWithNatArg(_: Window, callback: Callback) !void {

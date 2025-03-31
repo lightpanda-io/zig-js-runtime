@@ -14,6 +14,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const MemoryPool = std.heap.MemoryPool;
 
 pub const IO = @import("tigerbeetle-io").IO;
 
@@ -21,14 +22,6 @@ const public = @import("api.zig");
 const JSCallback = public.Callback;
 
 const log = std.log.scoped(.loop);
-
-fn report(comptime fmt: []const u8, args: anytype) void {
-    const max_len = 200;
-    var buf: [max_len]u8 = undefined;
-    const s = std.fmt.bufPrint(buf[0..], fmt, args) catch |err| @panic(@errorName(err));
-    const report_fmt = "[Thread {d}] {s}\n";
-    std.debug.print(report_fmt, .{ std.Thread.getCurrentId(), s });
-}
 
 // SingleThreaded I/O Loop based on Tigerbeetle io_uring loop.
 // On Linux it's using io_uring.
@@ -56,6 +49,10 @@ pub const SingleThreaded = struct {
     // This is a weak way to cancel all future Zig callbacks.
     zig_ctx_id: u32 = 0,
 
+    cancel_pool: MemoryPool(ContextCancel),
+    timeout_pool: MemoryPool(ContextTimeout),
+    event_callback_pool: MemoryPool(EventCallbackContext),
+
     const Self = @This();
     pub const Completion = IO.Completion;
 
@@ -69,6 +66,9 @@ pub const SingleThreaded = struct {
             .io = try IO.init(32, 0),
             .js_events_nb = 0,
             .zig_events_nb = 0,
+            .cancel_pool = MemoryPool(ContextCancel).init(alloc),
+            .timeout_pool = MemoryPool(ContextTimeout).init(alloc),
+            .event_callback_pool = MemoryPool(EventCallbackContext).init(alloc),
         };
     }
 
@@ -83,6 +83,9 @@ pub const SingleThreaded = struct {
         }
         self.cancelAll();
         self.io.deinit();
+        self.cancel_pool.deinit();
+        self.timeout_pool.deinit();
+        self.event_callback_pool.deinit();
     }
 
     // Retrieve all registred I/O events completed by OS kernel,
@@ -115,12 +118,12 @@ pub const SingleThreaded = struct {
 
     // Register events atomically
     // - add 1 event and return previous value
-    fn addEvent(self: *Self, comptime event: Event) usize {
-        return @atomicRmw(usize, self.eventsPtr(event), .Add, 1, .acq_rel);
+    fn addEvent(self: *Self, comptime event: Event) void {
+        _ = @atomicRmw(usize, self.eventsPtr(event), .Add, 1, .acq_rel);
     }
     // - remove 1 event and return previous value
-    fn removeEvent(self: *Self, comptime event: Event) usize {
-        return @atomicRmw(usize, self.eventsPtr(event), .Sub, 1, .acq_rel);
+    fn removeEvent(self: *Self, comptime event: Event) void {
+        _ = @atomicRmw(usize, self.eventsPtr(event), .Sub, 1, .acq_rel);
     }
     // - get the number of current events
     fn eventsNb(self: *Self, comptime event: Event) usize {
@@ -128,11 +131,6 @@ pub const SingleThreaded = struct {
     }
     fn resetEvents(self: *Self, comptime event: Event) void {
         @atomicStore(usize, self.eventsPtr(event), 0, .unordered);
-    }
-
-    fn freeCbk(self: *Self, completion: *IO.Completion, ctx: anytype) void {
-        self.alloc.destroy(completion);
-        self.alloc.destroy(ctx);
     }
 
     // JS callbacks APIs
@@ -151,19 +149,17 @@ pub const SingleThreaded = struct {
         completion: *IO.Completion,
         result: IO.TimeoutError!void,
     ) void {
+        const loop = ctx.loop;
         defer {
-            const old_events_nb = ctx.loop.removeEvent(.js);
-            if (builtin.is_test) {
-                report("timeout done, remaining events: {d}", .{old_events_nb - 1});
-            }
-
-            ctx.loop.freeCbk(completion, ctx);
+            loop.removeEvent(.js);
+            loop.timeout_pool.destroy(ctx);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
         // function. The callback's memory has already be cleaned and the
         // events nb reset.
-        if (ctx.js_ctx_id != ctx.loop.js_ctx_id) return;
+        if (ctx.js_ctx_id != loop.js_ctx_id) return;
 
         // TODO: return the error to the callback
         result catch |err| {
@@ -176,28 +172,28 @@ pub const SingleThreaded = struct {
 
         // js callback
         if (ctx.js_cbk) |*js_cbk| {
-            defer js_cbk.deinit(ctx.loop.alloc);
+            defer js_cbk.deinit(loop.alloc);
             js_cbk.call(null) catch {
-                ctx.loop.cbk_error = true;
+                loop.cbk_error = true;
             };
         }
     }
 
-    pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) usize {
-        const completion = self.alloc.create(IO.Completion) catch unreachable;
+    pub fn timeout(self: *Self, nanoseconds: u63, js_cbk: ?JSCallback) !usize {
+        const completion = try self.alloc.create(Completion);
+        errdefer self.alloc.destroy(completion);
         completion.* = undefined;
-        const ctx = self.alloc.create(ContextTimeout) catch unreachable;
+
+        const ctx = try self.timeout_pool.create();
+        errdefer self.timeout_pool.destroy(ctx);
         ctx.* = ContextTimeout{
             .loop = self,
             .js_cbk = js_cbk,
             .js_ctx_id = self.js_ctx_id,
         };
-        const old_events_nb = self.addEvent(.js);
-        self.io.timeout(*ContextTimeout, ctx, timeoutCallback, completion, nanoseconds);
-        if (builtin.is_test) {
-            report("start timeout {d} for {d} nanoseconds", .{ old_events_nb + 1, nanoseconds });
-        }
 
+        self.addEvent(.js);
+        self.io.timeout(*ContextTimeout, ctx, timeoutCallback, completion, nanoseconds);
         return @intFromPtr(completion);
     }
 
@@ -212,19 +208,18 @@ pub const SingleThreaded = struct {
         completion: *IO.Completion,
         result: IO.CancelOneError!void,
     ) void {
-        defer {
-            const old_events_nb = ctx.loop.removeEvent(.js);
-            if (builtin.is_test) {
-                report("cancel done, remaining events: {d}", .{old_events_nb - 1});
-            }
+        const loop = ctx.loop;
 
-            ctx.loop.freeCbk(completion, ctx);
+        defer {
+            loop.removeEvent(.js);
+            loop.cancel_pool.destroy(ctx);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
         // function. The callback's memory has already be cleaned and the
         // events nb reset.
-        if (ctx.js_ctx_id != ctx.loop.js_ctx_id) return;
+        if (ctx.js_ctx_id != loop.js_ctx_id) return;
 
         // TODO: return the error to the callback
         result catch |err| {
@@ -237,18 +232,20 @@ pub const SingleThreaded = struct {
 
         // js callback
         if (ctx.js_cbk) |*js_cbk| {
-            defer js_cbk.deinit(ctx.loop.alloc);
+            defer js_cbk.deinit(loop.alloc);
             js_cbk.call(null) catch {
-                ctx.loop.cbk_error = true;
+                loop.cbk_error = true;
             };
         }
     }
 
-    pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) void {
+    pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) !void {
         const comp_cancel: *IO.Completion = @ptrFromInt(id);
 
-        const completion = self.alloc.create(IO.Completion) catch unreachable;
+        const completion = try self.alloc.create(Completion);
+        errdefer self.alloc.destroy(completion);
         completion.* = undefined;
+
         const ctx = self.alloc.create(ContextCancel) catch unreachable;
         ctx.* = ContextCancel{
             .loop = self,
@@ -256,11 +253,8 @@ pub const SingleThreaded = struct {
             .js_ctx_id = self.js_ctx_id,
         };
 
-        const old_events_nb = self.addEvent(.js);
+        self.addEvent(.js);
         self.io.cancel_one(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
-        if (builtin.is_test) {
-            report("cancel {d}", .{old_events_nb + 1});
-        }
     }
 
     fn cancelAll(self: *Self) void {
@@ -292,19 +286,21 @@ pub const SingleThreaded = struct {
         comptime cbk: fn (ctx: *Ctx, _: *Completion, res: ConnectError!void) void,
         socket: std.posix.socket_t,
         address: std.net.Address,
-    ) void {
-        const old_events_nb = self.addEvent(.js);
-        self.io.connect(*Ctx, ctx, cbk, completion, socket, address);
-        if (builtin.is_test) {
-            report("start connect {d}", .{old_events_nb + 1});
-        }
-    }
+    ) !void {
+        const onConnect = struct {
+            fn onConnect(callback: *EventCallbackContext, completion_: *Completion, res: ConnectError!void) void {
+                defer callback.loop.event_callback_pool.destroy(callback);
+                callback.loop.removeEvent(.js);
+                cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
+            }
+        }.onConnect;
 
-    pub fn onConnect(self: *Self, _: ConnectError!void) void {
-        const old_events_nb = self.removeEvent(.js);
-        if (builtin.is_test) {
-            report("connect done, remaining events: {d}", .{old_events_nb - 1});
-        }
+        const callback = try self.event_callback_pool.create();
+        errdefer self.event_callback_pool.destroy(callback);
+        callback.* = .{ .loop = self, .ctx = ctx };
+
+        self.addEvent(.js);
+        self.io.connect(*EventCallbackContext, callback, onConnect, completion, socket, address);
     }
 
     // Send
@@ -317,19 +313,21 @@ pub const SingleThreaded = struct {
         comptime cbk: fn (ctx: *Ctx, completion: *Completion, res: SendError!usize) void,
         socket: std.posix.socket_t,
         buf: []const u8,
-    ) void {
-        const old_events_nb = self.addEvent(.js);
-        self.io.send(*Ctx, ctx, cbk, completion, socket, buf);
-        if (builtin.is_test) {
-            report("start send {d}", .{old_events_nb + 1});
-        }
-    }
+    ) !void {
+        const onSend = struct {
+            fn onSend(callback: *EventCallbackContext, completion_: *Completion, res: SendError!usize) void {
+                defer callback.loop.event_callback_pool.destroy(callback);
+                callback.loop.removeEvent(.js);
+                cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
+            }
+        }.onSend;
 
-    pub fn onSend(self: *Self, _: SendError!usize) void {
-        const old_events_nb = self.removeEvent(.js);
-        if (builtin.is_test) {
-            report("send done, remaining events: {d}", .{old_events_nb - 1});
-        }
+        const callback = try self.event_callback_pool.create();
+        errdefer self.event_callback_pool.destroy(callback);
+        callback.* = .{ .loop = self, .ctx = ctx };
+
+        self.addEvent(.js);
+        self.io.send(*EventCallbackContext, callback, onSend, completion, socket, buf);
     }
 
     // Recv
@@ -342,19 +340,21 @@ pub const SingleThreaded = struct {
         comptime cbk: fn (ctx: *Ctx, completion: *Completion, res: RecvError!usize) void,
         socket: std.posix.socket_t,
         buf: []u8,
-    ) void {
-        const old_events_nb = self.addEvent(.js);
-        self.io.recv(*Ctx, ctx, cbk, completion, socket, buf);
-        if (builtin.is_test) {
-            report("start recv {d}", .{old_events_nb + 1});
-        }
-    }
+    ) !void {
+        const onRecv = struct {
+            fn onRecv(callback: *EventCallbackContext, completion_: *Completion, res: RecvError!usize) void {
+                defer callback.loop.event_callback_pool.destroy(callback);
+                callback.loop.removeEvent(.js);
+                cbk(@alignCast(@ptrCast(callback.ctx)), completion_, res);
+            }
+        }.onRecv;
 
-    pub fn onRecv(self: *Self, _: RecvError!usize) void {
-        const old_events_nb = self.removeEvent(.js);
-        if (builtin.is_test) {
-            report("recv done, remaining events: {d}", .{old_events_nb - 1});
-        }
+        const callback = try self.event_callback_pool.create();
+        errdefer self.event_callback_pool.destroy(callback);
+        callback.* = .{ .loop = self, .ctx = ctx };
+
+        self.addEvent(.js);
+        self.io.recv(*EventCallbackContext, callback, onRecv, completion, socket, buf);
     }
 
     // Zig timeout
@@ -374,15 +374,17 @@ pub const SingleThreaded = struct {
         completion: *IO.Completion,
         result: IO.TimeoutError!void,
     ) void {
+        const loop = ctx.loop;
         defer {
-            _ = ctx.loop.removeEvent(.zig);
-            ctx.loop.freeCbk(completion, ctx);
+            loop.removeEvent(.zig);
+            loop.alloc.destroy(ctx);
+            loop.alloc.destroy(completion);
         }
 
         // If the loop's context id has changed, don't call the js callback
         // function. The callback's memory has already be cleaned and the
         // events nb reset.
-        if (ctx.zig_ctx_id != ctx.loop.zig_ctx_id) return;
+        if (ctx.zig_ctx_id != loop.zig_ctx_id) return;
 
         result catch |err| {
             switch (err) {
@@ -418,8 +420,12 @@ pub const SingleThreaded = struct {
             }.wrapper,
         };
 
-        _ = self.addEvent(.zig);
-
+        self.addEvent(.zig);
         self.io.timeout(*ContextZigTimeout, ctxtimeout, zigTimeoutCallback, completion, nanoseconds);
     }
+};
+
+const EventCallbackContext = struct {
+    ctx: *anyopaque,
+    loop: *SingleThreaded,
 };
