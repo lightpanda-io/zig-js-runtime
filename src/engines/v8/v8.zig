@@ -720,3 +720,59 @@ pub const Inspector = struct {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
 };
+
+// When we return a Zig instance to V8, we wrap it in a v8.Object. That wrapping
+// happens by:
+//  - Assigning our instance to a v8.External (which just holds an *anyopaque)
+//  - Creating a v8.PersistentObject and assigning the external to the
+//    PersistentObject's internalField #0
+//  - Casting the v8.PersistentObject to a v8.Object
+//
+// Now, instead of assigning the instance directly into the v8.External we
+// allocate and assign this ExternalEntry, which allows us to hold the ptr to
+// the Zig instance, as well as meta data that we'll need.
+pub const ExternalEntry = struct {
+    // Ptr to the Zig instance
+    ptr: *anyopaque,
+
+    // When we're asked to describe an object via the Inspector, we _must_ include
+    // the proper subtype (and description) fields in the returned JSON.
+    // V8 will give us a Value and ask us for the subtype. Hence, we store it
+    // here.
+    sub_type: ?[*c]const u8,
+};
+
+// See above for documentation for the ExternalEntry's sub_type field.
+pub export fn v8_inspector__Client__IMPL__valueSubtype(
+    _: *v8.c.InspectorClientImpl,
+    c_value: *const v8.C_Value,
+) callconv(.C) [*c]const u8 {
+    const external_entry = getExternalEntry(.{ .handle = c_value }) orelse return null;
+    return if (external_entry.sub_type) |st| st else null;
+}
+
+pub export fn v8_inspector__Client__IMPL__descriptionForValueSubtype(
+    _: *v8.c.InspectorClientImpl,
+    context: *const v8.C_Context,
+    c_value: *const v8.C_Value,
+) callconv(.C) [*c]const u8 {
+    _ = context;
+
+    // We _must_ include a non-null description in order for the subtype value
+    // to be included. Besides that, I don't know if the value has any meaning
+    const external_entry = getExternalEntry(.{ .handle = c_value }) orelse return null;
+    return if (external_entry.sub_type == null) null else "";
+}
+
+fn getExternalEntry(value: v8.Value) ?*ExternalEntry {
+    if (value.isObject() == false) {
+        return null;
+    }
+    const obj = value.castTo(Object);
+    if (obj.internalFieldCount() == 0) {
+        return null;
+    }
+
+    const external_data = obj.getInternalField(0).castTo(v8.External).get().?;
+    return @alignCast(@ptrCast(external_data));
+}

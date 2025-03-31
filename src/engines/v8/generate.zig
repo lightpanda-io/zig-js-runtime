@@ -34,6 +34,7 @@ const jsToObject = @import("types_primitives.zig").jsToObject;
 const TPL = @import("v8.zig").TPL;
 const JSObject = @import("v8.zig").JSObject;
 const JSObjectID = @import("v8.zig").JSObjectID;
+const ExternalEntry = @import("v8.zig").ExternalEntry;
 
 // Utils functions
 // ---------------
@@ -435,20 +436,17 @@ fn bindObjectNativeToJS(
     const pers = PersistentObject.init(isolate, js_obj);
     const js_obj_pers = pers.castToObject();
 
+    const entry = try alloc.create(ExternalEntry);
+    entry.* = .{
+        .ptr = nat_obj,
+        .sub_type = T_refl.sub_type,
+    };
+
     // bind the native object pointer to the JS object
-    var ext: v8.External = undefined;
-    if (comptime T_refl.is_mem_guarantied()) {
-
-        // store directly the object pointer
-        ext = v8.External.init(isolate, nat_obj);
-    } else {
-
-        // use the refs mechanism
-        const int_ptr = try alloc.create(usize);
-        int_ptr.* = @intFromPtr(nat_obj);
-        ext = v8.External.init(isolate, int_ptr);
-        try nat_ctx.nat_objs.put(alloc, int_ptr.*, T_refl.index);
+    if (comptime T_refl.is_mem_guarantied() == false) {
+        try nat_ctx.nat_objs.put(alloc, @intFromPtr(nat_obj), T_refl.index);
     }
+    const ext = v8.External.init(isolate, entry);
     js_obj_pers.setInternalField(0, ext);
     return js_obj_pers;
 }
@@ -824,12 +822,14 @@ fn getNativeObject(
 
         // TODO ensure the js object corresponds to the expected native type.
 
-        const ext = js_obj.getInternalField(0).castTo(v8.External).get().?;
+        const external_data = js_obj.getInternalField(0).castTo(v8.External).get().?;
+        const external_entry: *ExternalEntry = @alignCast(@ptrCast(external_data));
+        const opaque_instance_ptr = external_entry.ptr;
         if (comptime T_refl.is_mem_guarantied()) {
             // memory is fixed
             // ensure the pointer is aligned (no-op at runtime)
             // as External is a ?*anyopaque (ie. *void) with alignment 1
-            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(ext);
+            const ptr: *align(@alignOf(T_refl.Self())) anyopaque = @alignCast(opaque_instance_ptr);
             if (@hasDecl(T_refl.T, "protoCast")) {
                 // T_refl provides a function to cast the pointer from high level Type
                 obj_ptr = @call(.auto, @field(T_refl.T, "protoCast"), .{ptr});
@@ -841,7 +841,7 @@ fn getNativeObject(
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(nat_ctx.nat_objs, T, gen.Types, ext);
+            obj_ptr = try refs.getObject(nat_ctx.nat_objs, T, gen.Types, opaque_instance_ptr);
         }
     }
     return obj_ptr;

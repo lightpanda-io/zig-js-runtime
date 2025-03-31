@@ -182,7 +182,7 @@ pub fn packages(comptime vendor_path: []const u8) type {
             mod.addIncludePath(b.path(vendor ++ "/zig-v8/src"));
 
             const build_opts = b.addOptions();
-            build_opts.addOption(bool, "inspector_subtype", true);
+            build_opts.addOption(bool, "inspector_subtype", false);
             mod.addOptions("default_exports", build_opts);
             return mod;
         }
