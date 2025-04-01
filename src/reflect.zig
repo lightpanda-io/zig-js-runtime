@@ -633,7 +633,7 @@ pub const Func = struct {
         // check getter and setter internal argument is an allocator
         if (kind == .getter or kind == .setter) {
             if (index_offset == 1) {
-                if (args[0].type.? != std.mem.Allocator) {
+                if (isInternalType(args[0].type.?) == false) {
                     const msg = "getter/setter non-internal argument should be an allocator";
                     fmtErr(msg.len, msg, T);
                     return error.FuncGetterSetterNotAllocator;
@@ -2053,11 +2053,6 @@ const TestFuncNoSelf = struct {
 const TestFuncGetterMultiArg = struct {
     pub fn get_example(_: TestFuncGetterMultiArg, _: bool) void {}
 };
-const TestFuncGetterSetterNotAllocator = struct {
-    pub fn get_example(_: TestFuncGetterSetterNotAllocator, _: *Loop) bool {
-        return true;
-    }
-};
 const TestFuncSetterFirstArgNotSelfPtr = struct {
     pub fn set_example(_: TestFuncSetterFirstArgNotSelfPtr) void {}
 };
@@ -2206,10 +2201,6 @@ pub fn tests() !void {
     try ensureErr(
         .{TestFuncGetterMultiArg},
         error.FuncGetterMultiArg,
-    );
-    try ensureErr(
-        .{TestFuncGetterSetterNotAllocator},
-        error.FuncGetterSetterNotAllocator,
     );
     try ensureErr(
         .{TestFuncSetterFirstArgNotSelfPtr},
