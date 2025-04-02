@@ -134,7 +134,7 @@ pub const FuncSync = struct {
 
     pub fn setThisArg(self: *FuncSync, nat_obj_ptr: anytype) !void {
         self.thisArg = try getV8Object(
-            self.nat_ctx,
+            self.nat_ctx.*,
             nat_obj_ptr,
         ) orelse return error.V8ObjectNotFound;
     }
@@ -263,7 +263,7 @@ pub const Func = struct {
 
     pub fn setThisArg(self: *Func, nat_obj_ptr: anytype) !void {
         self.thisArg = try getV8Object(
-            self.nat_ctx,
+            self.nat_ctx.*,
             nat_obj_ptr,
         ) orelse return error.V8ObjectNotFound;
     }
