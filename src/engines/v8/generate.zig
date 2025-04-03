@@ -522,7 +522,7 @@ inline fn initJSObject(
 
 // getV8Object returns the existing v8.Object corresponding to the given native
 // pointer from the native context.
-pub fn getV8Object(nat_ctx: NativeContext, nat_obj_ptr: anytype) !?v8.Object {
+pub fn getV8Object(nat_ctx: *const NativeContext, nat_obj_ptr: anytype) !?v8.Object {
     // ensure Native object is a pointer
     if (comptime !refl.isPointer(@TypeOf(nat_obj_ptr))) return error.NotAPointer;
 
