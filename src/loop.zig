@@ -49,6 +49,11 @@ pub const SingleThreaded = struct {
     // This is a weak way to cancel all future Zig callbacks.
     zig_ctx_id: u32 = 0,
 
+    // The MacOS event loop doesn't support cancellation. We use this to track
+    // cancellation ids and, on the timeout callback, we can can check here
+    // to see if it's been cancelled.
+    cancelled: std.AutoHashMapUnmanaged(usize, void),
+
     cancel_pool: MemoryPool(ContextCancel),
     timeout_pool: MemoryPool(ContextTimeout),
     event_callback_pool: MemoryPool(EventCallbackContext),
@@ -63,6 +68,7 @@ pub const SingleThreaded = struct {
     pub fn init(alloc: std.mem.Allocator) !Self {
         return Self{
             .alloc = alloc,
+            .cancelled = .{},
             .io = try IO.init(32, 0),
             .js_events_nb = 0,
             .zig_events_nb = 0,
@@ -81,11 +87,14 @@ pub const SingleThreaded = struct {
                 break;
             };
         }
-        self.cancelAll();
+        if (comptime CANCEL_SUPPORTED) {
+            self.cancelAll();
+        }
         self.io.deinit();
         self.cancel_pool.deinit();
         self.timeout_pool.deinit();
         self.event_callback_pool.deinit();
+        self.cancelled.deinit(self.alloc);
     }
 
     // Retrieve all registred I/O events completed by OS kernel,
@@ -154,6 +163,12 @@ pub const SingleThreaded = struct {
             loop.removeEvent(.js);
             loop.timeout_pool.destroy(ctx);
             loop.alloc.destroy(completion);
+        }
+
+        if (comptime CANCEL_SUPPORTED == false) {
+            if (loop.cancelled.remove(@intFromPtr(completion))) {
+                return;
+            }
         }
 
         // If the loop's context id has changed, don't call the js callback
@@ -240,10 +255,22 @@ pub const SingleThreaded = struct {
     }
 
     pub fn cancel(self: *Self, id: usize, js_cbk: ?JSCallback) !void {
+        const alloc = self.alloc;
+        if (comptime CANCEL_SUPPORTED == false) {
+            try self.cancelled.put(alloc, id, {});
+            if (js_cbk) |cbk| {
+                var vcbk = cbk;
+                defer vcbk.deinit(alloc);
+                vcbk.call(null) catch {
+                    self.cbk_error = true;
+                };
+            }
+            return;
+        }
         const comp_cancel: *IO.Completion = @ptrFromInt(id);
 
-        const completion = try self.alloc.create(Completion);
-        errdefer self.alloc.destroy(completion);
+        const completion = try alloc.create(Completion);
+        errdefer alloc.destroy(completion);
         completion.* = undefined;
 
         const ctx = self.alloc.create(ContextCancel) catch unreachable;
@@ -267,6 +294,7 @@ pub const SingleThreaded = struct {
     pub fn resetJS(self: *Self) void {
         self.js_ctx_id += 1;
         self.resetEvents(.js);
+        self.cancelled.clearRetainingCapacity();
     }
 
     // Reset all existing Zig callbacks.
@@ -430,4 +458,10 @@ pub const SingleThreaded = struct {
 const EventCallbackContext = struct {
     ctx: *anyopaque,
     loop: *SingleThreaded,
+};
+
+const CANCEL_SUPPORTED = switch (builtin.target.os.tag) {
+    .linux => true,
+    .macos, .tvos, .watchos, .ios => false,
+    else => @compileError("IO is not supported for platform"),
 };
