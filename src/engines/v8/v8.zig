@@ -719,6 +719,31 @@ pub const Inspector = struct {
     pub fn send(self: Inspector, env: Env, msg: []const u8) void {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
+
+    // inspector's wrapObject for use in resolveNode. We may extending the interface here to include:
+    // backendNodeId, objectGroup, executionContextId. For a complete resolveNode implementation at this level.
+    // node_ptr is expected to be a sub-type of *parser.Node
+    pub fn wrapObject(self: Inspector, env: *Env, node_ptr: anytype) !v8.RemoteObject {
+        // Find or bind Native and JS objects together, if it does not already exist
+        // NOTE: We're not using env.addObject(..) as it registers a named variable at global scope
+        const T_refl = comptime gen.getType(@TypeOf(node_ptr));
+        const js_object = try setNativeObject(
+            env.nat_ctx.alloc,
+            &env.nat_ctx,
+            T_refl,
+            T_refl.value.underT(),
+            node_ptr,
+            null,
+            env.isolate,
+            env.js_ctx.?,
+        );
+        const js_value = js_object.toValue();
+
+        // Temporary defaults for which we do not know yet what they are for
+        const group_name = "AGroupName";
+        const generate_preview = false;
+        return self.session.wrapObject(env.isolate, env.js_ctx.?, js_value, group_name, generate_preview);
+    }
 };
 
 // When we return a Zig instance to V8, we wrap it in a v8.Object. That wrapping
