@@ -720,7 +720,7 @@ pub const Inspector = struct {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
 
-    // inspector's wrapObject for use in resolveNode. We may extending the interface here to include:
+    // Inspector's wrapObject for use in resolveNode. We may extend the interface here to include:
     // backendNodeId, objectGroup, executionContextId. For a complete resolveNode implementation at this level.
     // node_ptr is expected to be a sub-type of *parser.Node
     pub fn wrapObject(self: Inspector, env: *Env, node_ptr: anytype) !v8.RemoteObject {
