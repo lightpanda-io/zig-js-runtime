@@ -36,6 +36,7 @@ pub const ModuleLoadFn = *const fn (ctx: *anyopaque, referrer: ?Module, specifie
 pub const LoadFnType = @import("generate.zig").LoadFnType;
 pub const loadFn = @import("generate.zig").loadFn;
 const setNativeObject = @import("generate.zig").setNativeObject;
+const setNativeType = @import("generate.zig").setNativeType;
 const loadFunctionTemplate = @import("generate.zig").loadFunctionTemplate;
 const bindObjectNativeAndJS = @import("generate.zig").bindObjectNativeAndJS;
 const getTpl = @import("generate.zig").getTpl;
@@ -349,6 +350,25 @@ pub const Env = struct {
         if (!res) {
             return error.AttachObject;
         }
+    }
+
+    // Currently used for DOM nodes
+    // - value Note: *parser.Node should be converted to dom/node.zig.Union to get the most precise type
+    pub fn findOrAddValue(env: *Env, value: anytype) !v8.Value {
+        comptime var ret: refl.Type = undefined;
+        comptime {
+            @setEvalBranchQuota(150_000); // Needed when this is called with a dom/node.zig.Union
+            ret = try refl.Type.reflect(@TypeOf(value), null);
+            try ret.lookup(gen.Types);
+        }
+        return try setNativeType(
+            env.nat_ctx.alloc,
+            &env.nat_ctx,
+            ret,
+            value,
+            env.js_ctx.?,
+            env.isolate,
+        );
     }
 
     // compile and run a JS script
@@ -720,29 +740,11 @@ pub const Inspector = struct {
         return self.session.dispatchProtocolMessage(env.isolate, msg);
     }
 
-    // Inspector's wrapObject for use in resolveNode. We may extend the interface here to include:
+    // Retrieves the RemoteObject for a given JsValue. We may extend the interface here to include:
     // backendNodeId, objectGroup, executionContextId. For a complete resolveNode implementation at this level.
-    // node_ptr is expected to be a sub-type of *parser.Node
-    pub fn wrapObject(self: Inspector, env: *Env, node_ptr: anytype) !v8.RemoteObject {
-        // Find or bind Native and JS objects together, if it does not already exist
-        // NOTE: We're not using env.addObject(..) as it registers a named variable at global scope
-        const T_refl = comptime gen.getType(@TypeOf(node_ptr));
-        const js_object = try setNativeObject(
-            env.nat_ctx.alloc,
-            &env.nat_ctx,
-            T_refl,
-            T_refl.value.underT(),
-            node_ptr,
-            null,
-            env.isolate,
-            env.js_ctx.?,
-        );
-        const js_value = js_object.toValue();
-
-        // Temporary defaults for which we do not know yet what they are for
-        const group_name = "AGroupName";
-        const generate_preview = false;
-        return self.session.wrapObject(env.isolate, env.js_ctx.?, js_value, group_name, generate_preview);
+    pub fn getRemoteObject(self: Inspector, env: *Env, jsValue: v8.Value, groupName: []const u8) !v8.RemoteObject {
+        const generatePreview = false; // We do not want to expose this as a parameter for now
+        return self.session.wrapObject(env.isolate, env.js_ctx.?, jsValue, groupName, generatePreview);
     }
 };
 
