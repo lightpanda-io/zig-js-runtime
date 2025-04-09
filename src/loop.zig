@@ -92,7 +92,7 @@ pub const SingleThreaded = struct {
             };
         }
         if (comptime CANCEL_SUPPORTED) {
-            self.cancelAll();
+            self.io.cancel_all();
         }
         self.io.deinit();
         self.cancel_pool.deinit();
@@ -141,9 +141,6 @@ pub const SingleThreaded = struct {
     // - get the number of current events
     fn eventsNb(self: *Self, comptime event: Event) usize {
         return @atomicLoad(usize, self.eventsPtr(event), .seq_cst);
-    }
-    fn resetEvents(self: *Self, comptime event: Event) void {
-        @atomicStore(usize, self.eventsPtr(event), 0, .unordered);
     }
 
     // JS callbacks APIs
@@ -288,25 +285,12 @@ pub const SingleThreaded = struct {
         self.io.cancel_one(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
     }
 
-    // cancelAll will cancel all future events.
-    // The loop will not be usable anymore after cancelAll.
-    // It is used only during the deinit.
-    fn cancelAll(self: *Self) void {
-        self.resetEvents(.js);
-        self.resetEvents(.zig);
-        self.io.cancel_all();
-    }
-
     // Reset all existing JS callbacks.
     // The existing events will happen and their memory will be cleanup but the
     // corresponding callbacks will not be called.
     pub fn resetJS(self: *Self) void {
         self.js_ctx_id += 1;
         self.cancelled.clearRetainingCapacity();
-        // We don't call self.resetEvents(.js) intentionnaly.
-        // Indeed we don't want to prevent the possibility to wait for events.
-        // The caller may want to wait to have memory correcly cleaned after
-        // the events happen, even if the callback are ignoreed.
     }
 
     // Reset all existing Zig callbacks.
@@ -314,10 +298,6 @@ pub const SingleThreaded = struct {
     // corresponding callbacks will not be called.
     pub fn resetZig(self: *Self) void {
         self.zig_ctx_id += 1;
-        // We don't call self.resetEvents(.zig) intentionnaly.
-        // Indeed we don't want to prevent the possibility to wait for events.
-        // The caller may want to wait to have memory correcly cleaned after
-        // the events happen, even if the callback are ignoreed.
     }
 
     // IO callbacks APIs
