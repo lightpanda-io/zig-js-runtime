@@ -293,14 +293,12 @@ pub const SingleThreaded = struct {
     // Reset all existing JS callbacks.
     pub fn resetJS(self: *Self) void {
         self.js_ctx_id += 1;
-        self.resetEvents(.js);
         self.cancelled.clearRetainingCapacity();
     }
 
     // Reset all existing Zig callbacks.
     pub fn resetZig(self: *Self) void {
         self.zig_ctx_id += 1;
-        self.resetEvents(.zig);
     }
 
     // IO callbacks APIs
