@@ -33,8 +33,12 @@ const log = std.log.scoped(.loop);
 pub const SingleThreaded = struct {
     alloc: std.mem.Allocator, // TODO: unmanaged version ?
     io: IO,
+
+    // both events_nb are used to track how many callbacks are to be called.
+    // We use these counters to wait until all the events are finished.
     js_events_nb: usize,
     zig_events_nb: usize,
+
     cbk_error: bool = false,
 
     // js_ctx_id is incremented each time the loop is reset for JS.
@@ -284,6 +288,9 @@ pub const SingleThreaded = struct {
         self.io.cancel_one(*ContextCancel, ctx, cancelCallback, completion, comp_cancel);
     }
 
+    // cancelAll will cancel all future events.
+    // The loop will not be usable anymore after cancelAll.
+    // It is used only during the deinit.
     fn cancelAll(self: *Self) void {
         self.resetEvents(.js);
         self.resetEvents(.zig);
@@ -291,14 +298,26 @@ pub const SingleThreaded = struct {
     }
 
     // Reset all existing JS callbacks.
+    // The existing events will happen and their memory will be cleanup but the
+    // corresponding callbacks will not be called.
     pub fn resetJS(self: *Self) void {
         self.js_ctx_id += 1;
         self.cancelled.clearRetainingCapacity();
+        // We don't call self.resetEvents(.js) intentionnaly.
+        // Indeed we don't want to prevent the possibility to wait for events.
+        // The caller may want to wait to have memory correcly cleaned after
+        // the events happen, even if the callback are ignoreed.
     }
 
     // Reset all existing Zig callbacks.
+    // The existing events will happen and their memory will be cleanup but the
+    // corresponding callbacks will not be called.
     pub fn resetZig(self: *Self) void {
         self.zig_ctx_id += 1;
+        // We don't call self.resetEvents(.zig) intentionnaly.
+        // Indeed we don't want to prevent the possibility to wait for events.
+        // The caller may want to wait to have memory correcly cleaned after
+        // the events happen, even if the callback are ignoreed.
     }
 
     // IO callbacks APIs
