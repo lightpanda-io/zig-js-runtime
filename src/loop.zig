@@ -83,6 +83,12 @@ pub const SingleThreaded = struct {
     }
 
     pub fn deinit(self: *Self) void {
+        // first disable callbacks for existing events.
+        // We don't want a callback re-create a setTimeout, it could create an
+        // infinite loop on wait for events.
+        self.resetJS();
+        self.resetZig();
+
         // run tail events. We do run the tail events to ensure all the
         // contexts are correcly free.
         while (self.eventsNb(.js) > 0 or self.eventsNb(.zig) > 0) {
