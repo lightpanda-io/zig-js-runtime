@@ -625,6 +625,10 @@ pub const JSValue = struct {
             return error.JSValueTypeNotHandled;
         };
     }
+
+    pub fn externalEntry(self: JSValue) ?*ExternalEntry {
+        return getExternalEntry(self.value);
+    }
 };
 
 pub const TryCatch = struct {
@@ -749,6 +753,11 @@ pub const Inspector = struct {
     pub fn getRemoteObject(self: Inspector, env: *Env, jsValue: v8.Value, groupName: []const u8) !v8.RemoteObject {
         const generatePreview = false; // We do not want to expose this as a parameter for now
         return self.session.wrapObject(env.isolate, env.js_ctx.?, jsValue, groupName, generatePreview);
+    }
+
+    pub fn getValueByObjectId(self: Inspector, allocator: std.mem.Allocator, object_id: []const u8) !JSValue {
+        const unwrapped = try self.session.unwrapObject(allocator, object_id);
+        return .{ .value = unwrapped.value }; // The values context and groupId are not used here
     }
 };
 
