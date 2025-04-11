@@ -755,15 +755,8 @@ pub const Inspector = struct {
         return self.session.wrapObject(env.isolate, env.js_ctx.?, jsValue, groupName, generatePreview);
     }
 
-    pub fn getValueByObjectId(self: Inspector, allocator: std.mem.Allocator, objectId: []const u8) !JSValue {
-        const result = try self.session.unwrapObject(allocator, objectId);
-        const unwrapped = switch (result) {
-            .err => |err| {
-                log.err("Unable to unwrap object {s}: {s}", .{ objectId, if (err) |e| e else "No error message" });
-                return error.UnwrapObjectFailed;
-            },
-            .ok => |value| value,
-        };
+    pub fn getValueByObjectId(self: Inspector, allocator: std.mem.Allocator, object_id: []const u8) !JSValue {
+        const unwrapped = try self.session.unwrapObject(allocator, object_id);
         return .{ .value = unwrapped.value }; // The values context and groupId are not used here
     }
 };
