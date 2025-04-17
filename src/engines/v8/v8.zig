@@ -94,7 +94,7 @@ pub const IsolatedWorld = struct {
     name: []const u8,
     // isolate: v8.Isolate,
     // isolate_params: v8.CreateParams,
-    globals: v8.FunctionTemplate,
+    // globals: v8.FunctionTemplate,
     js_ctx: v8.Context, // TODO window or globalThis
     // needs it's own NativeContext
 };
@@ -135,8 +135,8 @@ pub const Env = struct {
         // hscope.init(isolate);
 
         // ObjectTemplate for the global namespace
-        const globals = v8.FunctionTemplate.initDefault(self.isolate);
-        var js_ctx = v8.Context.init(self.isolate, globals.getInstanceTemplate(), null);
+        // const globals = v8.FunctionTemplate.initDefault(self.isolate); // Use other self.Globals?
+        var js_ctx = v8.Context.init(self.isolate, self.globals.getInstanceTemplate(), null);
         js_ctx.is_default = false;
         // js_ctx.enter(); // do not enter it as it just a seperate thing? -> Cannot exit non-entered context crash probably of the main context
 
@@ -182,7 +182,7 @@ pub const Env = struct {
             .name = name,
             // .isolate = self.isolate,
             // .isolate_params = self.isolate_params,
-            .globals = globals,
+            // .globals = globals,
             .js_ctx = js_ctx,
         };
     }
