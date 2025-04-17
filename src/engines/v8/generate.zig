@@ -421,7 +421,7 @@ const PersistentObject = v8.Persistent(v8.Object);
 
 fn bindObjectNativeToJS(
     alloc: std.mem.Allocator,
-    nat_ctx: *NativeContext,
+    nat_objs: *NativeContext.NatObjects,
     comptime T_refl: refl.Struct,
     nat_obj: anytype,
     js_obj: v8.Object,
@@ -444,7 +444,7 @@ fn bindObjectNativeToJS(
 
     // bind the native object pointer to the JS object
     if (comptime T_refl.is_mem_guarantied() == false) {
-        try nat_ctx.nat_objs.put(alloc, @intFromPtr(nat_obj), T_refl.index);
+        try nat_objs.put(alloc, @intFromPtr(nat_obj), T_refl.index); // TODO separate -> kinda solved for now
     }
     const ext = v8.External.init(isolate, entry);
     js_obj_pers.setInternalField(0, ext);
@@ -478,10 +478,11 @@ pub fn bindObjectNativeAndJS(
         return js_obj;
     }
 
+    const nats = if (js_ctx.is_default) &nat_ctx.default_nat_objs else &nat_ctx.isolated_world_nat_objs;
     // bind the Native object to the JS object
     const js_obj_binded = try bindObjectNativeToJS(
         alloc,
-        nat_ctx,
+        nats,
         T_refl,
         nat_obj,
         js_obj,
@@ -489,7 +490,8 @@ pub fn bindObjectNativeAndJS(
     );
 
     // bind the JS object to the Native object
-    try bindObjectJSToNative(alloc, &nat_ctx.js_objs, nat_obj, js_obj_binded);
+    const objs = if (js_ctx.is_default) &nat_ctx.default_js_objs else &nat_ctx.isolated_world_js_objs;
+    try bindObjectJSToNative(alloc, objs, nat_obj, js_obj_binded);
 
     // call postAttach func
     if (comptime try refl.postAttachFunc(T_refl.T)) |piArgsT| {
@@ -527,7 +529,11 @@ pub fn getV8Object(nat_ctx: *const NativeContext, nat_obj_ptr: anytype) !?v8.Obj
     if (comptime !refl.isPointer(@TypeOf(nat_obj_ptr))) return error.NotAPointer;
 
     const nat_obj_ref = @intFromPtr(nat_obj_ptr);
-    const js_obj_ref = nat_ctx.js_objs.get(nat_obj_ref) orelse return null;
+
+    // TODO default_js_objs or the other
+
+    const js_obj_ref = nat_ctx.default_js_objs.get(nat_obj_ref) orelse return null;
+
     const js_obj_handle = @as(*v8.C_Object, @ptrFromInt(js_obj_ref));
     return v8.Object{ .handle = js_obj_handle };
 }
@@ -578,7 +584,8 @@ pub fn setNativeObject(
 
         // JS object is not provided, check the objects map
         const nat_obj_ref = @intFromPtr(nat_obj_ptr);
-        if (nat_ctx.js_objs.get(nat_obj_ref)) |js_obj_ref| {
+        const objs = if (js_ctx.is_default) &nat_ctx.default_js_objs else &nat_ctx.isolated_world_js_objs;
+        if (objs.get(nat_obj_ref)) |js_obj_ref| {
 
             // a JS object is already linked to the current Native object
             // return it
@@ -841,7 +848,7 @@ fn getNativeObject(
             }
         } else {
             // use the refs mechanism to retrieve from high level Type
-            obj_ptr = try refs.getObject(nat_ctx.nat_objs, T, gen.Types, opaque_instance_ptr);
+            obj_ptr = try refs.getObject(nat_ctx.default_js_objs, T, gen.Types, opaque_instance_ptr); // TODO isolated world
         }
     }
     return obj_ptr;

@@ -90,6 +90,15 @@ pub const VM = struct {
     }
 };
 
+pub const IsolatedWorld = struct {
+    name: []const u8,
+    // isolate: v8.Isolate,
+    // isolate_params: v8.CreateParams,
+    globals: v8.FunctionTemplate,
+    js_ctx: v8.Context, // TODO window or globalThis
+    // needs it's own NativeContext
+};
+
 pub const Env = struct {
     nat_ctx: NativeContext,
 
@@ -101,10 +110,98 @@ pub const Env = struct {
 
     js_ctx: ?v8.Context = null,
 
+    isolated_world: ?IsolatedWorld = null,
+
     moduleLoad: ?struct {
         ctx: *anyopaque,
         func: ModuleLoadFn,
     } = null,
+
+    pub fn init_isolated_world(self: *Env, name: []const u8) !void {
+        if (self.isolated_world != null) {
+            return error.IsolatedWorldAlreadyInitialized;
+        }
+
+        // // params
+        // var params = v8.initCreateParams();
+        // params.array_buffer_allocator = v8.createDefaultArrayBufferAllocator();
+
+        // // isolate
+        // var isolate = v8.Isolate.init(&params);
+        // isolate.enter();
+
+        // // handle scope
+        // var hscope: v8.HandleScope = undefined;
+        // hscope.init(isolate);
+
+        // ObjectTemplate for the global namespace
+        const globals = v8.FunctionTemplate.initDefault(self.isolate);
+        var js_ctx = v8.Context.init(self.isolate, globals.getInstanceTemplate(), null);
+        js_ctx.is_default = false;
+        // js_ctx.enter(); // do not enter it as it just a seperate thing? -> Cannot exit non-entered context crash probably of the main context
+
+        // TODO: ideally all this should disapear,
+        // we shouldn't do anything at context startup time
+        inline for (gen.Types, 0..) |T_refl, i| {
+
+            // APIs prototype
+            // set the prototype of each corresponding constructor Function
+            // NOTE: this is required to inherit attributes at the Type level,
+            // ie. static class attributes.
+            // For static instance attributes we set them
+            // on FunctionTemplate.PrototypeTemplate
+            // TODO: is there a better way to do it at the Template level?
+            // see https://github.com/Browsercore/jsruntime-lib/issues/128
+            if (T_refl.proto_index) |proto_index| {
+                const cstr_tpl = getTpl(&self.nat_ctx, i);
+                const proto_tpl = getTpl(&self.nat_ctx, proto_index);
+                const cstr_obj = cstr_tpl.getFunction(js_ctx).toObject();
+                const proto_obj = proto_tpl.getFunction(js_ctx).toObject();
+                _ = cstr_obj.setPrototype(js_ctx, proto_obj);
+            }
+
+            // Custom exception
+            // NOTE: there is no way in v8 to subclass the Error built-in type
+            // TODO: this is an horrible hack
+            if (comptime T_refl.isException()) {
+                const script = T_refl.name ++ ".prototype.__proto__ = Error.prototype";
+                _ = self.exec(script, "errorSubclass") catch {
+                    // TODO: is there a reason to override the error?
+                    return error.errorSubClass;
+                };
+            }
+        }
+        // var tpls: [gen.Types.len]TPL = undefined;
+        // try gen.load(&self.nat_ctx, self.isolate, globals, TPL, &tpls);
+        // // for (tpls, 0..) |tpl, i| {
+        //     js_types[i] = @intFromPtr(tpl.tpl.handle);
+        // }
+        // self.nat_ctx.loadTypes(js_types);
+
+        self.isolated_world = IsolatedWorld{
+            .name = name,
+            // .isolate = self.isolate,
+            // .isolate_params = self.isolate_params,
+            .globals = globals,
+            .js_ctx = js_ctx,
+        };
+    }
+
+    pub fn deinit_isolated_world(self: *Env) !void {
+        var isolated_world = if (self.isolated_world) |*iw| iw else {
+            return error.IsolatedWorldNotInitialized;
+        };
+        isolated_world.js_ctx.exit(); // Is this needed? Note, cannot exit nont entered contexted
+
+        // // isolate
+        // isolated_world.isolate.exit();
+        // isolated_world.isolate.deinit();
+
+        // // params
+        // v8.destroyArrayBufferAllocator(isolated_world.isolate_params.array_buffer_allocator.?);
+
+        self.isolated_world = null;
+    }
 
     pub fn engine() public.EngineType {
         return .v8;
@@ -322,6 +419,41 @@ pub const Env = struct {
             self.isolate,
         );
     }
+    pub fn isolatedBindGlobal(self: *Env, obj: anytype) anyerror!void {
+        const T_refl = comptime gen.getType(@TypeOf(obj));
+        if (!comptime refl.isGlobalType(T_refl.T)) return error.notGlobalType;
+        const T = T_refl.Self();
+
+        // ensure Native object is a pointer
+        var nat_obj_ptr: *T = undefined;
+
+        if (comptime refl.isPointer(@TypeOf(obj))) {
+
+            // Native object is a pointer of T
+            // no need to create it in heap,
+            // we assume it has been done already by the API
+            // just assign pointer to Native object
+            nat_obj_ptr = obj;
+        } else {
+
+            // Native object is a value of T
+            // create a pointer in heap
+            // (otherwise on the stack it will be delete when the function returns),
+            // and assign pointer's dereference value to Native object
+            nat_obj_ptr = try self.nat_ctx.alloc.create(T);
+            nat_obj_ptr.* = obj;
+        }
+
+        _ = try bindObjectNativeAndJS(
+            self.nat_ctx.alloc,
+            &self.nat_ctx,
+            T_refl,
+            nat_obj_ptr,
+            self.isolated_world.?.js_ctx.getGlobal(),
+            self.isolated_world.?.js_ctx,
+            self.isolate,
+        );
+    }
 
     // add a Native object in the Javascript context
     pub fn addObject(self: *Env, obj: anytype, name: []const u8) anyerror!void {
@@ -354,7 +486,7 @@ pub const Env = struct {
 
     // Currently used for DOM nodes
     // - value Note: *parser.Node should be converted to dom/node.zig.Union to get the most precise type
-    pub fn findOrAddValue(env: *Env, value: anytype) !v8.Value {
+    pub fn findOrAddValue(env: *Env, value: anytype, use_default: bool) !v8.Value {
         if (builtin.is_test) {
             // std.testing.refAllDecls(@import("server.zig")); Causes `try ret.lookup(gen.Types);` to throw an error
             return error.TestingNotSupported;
@@ -370,7 +502,7 @@ pub const Env = struct {
             &env.nat_ctx,
             ret,
             value,
-            env.js_ctx.?,
+            if (use_default) env.js_ctx.? else env.isolated_world.?.js_ctx,
             env.isolate,
         );
     }
@@ -731,14 +863,20 @@ pub const Inspector = struct {
     // - origin: Execution context origin (ie. URL who initialised the request)
     // - auxData: Embedder-specific auxiliary data likely matching
     // {isDefault: boolean, type: 'default'|'isolated'|'worker', frameId: string}
+    // - is_default_context: Whether the execution context is default, should match the auxData
     pub fn contextCreated(
         self: Inspector,
         env: *const Env,
         name: []const u8,
         origin: []const u8,
         auxData: ?[]const u8,
+        is_default_context: bool,
     ) void {
-        self.inner.contextCreated(env.js_ctx.?, name, origin, auxData);
+        if (is_default_context) { // This likely needs to be extended for worker and multiples
+            self.inner.contextCreated(env.js_ctx.?, name, origin, auxData, is_default_context);
+        } else {
+            self.inner.contextCreated(env.isolated_world.?.js_ctx, env.isolated_world.?.name, origin, auxData, is_default_context);
+        }
     }
 
     // msg should be formatted for the Inspector protocol
@@ -750,9 +888,13 @@ pub const Inspector = struct {
 
     // Retrieves the RemoteObject for a given JsValue. We may extend the interface here to include:
     // backendNodeId, objectGroup, executionContextId. For a complete resolveNode implementation at this level.
-    pub fn getRemoteObject(self: Inspector, env: *Env, jsValue: v8.Value, groupName: []const u8) !v8.RemoteObject {
+    pub fn getRemoteObject(self: Inspector, env: *Env, jsValue: v8.Value, groupName: []const u8, use_default: bool) !v8.RemoteObject {
         const generatePreview = false; // We do not want to expose this as a parameter for now
-        return self.session.wrapObject(env.isolate, env.js_ctx.?, jsValue, groupName, generatePreview);
+        if (use_default) {
+            // _ = use_default;
+            return self.session.wrapObject(env.isolate, env.js_ctx.?, jsValue, groupName, generatePreview);
+        }
+        return self.session.wrapObject(env.isolate, env.isolated_world.?.js_ctx, jsValue, groupName, generatePreview);
     }
 
     pub fn getValueByObjectId(self: Inspector, allocator: std.mem.Allocator, object_id: []const u8) !JSValue {

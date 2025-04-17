@@ -16,15 +16,16 @@ const std = @import("std");
 
 const Loop = @import("api.zig").Loop;
 const UserContext = @import("api.zig").UserContext;
-const NatObjects = @import("internal_api.zig").refs.Map;
 
 pub const NativeContext = struct {
     alloc: std.mem.Allocator,
     loop: *Loop,
     userctx: ?UserContext,
 
-    js_objs: JSObjects,
-    nat_objs: NatObjects,
+    default_js_objs: JSObjects,
+    isolated_world_js_objs: JSObjects,
+    default_nat_objs: NatObjects,
+    isolated_world_nat_objs: NatObjects,
 
     // NOTE: DO NOT ACCESS DIRECTLY js_types
     // - use once loadTypes at startup to set them
@@ -32,20 +33,25 @@ pub const NativeContext = struct {
     js_types: ?[]usize = null,
 
     pub const JSObjects = std.AutoHashMapUnmanaged(usize, usize);
+    pub const NatObjects = @import("internal_api.zig").refs.Map;
 
     pub fn init(self: *NativeContext, alloc: std.mem.Allocator, loop: *Loop, userctx: ?UserContext) void {
         self.* = .{
             .alloc = alloc,
             .loop = loop,
             .userctx = userctx,
-            .js_objs = JSObjects{},
-            .nat_objs = NatObjects{},
+            .default_js_objs = JSObjects{},
+            .isolated_world_js_objs = JSObjects{},
+            .default_nat_objs = NatObjects{},
+            .isolated_world_nat_objs = NatObjects{},
         };
     }
 
     pub fn stop(self: *NativeContext) void {
-        self.js_objs.clearAndFree(self.alloc);
-        self.nat_objs.clearAndFree(self.alloc);
+        self.default_js_objs.clearAndFree(self.alloc);
+        self.isolated_world_js_objs.clearAndFree(self.alloc);
+        self.default_nat_objs.clearAndFree(self.alloc);
+        self.isolated_world_nat_objs.clearAndFree(self.alloc);
     }
 
     // loadTypes into the NativeContext
@@ -64,8 +70,10 @@ pub const NativeContext = struct {
 
     pub fn deinit(self: *NativeContext) void {
         self.stop();
-        self.js_objs.deinit(self.alloc);
-        self.nat_objs.deinit(self.alloc);
+        self.default_js_objs.deinit(self.alloc);
+        self.isolated_world_js_objs.deinit(self.alloc);
+        self.default_nat_objs.deinit(self.alloc);
+        self.isolated_world_nat_objs.deinit(self.alloc);
         self.* = undefined;
     }
 };
