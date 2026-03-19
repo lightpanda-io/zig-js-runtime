@@ -1,3 +1,6 @@
+> [!IMPORTANT]  
+> This repository has been archived, the zig/v8 wrapper is now integrated directly into the [Lightpanda browser](https://github.com/lightpanda-io/browser).
+
 # zig-js-runtime
 
 A fast and easy library to add a Javascript runtime into your Zig project.
